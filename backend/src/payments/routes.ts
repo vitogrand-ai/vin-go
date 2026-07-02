@@ -10,13 +10,16 @@ import { createRoute, OpenAPIHono } from '@hono/zod-openapi'
 
 import { requireAuth } from '../auth/middleware'
 import type { AuthService } from '../auth/service'
+import type { AppEnv } from '../env'
 import { validationErrorHook } from '../http/errors'
 import type { PaymentService } from './service'
+import { clientIpFromHeaders, isYooKassaWebhookIp } from './webhook-ip'
 
 type PaymentRouteEnv = {
   Variables: {
     authService: AuthService
     paymentService: PaymentService
+    env: AppEnv
     userId: string
   }
 }
@@ -75,6 +78,13 @@ export function createPaymentRoutes() {
 
   // Webhook провайдера (ЮKassa) — без авторизации, до защищённых роутов.
   routes.post('/webhook', async (c) => {
+    // Опциональный сетевой барьер: пускаем только с IP ЮKassa (за доверенным прокси).
+    if (c.get('env')?.YOOKASSA_WEBHOOK_IP_ALLOWLIST) {
+      const ip = clientIpFromHeaders(c.req.header('x-forwarded-for'), c.req.header('x-real-ip'))
+      if (!ip || !isYooKassaWebhookIp(ip)) {
+        return c.body(null, 403)
+      }
+    }
     const service = c.get('paymentService')
     const body = await c.req.json().catch(() => null)
     await service.handleWebhook(body)

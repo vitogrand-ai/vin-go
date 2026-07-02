@@ -191,15 +191,24 @@ export class PaymentService {
     const parsed = this.provider.parseWebhook(body)
     if (!parsed) return
 
-    // Безопасность: не доверяем телу webhook (у ЮKassa нет HMAC-подписи) —
-    // перепроверяем актуальный статус через API провайдера.
-    const verifiedStatus = await this.provider
-      .getStatus(parsed.providerPaymentId)
-      .catch(() => parsed.status)
+    if (parsed.kind === 'payment') {
+      await this.applyPaymentStatus(parsed.providerPaymentId)
+      return
+    }
+    await this.applyRefundStatus(parsed.providerRefundId)
+  }
 
-    const payment = await this.db.payment.findFirst({
-      where: { providerPaymentId: parsed.providerPaymentId },
-    })
+  /**
+   * Синхронизирует статус платежа с провайдером по его providerPaymentId.
+   * Телу webhook НЕ доверяем (у ЮKassa нет HMAC-подписи): единственный источник
+   * истины — статус из API провайдера. Если верификация не удалась (API недоступен,
+   * платёж не найден у провайдера), пробрасываем ошибку — маршрут вернёт 5xx,
+   * ЮKassa повторит доставку, а поддельный webhook не сможет провести платёж.
+   * Идемпотентно — используется и в webhook, и в reconcile.
+   */
+  async applyPaymentStatus(providerPaymentId: string): Promise<void> {
+    const verifiedStatus = await this.provider.getStatus(providerPaymentId)
+    const payment = await this.db.payment.findFirst({ where: { providerPaymentId } })
     if (!payment) return
     await this.db.payment.update({
       where: { id: payment.id },
@@ -210,6 +219,23 @@ export class PaymentService {
     })
     if (verifiedStatus === 'SUCCEEDED') {
       await this.advanceOrderToPaid(payment.orderId)
+    }
+  }
+
+  /**
+   * Синхронизирует статус возврата с провайдером. Так же не доверяем телу webhook —
+   * перепроверяем статус возврата через API. При успехе двигает заказ в REFUNDED.
+   */
+  async applyRefundStatus(providerRefundId: string): Promise<void> {
+    const verifiedStatus = await this.provider.getRefundStatus(providerRefundId)
+    const refund = await this.db.refund.findFirst({ where: { providerRefundId } })
+    if (!refund) return
+    await this.db.refund.update({ where: { id: refund.id }, data: { status: verifiedStatus } })
+    if (verifiedStatus === 'SUCCEEDED') {
+      await this.db.order.updateMany({
+        where: { id: refund.orderId },
+        data: { status: 'REFUNDED' },
+      })
     }
   }
 

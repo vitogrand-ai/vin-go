@@ -31,6 +31,14 @@ export type ProviderRefund = {
 }
 
 /**
+ * Разобранное событие webhook: оплата или возврат. Различаем их, чтобы
+ * верифицировать статус через правильный ресурс API (платёж или возврат).
+ */
+export type ParsedWebhookEvent =
+  | { kind: 'payment'; providerPaymentId: string; status: PaymentStatus }
+  | { kind: 'refund'; providerRefundId: string; status: PaymentStatus }
+
+/**
  * Платёжный провайдер. Сейчас есть мок (Этап 3) и ядро ЮKassa, которое
  * активируется при заданных YOOKASSA_*. Маршруты и сервис от провайдера не зависят.
  */
@@ -40,9 +48,11 @@ export interface PaymentProvider {
   readonly supportsMockConfirm: boolean
   createPayment(params: CreatePaymentParams): Promise<ProviderPayment>
   getStatus(providerPaymentId: string): Promise<PaymentStatus>
+  /** Актуальный статус возврата у провайдера — для верификации refund-webhook. */
+  getRefundStatus(providerRefundId: string): Promise<PaymentStatus>
   refund(params: RefundParams): Promise<ProviderRefund>
-  /** Разбирает webhook провайдера; null — если событие не про оплату. */
-  parseWebhook(body: unknown): { providerPaymentId: string; status: PaymentStatus } | null
+  /** Разбирает webhook провайдера; null — если событие не про оплату/возврат. */
+  parseWebhook(body: unknown): ParsedWebhookEvent | null
 }
 
 /**
@@ -66,12 +76,18 @@ export class MockPaymentProvider implements PaymentProvider {
     return 'PENDING'
   }
 
+  async getRefundStatus(): Promise<PaymentStatus> {
+    // Мок: возврат мгновенный, всегда успешен.
+    return 'SUCCEEDED'
+  }
+
   async refund(params: RefundParams): Promise<ProviderRefund> {
     // Мок: возврат сразу успешен.
     return { providerRefundId: `mock_refund_${params.refundId}`, status: 'SUCCEEDED' }
   }
 
-  parseWebhook(): { providerPaymentId: string; status: PaymentStatus } | null {
+  parseWebhook(): ParsedWebhookEvent | null {
+    // Мок не шлёт webhook — подтверждение через /mock/confirm.
     return null
   }
 }

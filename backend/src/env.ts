@@ -58,6 +58,9 @@ const envSchema = z.object({
   YOOKASSA_SECRET_KEY: optionalStringSchema,
   // Куда ЮKassa возвращает пользователя после оплаты (страница заказов).
   PAYMENT_RETURN_URL: optionalUrlSchema,
+  // Ограничивать webhook оплаты диапазонами IP ЮKassa. Включать только за
+  // доверенным прокси (X-Forwarded-For); по умолчанию выкл (локаль/тесты).
+  YOOKASSA_WEBHOOK_IP_ALLOWLIST: booleanStringSchema,
   // Telegram-бот. Пусто — бот не запускается (entrypoint завершится с подсказкой).
   TELEGRAM_BOT_TOKEN: optionalStringSchema,
   // Имя бота (без @) для deep-link привязки t.me/<bot>?start=<code>.

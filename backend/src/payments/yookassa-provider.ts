@@ -2,6 +2,7 @@ import type { PaymentStatus } from '@web-app-demo/contracts'
 
 import type {
   CreatePaymentParams,
+  ParsedWebhookEvent,
   PaymentProvider,
   ProviderPayment,
   ProviderRefund,
@@ -124,12 +125,30 @@ export class YooKassaPaymentProvider implements PaymentProvider {
     return mapStatus(data.status)
   }
 
-  parseWebhook(body: unknown): { providerPaymentId: string; status: PaymentStatus } | null {
+  async getRefundStatus(providerRefundId: string): Promise<PaymentStatus> {
+    const response = await fetch(`${YOOKASSA_API}/refunds/${providerRefundId}`, {
+      headers: { Authorization: this.authHeader() },
+    })
+    if (!response.ok) {
+      throw new Error(`ЮKassa: получение статуса возврата не удалось (${response.status})`)
+    }
+    const data = (await response.json()) as { status: string }
+    return mapStatus(data.status)
+  }
+
+  parseWebhook(body: unknown): ParsedWebhookEvent | null {
     if (!body || typeof body !== 'object') return null
-    const event = body as { object?: { id?: string; status?: string } }
+    const event = body as { event?: string; object?: { id?: string; status?: string } }
     const id = event.object?.id
     const status = event.object?.status
-    if (!id || !status) return null
-    return { providerPaymentId: id, status: mapStatus(status) }
+    if (!id || !status || typeof event.event !== 'string') return null
+    // event: 'payment.succeeded' | 'payment.canceled' | 'refund.succeeded' и т.п.
+    if (event.event.startsWith('payment.')) {
+      return { kind: 'payment', providerPaymentId: id, status: mapStatus(status) }
+    }
+    if (event.event.startsWith('refund.')) {
+      return { kind: 'refund', providerRefundId: id, status: mapStatus(status) }
+    }
+    return null
   }
 }
