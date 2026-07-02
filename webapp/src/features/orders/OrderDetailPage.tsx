@@ -1,4 +1,4 @@
-import { Link, useParams } from '@tanstack/react-router'
+import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import {
   allowedOrderTransitionsFor,
   type OrderDto,
@@ -22,6 +22,7 @@ import {
   useCreatePayment,
   useOrder,
   useRefundOrder,
+  useReorder,
   useUpdateOrderNotes,
   useUpdateOrderStatus,
 } from '@/features/cabinet/queries'
@@ -78,6 +79,8 @@ function Loaded({ order }: { order: OrderDto }) {
   const createPayment = useCreatePayment()
   const updateStatus = useUpdateOrderStatus()
   const refund = useRefundOrder()
+  const reorder = useReorder()
+  const navigate = useNavigate()
   const [method, setMethod] = useState<PaymentMethod>('card')
 
   const canPay = order.status === 'PLACED' && order.paymentStatus !== 'SUCCEEDED'
@@ -112,15 +115,43 @@ function Loaded({ order }: { order: OrderDto }) {
       },
     )
 
+  const handleReorder = () =>
+    reorder.mutate(order, {
+      onSuccess: ({ added, unavailable }) => {
+        if (added === 0) {
+          toast.error('Не удалось добавить позиции — предложения устарели')
+          return
+        }
+        toast.success(
+          `Добавлено в корзину: ${added}` +
+            (unavailable.length ? `. Недоступно: ${unavailable.join(', ')}` : ''),
+        )
+        void navigate({ to: '/cart' })
+      },
+      onError: (error) => toast.error(describeApiError(error)),
+    })
+
   return (
     <Shell>
       <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
         <Button asChild variant="ghost" size="sm">
           <Link to="/orders">← К заказам</Link>
         </Button>
-        <Button type="button" variant="outline" size="sm" onClick={() => window.print()}>
-          Печать накладной
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={reorder.isPending || order.items.length === 0}
+            onClick={handleReorder}
+          >
+            {reorder.isPending ? <Spinner /> : null}
+            Повторить заказ
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => window.print()}>
+            Печать накладной
+          </Button>
+        </div>
       </div>
 
       {/* Накладная */}

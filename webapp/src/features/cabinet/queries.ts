@@ -3,6 +3,7 @@ import type {
   AddCartItemRequest,
   AddVehicleRequest,
   CartResponse,
+  OrderDto,
   OrderStatus,
   PaymentMethod,
 } from '@web-app-demo/contracts'
@@ -187,6 +188,46 @@ export function useRefundOrder() {
     onSuccess: (_data, orderId) => {
       void queryClient.invalidateQueries({ queryKey: ordersKey })
       void queryClient.invalidateQueries({ queryKey: ['order', orderId] })
+    },
+  })
+}
+
+/**
+ * Повторный заказ: добавляет позиции прошлого заказа в корзину по актуальным
+ * предложениям (цена авторитетна с сервера). Для каждой позиции берём свежие
+ * предложения по OEM и сопоставляем по бренду+артикулу (иначе — первое доступное);
+ * позиции, которых больше нет в выдаче, возвращаем как недоступные.
+ */
+export function useReorder() {
+  const { api } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (order: OrderDto) => {
+      let added = 0
+      const unavailable: string[] = []
+      for (const item of order.items) {
+        const { offers } = await api.offers({ oemNumber: item.oemNumber })
+        const match =
+          offers.find(
+            (offer) => offer.brand === item.brand && offer.articleNumber === item.articleNumber,
+          ) ?? offers[0]
+        if (!match) {
+          unavailable.push(item.partName)
+          continue
+        }
+        await api.addCartItem({
+          oemNumber: item.oemNumber,
+          offerId: match.id,
+          partName: item.partName,
+          tier: item.tier ?? undefined,
+          quantity: item.quantity,
+        })
+        added += 1
+      }
+      return { added, unavailable }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: cartKey })
     },
   })
 }
