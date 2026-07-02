@@ -72,10 +72,15 @@ export function createApp({ env, prisma }: CreateAppOptions) {
       ? new YooKassaPaymentProvider(env.YOOKASSA_SHOP_ID, env.YOOKASSA_SECRET_KEY)
       : new MockPaymentProvider()
   const webappOrigin = env.CORS_ORIGINS[0] ?? 'http://localhost:5173'
-  const paymentService = new PaymentService(prisma, paymentProvider, {
-    webappOrigin,
-    returnUrl: env.PAYMENT_RETURN_URL ?? `${webappOrigin}/orders`,
-  })
+  const paymentService = new PaymentService(
+    prisma,
+    paymentProvider,
+    {
+      webappOrigin,
+      returnUrl: env.PAYMENT_RETURN_URL ?? `${webappOrigin}/orders`,
+    },
+    notificationService,
+  )
   const telegramLinkService = new TelegramLinkService(prisma, env.TELEGRAM_BOT_USERNAME)
   const storageService = createStorageServiceFromEnv(env)
   const app = new OpenAPIHono<AppBindings>({

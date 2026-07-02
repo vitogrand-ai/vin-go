@@ -10,6 +10,7 @@ import type {
 
 import type { DbClient } from '../db'
 import { AppError } from '../http/errors'
+import type { NotificationService } from '../notifications/service'
 import type { PaymentProvider } from './providers'
 
 type PaymentRecord = {
@@ -40,6 +41,7 @@ export class PaymentService {
     private readonly db: DbClient,
     private readonly provider: PaymentProvider,
     private readonly config: PaymentServiceConfig,
+    private readonly notifications?: NotificationService,
   ) {}
 
   async createForOrder(
@@ -181,6 +183,7 @@ export class PaymentService {
 
     if (providerRefund.status === 'SUCCEEDED') {
       await this.db.order.update({ where: { id: orderId }, data: { status: 'REFUNDED' } })
+      await this.notifyOrder(userId, orderId, 'Возврат средств выполнен')
     }
 
     return { refund: toRefundDto(updated) }
@@ -232,19 +235,40 @@ export class PaymentService {
     if (!refund) return
     await this.db.refund.update({ where: { id: refund.id }, data: { status: verifiedStatus } })
     if (verifiedStatus === 'SUCCEEDED') {
-      await this.db.order.updateMany({
-        where: { id: refund.orderId },
+      const result = await this.db.order.updateMany({
+        where: { id: refund.orderId, status: { not: 'REFUNDED' } },
         data: { status: 'REFUNDED' },
       })
+      // Уведомляем владельца только если статус реально сменился (идемпотентно).
+      if (result.count > 0) {
+        await this.notifyOrder(refund.userId, refund.orderId, 'Возврат средств выполнен')
+      }
     }
   }
 
-  /** Двигает заказ PLACED → PAID после успешной оплаты (идемпотентно). */
+  /** Двигает заказ PLACED → PAID после успешной оплаты (идемпотентно) и уведомляет владельца. */
   private async advanceOrderToPaid(orderId: string): Promise<void> {
-    await this.db.order.updateMany({
+    const result = await this.db.order.updateMany({
       where: { id: orderId, status: 'PLACED' },
       data: { status: 'PAID' },
     })
+    // count > 0 → заказ впервые стал PAID; на повторный webhook уведомления не дублируем.
+    if (result.count > 0 && this.notifications) {
+      const order = await this.db.order.findUnique({
+        where: { id: orderId },
+        select: { userId: true },
+      })
+      if (order) await this.notifyOrder(order.userId, orderId, 'Заказ оплачен')
+    }
+  }
+
+  /** Фоновое уведомление владельцу заказа (push + Telegram). Никогда не бросает. */
+  private async notifyOrder(userId: string, orderId: string, body: string): Promise<void> {
+    await this.notifications?.notifyUser(
+      userId,
+      'Статус заказа изменён',
+      `Заказ № ${orderId.slice(0, 8).toUpperCase()}: ${body}`,
+    )
   }
 }
 

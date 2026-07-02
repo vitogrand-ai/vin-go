@@ -47,13 +47,21 @@ function makeFakeDb(seed: { payments?: PaymentRow[]; orders?: OrderRow[]; refund
         where,
         data,
       }: {
-        where: { id: string; status?: string }
+        where: { id: string; status?: string | { not: string } }
         data: Partial<OrderRow>
       }) => {
         let count = 0
         for (const o of orders) {
           if (o.id !== where.id) continue
-          if (where.status !== undefined && o.status !== where.status) continue
+          // Поддерживаем и равенство (status: 'PLACED'), и оператор { not: 'REFUNDED' }.
+          if (typeof where.status === 'string' && o.status !== where.status) continue
+          if (
+            where.status &&
+            typeof where.status === 'object' &&
+            o.status === where.status.not
+          ) {
+            continue
+          }
           Object.assign(o, data)
           count += 1
         }

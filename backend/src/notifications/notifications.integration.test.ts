@@ -3,6 +3,8 @@ import { afterAll, beforeEach, describe, expect, test } from 'bun:test'
 import { MockSupplierProvider } from '../catalog/mock-providers'
 import { createPrisma } from '../db'
 import { OrdersService } from '../orders/service'
+import { MockPaymentProvider } from '../payments/providers'
+import { PaymentService } from '../payments/service'
 import { NotificationService, type PushSend, type TelegramSend } from './service'
 
 const databaseUrl = process.env.TEST_DATABASE_URL
@@ -11,10 +13,10 @@ const maybeDescribe = databaseUrl ? describe : describe.skip
 maybeDescribe('NotificationService', () => {
   const prisma = createPrisma(databaseUrl!)
 
-  const pushCalls: { tokens: string[]; title: string }[] = []
+  const pushCalls: { tokens: string[]; title: string; body: string }[] = []
   const tgCalls: { chatId: string; text: string }[] = []
-  const pushSend: PushSend = async (tokens, title) => {
-    pushCalls.push({ tokens, title })
+  const pushSend: PushSend = async (tokens, title, body) => {
+    pushCalls.push({ tokens, title, body })
   }
   const telegramSend: TelegramSend = async (chatId, text) => {
     tgCalls.push({ chatId, text })
@@ -74,5 +76,37 @@ maybeDescribe('NotificationService', () => {
 
     expect(pushCalls).toHaveLength(1)
     expect(pushCalls[0]?.title).toBe('Статус заказа изменён')
+  })
+
+  test('оплата заказа (PLACED → PAID) уведомляет владельца', async () => {
+    const user = await prisma.user.create({ data: { email: 'pay@example.com', passwordHash: 'x' } })
+    await prisma.deviceToken.create({ data: { userId: user.id, token: 'ExponentPushToken[pay]' } })
+    const order = await prisma.order.create({
+      data: { userId: user.id, status: 'PLACED', currency: 'RUB' },
+    })
+    const payment = await prisma.payment.create({
+      data: {
+        orderId: order.id,
+        userId: user.id,
+        provider: 'mock',
+        status: 'PENDING',
+        amount: 1000,
+        currency: 'RUB',
+      },
+    })
+
+    const notifications = new NotificationService(prisma, { pushSend, telegramSend })
+    const payments = new PaymentService(
+      prisma,
+      new MockPaymentProvider(),
+      { webappOrigin: 'http://localhost:5173', returnUrl: 'http://localhost:5173/orders' },
+      notifications,
+    )
+    // confirmMock двигает PLACED → PAID и должен уведомить владельца.
+    await payments.confirmMock(user.id, payment.id)
+
+    expect(pushCalls).toHaveLength(1)
+    expect(pushCalls[0]?.title).toBe('Статус заказа изменён')
+    expect(pushCalls[0]?.body).toContain('оплачен')
   })
 })
