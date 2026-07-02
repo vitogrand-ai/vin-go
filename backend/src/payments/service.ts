@@ -11,7 +11,7 @@ import type {
 import type { DbClient } from '../db'
 import { AppError } from '../http/errors'
 import type { NotificationService } from '../notifications/service'
-import type { PaymentProvider } from './providers'
+import type { PaymentProvider, ReceiptData } from './providers'
 
 type PaymentRecord = {
   id: string
@@ -29,6 +29,11 @@ export type PaymentServiceConfig = {
   webappOrigin: string
   /** Куда вернуть пользователя после оплаты. */
   returnUrl: string
+  /**
+   * Код ставки НДС ЮKassa (1–6). Задан — включает фискализацию (54-ФЗ): к платежу
+   * и возврату прикладывается чек. Пусто — чек не формируется (нет подключённой кассы).
+   */
+  vatCode?: number
 }
 
 /**
@@ -94,6 +99,7 @@ export class PaymentService {
       description: `Оплата заказа ${order.id}`,
       returnUrl: this.config.returnUrl,
       method,
+      receipt: await this.buildReceiptForOrder(order.id),
     })
 
     const confirmationUrl =
@@ -174,6 +180,7 @@ export class PaymentService {
       refundId: refund.id,
       providerPaymentId: payment.providerPaymentId,
       amount: { amount: payment.amount, currency: payment.currency as Currency },
+      receipt: await this.buildReceiptForOrder(orderId),
     })
 
     const updated = await this.db.refund.update({
@@ -284,6 +291,33 @@ export class PaymentService {
     }
 
     return { payments: payments.length, refunds: refunds.length }
+  }
+
+  /**
+   * Строит фискальный чек (54-ФЗ) из позиций заказа и email клиента.
+   * undefined — если фискализация выключена (config.vatCode пуст) или нет позиций,
+   * тогда провайдер отправит платёж без чека.
+   */
+  private async buildReceiptForOrder(orderId: string): Promise<ReceiptData | undefined> {
+    const vatCode = this.config.vatCode
+    if (!vatCode) return undefined
+    const order = await this.db.order.findUnique({
+      where: { id: orderId },
+      select: {
+        user: { select: { email: true } },
+        items: { select: { partName: true, priceAmount: true, currency: true, quantity: true } },
+      },
+    })
+    if (!order || order.items.length === 0) return undefined
+    return {
+      customerEmail: order.user.email,
+      items: order.items.map((item) => ({
+        description: item.partName,
+        quantity: item.quantity,
+        amount: { amount: item.priceAmount, currency: item.currency as Currency },
+        vatCode,
+      })),
+    }
   }
 
   /** Двигает заказ PLACED → PAID после успешной оплаты (идемпотентно) и уведомляет владельца. */

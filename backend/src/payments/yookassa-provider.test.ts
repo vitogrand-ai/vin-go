@@ -86,6 +86,47 @@ describe('YooKassaPaymentProvider.createPayment', () => {
     expect(calls[0]!.body?.payment_method_data).toEqual({ type: 'sbp' })
   })
 
+  test('передаёт фискальный чек (receipt) в тело платежа', async () => {
+    const calls = mockFetch({ json: { id: 'yk_r', status: 'pending' } })
+    await provider.createPayment({
+      paymentId: 'p_r',
+      amount: { amount: 200000, currency: 'RUB' },
+      description: 'x',
+      returnUrl: 'https://app/orders',
+      receipt: {
+        customerEmail: 'buyer@example.com',
+        items: [
+          { description: 'Колодки', quantity: 2, amount: { amount: 100000, currency: 'RUB' }, vatCode: 4 },
+        ],
+      },
+    })
+    const receipt = calls[0]!.body!.receipt as {
+      customer: Record<string, string>
+      items: Record<string, unknown>[]
+    }
+    expect(receipt.customer).toEqual({ email: 'buyer@example.com' })
+    expect(receipt.items).toHaveLength(1)
+    expect(receipt.items[0]).toMatchObject({
+      description: 'Колодки',
+      quantity: '2',
+      amount: { value: '1000.00', currency: 'RUB' },
+      vat_code: 4,
+      payment_subject: 'commodity',
+      payment_mode: 'full_payment',
+    })
+  })
+
+  test('без receipt тело не содержит чек', async () => {
+    const calls = mockFetch({ json: { id: 'yk_n', status: 'pending' } })
+    await provider.createPayment({
+      paymentId: 'p_n',
+      amount: { amount: 100, currency: 'RUB' },
+      description: 'x',
+      returnUrl: 'https://app/orders',
+    })
+    expect(calls[0]!.body?.receipt).toBeUndefined()
+  })
+
   test('ошибка API приводит к исключению', async () => {
     mockFetch({ status: 500 })
     await expect(

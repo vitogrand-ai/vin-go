@@ -74,6 +74,7 @@ export function createApp({ env, prisma }: CreateAppOptions) {
     {
       webappOrigin,
       returnUrl: env.PAYMENT_RETURN_URL ?? `${webappOrigin}/orders`,
+      vatCode: env.YOOKASSA_VAT_CODE,
     },
     notificationService,
   )

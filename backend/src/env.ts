@@ -64,6 +64,13 @@ const envSchema = z.object({
   YOOKASSA_SECRET_KEY: optionalStringSchema,
   // Куда ЮKassa возвращает пользователя после оплаты (страница заказов).
   PAYMENT_RETURN_URL: optionalUrlSchema,
+  // Фискализация (54-ФЗ): код ставки НДС ЮKassa (1–6). Задан — к платежу и
+  // возврату прикладывается чек. Пусто — фискализация выключена (нет кассы/ОФД).
+  YOOKASSA_VAT_CODE: z.preprocess((value) => {
+    if (typeof value !== 'string') return value
+    const trimmed = value.trim()
+    return trimmed === '' ? undefined : trimmed
+  }, z.coerce.number().int().min(1).max(6).optional()),
   // Ограничивать webhook оплаты диапазонами IP ЮKassa. Включать только за
   // доверенным прокси (X-Forwarded-For); по умолчанию выкл (локаль/тесты).
   YOOKASSA_WEBHOOK_IP_ALLOWLIST: booleanStringSchema,

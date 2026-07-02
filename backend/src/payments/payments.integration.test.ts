@@ -263,6 +263,70 @@ maybeDescribe('оплата заказа (мок-провайдер)', () => {
     expect(payment.status).toBe('SUCCEEDED')
   })
 
+  test('фискализация: платёж несёт чек с позициями и email клиента', async () => {
+    const { orderId } = await setupPaidableOrder()
+    const order = await prisma.order.findFirstOrThrow({
+      where: { id: orderId },
+      include: { items: true },
+    })
+
+    let captured: unknown = 'not-called'
+    const capturingProvider: PaymentProvider = {
+      name: 'stub',
+      supportsMockConfirm: false,
+      createPayment: async (params) => {
+        captured = params.receipt
+        return { providerPaymentId: 'yk_r', status: 'PENDING', confirmationUrl: null }
+      },
+      getStatus: async () => 'PENDING',
+      getRefundStatus: async () => 'PENDING',
+      refund: async () => {
+        throw new Error('не используется')
+      },
+      parseWebhook: () => null,
+    }
+
+    // vatCode задан → фискализация включена, чек строится.
+    const withFiscal = new PaymentService(prisma, capturingProvider, {
+      webappOrigin: 'http://localhost:5173',
+      returnUrl: 'http://localhost:5173/orders',
+      vatCode: 4,
+    })
+    await withFiscal.createForOrder(order.userId, orderId)
+    const receipt = captured as { customerEmail: string; items: { vatCode: number }[] }
+    expect(receipt.customerEmail).toBe('pay@example.com')
+    expect(receipt.items).toHaveLength(order.items.length)
+    expect(receipt.items[0]?.vatCode).toBe(4)
+  })
+
+  test('без vatCode фискализация выключена — чек не строится', async () => {
+    const { orderId } = await setupPaidableOrder()
+    const order = await prisma.order.findFirstOrThrow({ where: { id: orderId } })
+
+    let captured: unknown = 'not-called'
+    const capturingProvider: PaymentProvider = {
+      name: 'stub',
+      supportsMockConfirm: false,
+      createPayment: async (params) => {
+        captured = params.receipt
+        return { providerPaymentId: 'yk_n', status: 'PENDING', confirmationUrl: null }
+      },
+      getStatus: async () => 'PENDING',
+      getRefundStatus: async () => 'PENDING',
+      refund: async () => {
+        throw new Error('не используется')
+      },
+      parseWebhook: () => null,
+    }
+
+    const noFiscal = new PaymentService(prisma, capturingProvider, {
+      webappOrigin: 'http://localhost:5173',
+      returnUrl: 'http://localhost:5173/orders',
+    })
+    await noFiscal.createForOrder(order.userId, orderId)
+    expect(captured).toBeUndefined()
+  })
+
   test('создание платежа требует авторизации (401)', async () => {
     const res = await app.request('/api/payments/create', {
       method: 'POST',

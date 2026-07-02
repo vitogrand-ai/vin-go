@@ -6,6 +6,7 @@ import type {
   PaymentProvider,
   ProviderPayment,
   ProviderRefund,
+  ReceiptData,
   RefundParams,
 } from './providers'
 
@@ -21,6 +22,27 @@ function mapStatus(raw: string): PaymentStatus {
     default:
       // pending, waiting_for_capture
       return 'PENDING'
+  }
+}
+
+/** Наш ReceiptData → объект receipt ЮKassa (54-ФЗ). */
+function toYooKassaReceipt(receipt: ReceiptData): Record<string, unknown> {
+  return {
+    customer: {
+      ...(receipt.customerEmail ? { email: receipt.customerEmail } : {}),
+      ...(receipt.customerPhone ? { phone: receipt.customerPhone } : {}),
+    },
+    items: receipt.items.map((item) => ({
+      description: item.description.slice(0, 128),
+      quantity: String(item.quantity),
+      amount: {
+        value: (item.amount.amount / 100).toFixed(2),
+        currency: item.amount.currency,
+      },
+      vat_code: item.vatCode,
+      payment_subject: 'commodity',
+      payment_mode: 'full_payment',
+    })),
   }
 }
 
@@ -63,9 +85,11 @@ export class YooKassaPaymentProvider implements PaymentProvider {
     if (params.method === 'sbp') {
       body.payment_method_data = { type: 'sbp' }
     }
-    // Фискализация (54-ФЗ): при подключённой кассе/ОФД добавьте сюда объект
-    // `receipt` (позиции заказа, ставки НДС, контакт клиента). Требует
-    // настройки в ЛК ЮKassa и реальных данных, поэтому оставлено точкой расширения.
+    // Фискализация (54-ФЗ): чек передаётся, если включена (задан YOOKASSA_VAT_CODE).
+    // Требует подключённой кассы/ОФД в ЛК ЮKassa.
+    if (params.receipt) {
+      body.receipt = toYooKassaReceipt(params.receipt)
+    }
 
     const response = await fetch(`${YOOKASSA_API}/payments`, {
       method: 'POST',
@@ -90,6 +114,17 @@ export class YooKassaPaymentProvider implements PaymentProvider {
   }
 
   async refund(params: RefundParams): Promise<ProviderRefund> {
+    const body: Record<string, unknown> = {
+      payment_id: params.providerPaymentId,
+      amount: {
+        value: (params.amount.amount / 100).toFixed(2),
+        currency: params.amount.currency,
+      },
+    }
+    // Чек возврата (54-ФЗ) — если включена фискализация.
+    if (params.receipt) {
+      body.receipt = toYooKassaReceipt(params.receipt)
+    }
     const response = await fetch(`${YOOKASSA_API}/refunds`, {
       method: 'POST',
       headers: {
@@ -97,13 +132,7 @@ export class YooKassaPaymentProvider implements PaymentProvider {
         'Idempotence-Key': params.refundId,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        payment_id: params.providerPaymentId,
-        amount: {
-          value: (params.amount.amount / 100).toFixed(2),
-          currency: params.amount.currency,
-        },
-      }),
+      body: JSON.stringify(body),
     })
 
     if (!response.ok) {

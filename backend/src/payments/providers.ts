@@ -1,5 +1,20 @@
 import type { Money, PaymentMethod, PaymentStatus } from '@web-app-demo/contracts'
 
+/** Позиция чека (54-ФЗ): описание, количество, цена за единицу, код НДС. */
+export type ReceiptItem = {
+  description: string
+  quantity: number
+  amount: Money
+  vatCode: number
+}
+
+/** Данные фискального чека: контакт клиента и позиции. */
+export type ReceiptData = {
+  customerEmail?: string
+  customerPhone?: string
+  items: ReceiptItem[]
+}
+
 export type CreatePaymentParams = {
   /** Наш внутренний id платежа — используется как ключ идемпотентности. */
   paymentId: string
@@ -9,6 +24,8 @@ export type CreatePaymentParams = {
   returnUrl: string
   /** Способ оплаты (карта / СБП). */
   method?: PaymentMethod
+  /** Фискальный чек (54-ФЗ); передаётся, если включена фискализация. */
+  receipt?: ReceiptData
 }
 
 export type ProviderPayment = {
@@ -23,6 +40,8 @@ export type RefundParams = {
   refundId: string
   providerPaymentId: string
   amount: Money
+  /** Фискальный чек возврата (54-ФЗ); передаётся, если включена фискализация. */
+  receipt?: ReceiptData
 }
 
 export type ProviderRefund = {
