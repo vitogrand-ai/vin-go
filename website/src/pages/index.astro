@@ -1,103 +1,391 @@
 ---
+import Base from '../layouts/Base.astro'
 
+const webappUrl = import.meta.env.PUBLIC_WEBAPP_URL || 'http://localhost:5173'
+
+const title = 'VIN GO — подбор автозапчастей по VIN и госномеру'
+const description =
+  'Подбор автозапчастей по VIN или госномеру: определяем автомобиль, каталожный номер и показываем предложения в трёх тирах — Эконом, Оптимальный, Оригинал. Для небольших автосервисов.'
+
+const steps = [
+  { n: '01', t: 'VIN или госномер', d: 'Вводите 17-значный VIN или госномер автомобиля.' },
+  { n: '02', t: 'Автомобиль и номер', d: 'Определяем машину и подбираем каталожный (OEM) номер запчасти.' },
+  { n: '03', t: 'Три тира', d: 'Показываем предложения поставщиков: Эконом, Оптимальный, Оригинал.' },
+]
+
+const tiers = [
+  { t: 'Эконом', d: 'Дешевле, с приоритетом наличия на складе.' },
+  { t: 'Оптимальный', d: 'Баланс цены, качества и срока поставки.' },
+  { t: 'Оригинал', d: 'Заводская деталь производителя автомобиля.' },
+]
+
+const faq = [
+  {
+    q: 'Что нужно для подбора?',
+    a: 'Достаточно VIN (17 символов) или госномера автомобиля. По ним определяем машину и каталожный номер.',
+  },
+  {
+    q: 'Что означают три тира?',
+    a: 'Эконом — дешевле с приоритетом наличия; Оптимальный — баланс цены и качества; Оригинал — заводская деталь производителя.',
+  },
+  {
+    q: 'Есть ли Telegram-бот?',
+    a: 'Да. Поиск по VIN и госномеру работает прямо в чате, а кабинет (корзина и заказы) — после привязки аккаунта.',
+  },
+  {
+    q: 'Данные реальные?',
+    a: 'Сейчас данные демонстрационные. Подключение реальных каталогов и поставщиков — в работе.',
+  },
+]
+
+const faqSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: faq.map((item) => ({
+    '@type': 'Question',
+    name: item.q,
+    acceptedAnswer: { '@type': 'Answer', text: item.a },
+  })),
+}
 ---
 
-<html lang="ru">
-	<head>
-		<meta charset="utf-8" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<link rel="icon" href="/favicon.ico" />
-		<meta name="viewport" content="width=device-width" />
-		<meta name="generator" content={Astro.generator} />
-		<title>website</title>
-	</head>
-	<body>
-		<main>
-			<section class="hero" aria-labelledby="page-title">
-				<p class="eyebrow">Astro workspace</p>
-				<h1 id="page-title">website</h1>
-				<p class="summary">
-					Публичная SSG/SSR-поверхность проекта на Astro: лендинги, контентные
-					сайты и маркетплейс. Страницы статические по умолчанию, динамические
-					роуты переводятся в SSR через prerender = false.
-				</p>
-			</section>
-		</main>
-	</body>
-</html>
+<Base title={title} description={description} path="/">
+  <script type="application/ld+json" set:html={JSON.stringify(faqSchema)} slot="head" />
+
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <span class="logo">VIN GO</span>
+      <a class="btn btn-primary" href={webappUrl}>Открыть приложение</a>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="wrap hero-inner">
+        <p class="eyebrow">Ранний доступ</p>
+        <h1>Автозапчасти по VIN<br />и госномеру</h1>
+        <p class="lede">
+          Определяем автомобиль, подбираем каталожный номер и показываем предложения в трёх
+          тирах — Эконом, Оптимальный, Оригинал. Для небольших автосервисов.
+        </p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href={webappUrl}>Открыть приложение</a>
+          <a class="btn btn-ghost" href="#how">Как это работает</a>
+        </div>
+        <p class="demo-note">Сейчас данные демонстрационные — реальные каталоги и поставщики подключаются.</p>
+      </div>
+    </section>
+
+    <section id="how" class="section">
+      <div class="wrap">
+        <h2 class="section-title">Как это работает</h2>
+        <ol class="steps">
+          {
+            steps.map((s) => (
+              <li class="step">
+                <span class="step-n">{s.n}</span>
+                <h3>{s.t}</h3>
+                <p>{s.d}</p>
+              </li>
+            ))
+          }
+        </ol>
+      </div>
+    </section>
+
+    <section class="section section-tiers">
+      <div class="wrap">
+        <h2 class="section-title">Три тира на выбор</h2>
+        <div class="tiers">
+          {
+            tiers.map((t) => (
+              <article class="tier">
+                <h3>{t.t}</h3>
+                <p>{t.d}</p>
+              </article>
+            ))
+          }
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="wrap audience">
+        <div>
+          <h2 class="section-title">Для небольших автосервисов</h2>
+          <p class="audience-lede">
+            Гараж сохранённых автомобилей, корзина с ценой от сервера, заказы с жизненным циклом,
+            оплата и уведомления. Доступно в вебе, Telegram-боте и мобильном приложении.
+          </p>
+        </div>
+        <ul class="features">
+          <li>Гараж и быстрый повторный подбор</li>
+          <li>Корзина и оформление заказа</li>
+          <li>Оплата картой или СБП</li>
+          <li>Telegram-бот и мобильное приложение</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="wrap">
+        <h2 class="section-title">Вопросы и ответы</h2>
+        <div class="faq">
+          {
+            faq.map((item) => (
+              <details class="faq-item">
+                <summary>{item.q}</summary>
+                <p>{item.a}</p>
+              </details>
+            ))
+          }
+        </div>
+      </div>
+    </section>
+
+    <section class="section cta-final">
+      <div class="wrap cta-final-inner">
+        <h2>Подберите запчасть за минуту</h2>
+        <a class="btn btn-primary" href={webappUrl}>Открыть приложение</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-inner">
+      <span class="logo">VIN GO</span>
+      <span class="footer-note">Подбор автозапчастей по VIN и госномеру</span>
+    </div>
+  </footer>
+</Base>
 
 <style>
-	:root {
-		color-scheme: light;
-		font-family:
-			Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-			sans-serif;
-		background: #f6f8fb;
-		color: #14221f;
-	}
+  .site-header {
+    background: var(--ink);
+    color: #fff;
+  }
+  .header-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 4.5rem;
+  }
+  .logo {
+    font-family: Fraunces, Georgia, serif;
+    font-weight: 600;
+    font-size: 1.35rem;
+    letter-spacing: -0.03em;
+  }
 
-	body {
-		margin: 0;
-		min-height: 100vh;
-		background: #f6f8fb;
-	}
+  /* Hero: тёмная поверхность с многослойными radial-градиентами. */
+  .hero {
+    background:
+      radial-gradient(1000px 500px at 80% -10%, rgba(224, 122, 16, 0.22), transparent 60%),
+      radial-gradient(700px 400px at 0% 110%, rgba(224, 122, 16, 0.1), transparent 55%),
+      var(--ink);
+    color: #fff;
+  }
+  .hero-inner {
+    padding: 4.5rem 1.5rem 5.5rem;
+    max-width: 1080px;
+  }
+  .eyebrow {
+    display: inline-block;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 1.25rem;
+  }
+  .hero h1 {
+    font-size: clamp(2.6rem, 7vw, 5rem);
+    max-width: 15ch;
+  }
+  .lede {
+    margin-top: 1.5rem;
+    max-width: 46ch;
+    font-size: 1.15rem;
+    color: rgba(255, 255, 255, 0.82);
+  }
+  .cta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.85rem;
+    margin-top: 2rem;
+  }
+  .demo-note {
+    margin-top: 1.75rem;
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.6);
+  }
 
-	main {
-		min-height: 100vh;
-		display: grid;
-		align-items: center;
-		padding: 3rem 1.5rem;
-	}
+  .section {
+    padding: 4.5rem 0;
+  }
+  .section-title {
+    font-size: clamp(1.8rem, 4vw, 2.6rem);
+    margin-bottom: 2.5rem;
+  }
 
-	.hero {
-		max-width: 720px;
-	}
+  .steps {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 1.25rem;
+    grid-template-columns: 1fr;
+  }
+  .step {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 1rem;
+    padding: 1.75rem;
+    box-shadow: var(--shadow);
+  }
+  .step-n {
+    font-family: Fraunces, serif;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--accent);
+  }
+  .step h3 {
+    margin: 0.6rem 0 0.5rem;
+    font-size: 1.3rem;
+  }
+  .step p {
+    color: var(--muted);
+  }
 
-	.eyebrow {
-		margin: 0 0 1rem;
-		font-size: 0.8rem;
-		font-weight: 700;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: #4c6f5b;
-	}
+  .section-tiers {
+    background: var(--ink-soft);
+    color: #fff;
+  }
+  .section-tiers .section-title {
+    color: #fff;
+  }
+  .tiers {
+    display: grid;
+    gap: 1.25rem;
+    grid-template-columns: 1fr;
+  }
+  .tier {
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 1rem;
+    padding: 1.75rem;
+    background: rgba(255, 255, 255, 0.03);
+  }
+  .tier h3 {
+    font-size: 1.4rem;
+    margin-bottom: 0.5rem;
+  }
+  .tier p {
+    color: rgba(255, 255, 255, 0.72);
+  }
 
-	h1 {
-		margin: 0;
-		font-size: 4rem;
-		line-height: 0.92;
-		letter-spacing: 0;
-	}
+  .audience {
+    display: grid;
+    gap: 2rem;
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+  .audience-lede {
+    margin-top: 1rem;
+    max-width: 46ch;
+    color: var(--muted);
+  }
+  .features {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.75rem;
+  }
+  .features li {
+    padding-left: 1.75rem;
+    position: relative;
+  }
+  .features li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.7rem;
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 50%;
+    background: var(--accent);
+  }
 
-	.summary {
-		margin: 1.5rem 0 0;
-		max-width: 580px;
-		font-size: 1.125rem;
-		line-height: 1.55;
-		color: #3e4a42;
-	}
+  .faq {
+    display: grid;
+    gap: 0.75rem;
+    max-width: 760px;
+  }
+  .faq-item {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 0.85rem;
+    padding: 1.1rem 1.35rem;
+  }
+  .faq-item summary {
+    cursor: pointer;
+    font-weight: 600;
+    list-style: none;
+  }
+  .faq-item summary::-webkit-details-marker {
+    display: none;
+  }
+  .faq-item[open] summary {
+    color: var(--accent-strong);
+  }
+  .faq-item p {
+    margin-top: 0.75rem;
+    color: var(--muted);
+  }
 
-	@media (min-width: 720px) {
-		main {
-			padding: 5rem;
-		}
+  .cta-final-inner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+    background: var(--ink);
+    color: #fff;
+    border-radius: 1.5rem;
+    padding: 2.5rem;
+    box-shadow: var(--shadow);
+  }
+  .cta-final-inner h2 {
+    font-size: clamp(1.6rem, 3.5vw, 2.2rem);
+    max-width: 18ch;
+  }
 
-		h1 {
-			font-size: 7rem;
-		}
+  .site-footer {
+    background: var(--ink);
+    color: rgba(255, 255, 255, 0.75);
+    padding: 2rem 0;
+  }
+  .footer-inner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem 1.25rem;
+    justify-content: space-between;
+  }
+  .footer-note {
+    font-size: 0.9rem;
+  }
 
-		.summary {
-			font-size: 1.25rem;
-		}
-	}
-
-	@media (min-width: 1120px) {
-		main {
-			padding: 6rem;
-		}
-
-		h1 {
-			font-size: 9rem;
-		}
-	}
+  @media (min-width: 720px) {
+    .steps {
+      grid-template-columns: repeat(3, 1fr);
+    }
+    .tiers {
+      grid-template-columns: repeat(3, 1fr);
+    }
+    .audience {
+      grid-template-columns: 1.3fr 1fr;
+      gap: 3rem;
+    }
+  }
 </style>

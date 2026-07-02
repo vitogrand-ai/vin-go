@@ -1,0 +1,5 @@
+# Замените домен в строке Sitemap на боевой (должен совпадать с `site` в astro.config).
+User-agent: *
+Allow: /
+
+Sitemap: https://vin-go.example/sitemap.xml

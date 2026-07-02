@@ -30,4 +30,9 @@ import { defineConfig } from 'astro/config';
 //      path". Note: built-in per-page ISR is not part of the default
 //      DigitalOcean/Yandex static path; use rebuilds or CDN/runtime cache
 //      freshness instead.
-export default defineConfig({});
+// `site` — боевой домен лендинга: используется для canonical, OG-URL и sitemap.
+// Задайте PUBLIC_SITE_URL в окружении сборки; плейсхолдер ниже замените реальным
+// доменом (и синхронно — Sitemap в public/robots.txt и public/sitemap.xml).
+export default defineConfig({
+  site: process.env.PUBLIC_SITE_URL || 'https://vin-go.example',
+});
