@@ -60,6 +60,58 @@ SPACES_DOWNLOAD_URL_TTL_SECONDS=300
 SPACES_PUBLIC_CACHE_CONTROL="public, max-age=31536000, immutable"
 ```
 
+## ЮKassa Payments Go-Live
+
+Payments run on a provider-agnostic layer. With no keys the backend uses the mock provider (test payment page at `/pay`). Real money requires ЮKassa keys and the steps below. Do not enable production keys until the checklist passes.
+
+Backend env for the live provider:
+
+```bash
+YOOKASSA_SHOP_ID=<shopId from ЛК ЮKassa>
+YOOKASSA_SECRET_KEY=<secretKey from ЛК ЮKassa>   # set together with shop id
+PAYMENT_RETURN_URL=https://webapp.example.com/orders
+YOOKASSA_WEBHOOK_IP_ALLOWLIST=true               # only behind a proxy that sets X-Forwarded-For (App Platform)
+YOOKASSA_VAT_CODE=1                              # only if an online cash register is connected; 1=без НДС, 3=10%, 4=20%
+RATE_LIMIT_AUTH_MAX=10                           # recommended: brute-force protection on login/register
+RATE_LIMIT_PUBLIC_MAX=120                        # optional: throttle public catalog
+```
+
+Webhook registration (ЛК ЮKassa → Настройки → HTTP-уведомления): point it at `https://<backend-domain>/api/payments/webhook` and subscribe to `payment.succeeded`, `payment.canceled`, and `refund.succeeded`.
+
+Security model (already enforced in code):
+- The webhook body is never trusted. On each notification the backend re-fetches the real status from the ЮKassa API and only then advances the payment/refund; if verification fails it returns 5xx so ЮKassa retries. ЮKassa has no HMAC signature, so `YOOKASSA_WEBHOOK_IP_ALLOWLIST=true` adds a network barrier (requires a trusted proxy filling `X-Forwarded-For`).
+- Lost or undelivered webhooks are covered by the reconcile cron below — a payment can never stay silently PENDING with the customer charged.
+
+Reconcile cron (safety net for lost webhooks) — schedule `payments:reconcile` at App Platform's minimum cadence (≥15 min):
+
+```bash
+export DO_BACKEND_CRON_NAME=payments-reconcile
+export DO_BACKEND_CRON_TASK=payments:reconcile
+export DO_BACKEND_CRON_SCHEDULE="*/15 * * * *"
+export DO_BACKEND_CRON_TIME_ZONE=UTC
+bun run deploy:do:specs backend-final
+```
+
+Fiscalization (54-ФЗ): set `YOOKASSA_VAT_CODE` only when an online cash register / ОФД is connected in ЛК ЮKassa. When set, every payment and refund carries a receipt built from order items and the customer email. If a cash register is connected but no VAT code is configured, ЮKassa will reject payments for a missing receipt.
+
+Sandbox verification before switching to production keys:
+1. Use a ЮKassa **test shop** (test `shopId`/`secretKey`).
+2. Expose the backend over HTTPS (a tunnel such as Cloudflare Tunnel or ngrok) and register that URL as the webhook.
+3. Pay a real order end-to-end with a test card and with СБП; confirm the order moves PLACED → PAID and the customer gets the notification.
+4. Issue a refund; confirm the order moves to REFUNDED (via `refund.succeeded`).
+5. Simulate a lost webhook: pay, block the webhook, run `bun run start:cron -- payments:reconcile`, confirm the order still reaches PAID.
+6. If fiscalization is on, verify the receipt appears in ЛК ЮKassa.
+
+Go-live checklist:
+- [ ] `YOOKASSA_SHOP_ID` + `YOOKASSA_SECRET_KEY` set (production shop) and never committed.
+- [ ] `PAYMENT_RETURN_URL` points at the production webapp orders page.
+- [ ] Webhook registered at `/api/payments/webhook` for payment + refund events.
+- [ ] `YOOKASSA_WEBHOOK_IP_ALLOWLIST=true` and the app runs behind a proxy setting `X-Forwarded-For`.
+- [ ] `payments-reconcile` cron scheduled.
+- [ ] `RATE_LIMIT_AUTH_MAX` set.
+- [ ] Fiscalization decided: `YOOKASSA_VAT_CODE` set iff a cash register is connected.
+- [ ] Full sandbox run (card, СБП, refund, lost-webhook reconcile) passed.
+
 ## DigitalOcean App Platform
 
 Prerequisites:
