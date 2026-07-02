@@ -1,3 +1,5 @@
+import { createPaymentProvider } from './payments/factory'
+import { PaymentService } from './payments/service'
 import { createBackendRuntime, type BackendRuntime } from './runtime'
 
 type CronTask = (runtime: BackendRuntime) => Promise<void>
@@ -9,6 +11,19 @@ const cronTasks = {
   'db:ping': async ({ prisma }) => {
     await prisma.$queryRaw`SELECT 1`
     console.log('Cron db:ping task completed.')
+  },
+  // Страховка от потерянного webhook: синхронизирует зависшие PENDING-платежи
+  // и возвраты со статусом у провайдера. Запускать по расписанию (напр. раз в 5 мин).
+  'payments:reconcile': async ({ prisma, env }) => {
+    const webappOrigin = env.CORS_ORIGINS[0] ?? 'http://localhost:5173'
+    const service = new PaymentService(prisma, createPaymentProvider(env), {
+      webappOrigin,
+      returnUrl: env.PAYMENT_RETURN_URL ?? `${webappOrigin}/orders`,
+    })
+    const result = await service.reconcilePending()
+    console.log(
+      `Cron payments:reconcile: проверено платежей ${result.payments}, возвратов ${result.refunds}.`,
+    )
   },
 } satisfies Record<string, CronTask>
 

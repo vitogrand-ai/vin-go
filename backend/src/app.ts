@@ -24,10 +24,9 @@ import {
 } from './notifications/service'
 import { createOrdersRoutes } from './orders/routes'
 import { OrdersService } from './orders/service'
-import { MockPaymentProvider, type PaymentProvider } from './payments/providers'
+import { createPaymentProvider } from './payments/factory'
 import { createPaymentRoutes } from './payments/routes'
 import { PaymentService } from './payments/service'
-import { YooKassaPaymentProvider } from './payments/yookassa-provider'
 import { createTelegramRoutes } from './telegram/routes'
 import { TelegramLinkService } from './telegram/service'
 import { errorResponse, handleError, validationErrorHook } from './http/errors'
@@ -67,10 +66,7 @@ export function createApp({ env, prisma }: CreateAppOptions) {
   })
   const deviceService = new DeviceService(prisma)
   const ordersService = new OrdersService(prisma, supplierProvider, notificationService)
-  const paymentProvider: PaymentProvider =
-    env.YOOKASSA_SHOP_ID && env.YOOKASSA_SECRET_KEY
-      ? new YooKassaPaymentProvider(env.YOOKASSA_SHOP_ID, env.YOOKASSA_SECRET_KEY)
-      : new MockPaymentProvider()
+  const paymentProvider = createPaymentProvider(env)
   const webappOrigin = env.CORS_ORIGINS[0] ?? 'http://localhost:5173'
   const paymentService = new PaymentService(
     prisma,

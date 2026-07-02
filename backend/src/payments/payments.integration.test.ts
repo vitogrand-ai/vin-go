@@ -10,6 +10,8 @@ import type {
 import { createApp } from '../app'
 import { createPrisma } from '../db'
 import type { AppEnv } from '../env'
+import type { PaymentProvider } from './providers'
+import { PaymentService } from './service'
 
 const databaseUrl = process.env.TEST_DATABASE_URL
 const maybeDescribe = databaseUrl ? describe : describe.skip
@@ -211,6 +213,54 @@ maybeDescribe('оплата заказа (мок-провайдер)', () => {
       orderId: '00000000-0000-0000-0000-000000000000',
     })
     expect(res.status).toBe(404)
+  })
+
+  test('reconcile продвигает зависший PENDING-платёж по статусу провайдера', async () => {
+    const { orderId } = await setupPaidableOrder()
+    const order = await prisma.order.findFirstOrThrow({ where: { id: orderId } })
+    // Платёж «завис» в PENDING (webhook потерян), создан 10 минут назад.
+    const past = new Date(Date.now() - 10 * 60 * 1000)
+    await prisma.payment.create({
+      data: {
+        orderId,
+        userId: order.userId,
+        provider: 'yookassa',
+        status: 'PENDING',
+        providerPaymentId: 'yk_stuck',
+        amount: 1000,
+        currency: 'RUB',
+        createdAt: past,
+      },
+    })
+
+    // Провайдер сообщает, что платёж на самом деле успешен.
+    const succeedingProvider: PaymentProvider = {
+      name: 'stub',
+      supportsMockConfirm: false,
+      createPayment: async () => {
+        throw new Error('не используется')
+      },
+      getStatus: async () => 'SUCCEEDED',
+      getRefundStatus: async () => 'SUCCEEDED',
+      refund: async () => {
+        throw new Error('не используется')
+      },
+      parseWebhook: () => null,
+    }
+    const service = new PaymentService(prisma, succeedingProvider, {
+      webappOrigin: 'http://localhost:5173',
+      returnUrl: 'http://localhost:5173/orders',
+    })
+
+    const result = await service.reconcilePending()
+    expect(result.payments).toBeGreaterThanOrEqual(1)
+
+    const paid = await prisma.order.findFirstOrThrow({ where: { id: orderId } })
+    expect(paid.status).toBe('PAID')
+    const payment = await prisma.payment.findFirstOrThrow({
+      where: { providerPaymentId: 'yk_stuck' },
+    })
+    expect(payment.status).toBe('SUCCEEDED')
   })
 
   test('создание платежа требует авторизации (401)', async () => {

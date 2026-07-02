@@ -246,6 +246,46 @@ export class PaymentService {
     }
   }
 
+  /**
+   * Reconcile зависших платежей и возвратов — страховка от потерянного webhook.
+   * Опрашивает PENDING старше olderThanMs через API провайдера и идемпотентно
+   * синхронизирует статус (та же логика, что в webhook). Ошибка по одному элементу
+   * не срывает батч. Возвращает, сколько платежей и возвратов проверено.
+   */
+  async reconcilePending(
+    olderThanMs = 5 * 60 * 1000,
+  ): Promise<{ payments: number; refunds: number }> {
+    const cutoff = new Date(Date.now() - olderThanMs)
+
+    const payments = await this.db.payment.findMany({
+      where: { status: 'PENDING', providerPaymentId: { not: null }, createdAt: { lt: cutoff } },
+      select: { providerPaymentId: true },
+    })
+    for (const payment of payments) {
+      if (!payment.providerPaymentId) continue
+      try {
+        await this.applyPaymentStatus(payment.providerPaymentId)
+      } catch (error) {
+        console.error(`reconcile: платёж ${payment.providerPaymentId} не проверен`, error)
+      }
+    }
+
+    const refunds = await this.db.refund.findMany({
+      where: { status: 'PENDING', providerRefundId: { not: null }, createdAt: { lt: cutoff } },
+      select: { providerRefundId: true },
+    })
+    for (const refund of refunds) {
+      if (!refund.providerRefundId) continue
+      try {
+        await this.applyRefundStatus(refund.providerRefundId)
+      } catch (error) {
+        console.error(`reconcile: возврат ${refund.providerRefundId} не проверен`, error)
+      }
+    }
+
+    return { payments: payments.length, refunds: refunds.length }
+  }
+
   /** Двигает заказ PLACED → PAID после успешной оплаты (идемпотентно) и уведомляет владельца. */
   private async advanceOrderToPaid(orderId: string): Promise<void> {
     const result = await this.db.order.updateMany({
