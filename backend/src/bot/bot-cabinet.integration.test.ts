@@ -88,8 +88,8 @@ maybeDescribe('Telegram-бот: привязка и кабинет', () => {
     await bot.handleUpdate(msg('колодки'))
     await bot.handleUpdate(cb('oem:1J0698151'))
 
-    // В корзину (эконом-тир).
-    await bot.handleUpdate(cb('add:ECONOMY'))
+    // В корзину (эконом-тир) — callback несёт OEM.
+    await bot.handleUpdate(cb('add:ECONOMY:1J0698151'))
     expect(client.lastText()).toContain('добавлено в корзину')
 
     const cart = await orders.getCart(user.id)
@@ -106,6 +106,27 @@ maybeDescribe('Telegram-бот: привязка и кабинет', () => {
     // /orders показывает заказ.
     await bot.handleUpdate(msg('/orders'))
     expect(client.lastText()).toContain('№')
+  })
+
+  test('кнопка «в корзину» на старом сообщении добавляет свою запчасть, а не последнюю', async () => {
+    const user = await prisma.user.create({
+      data: { email: 'stale@example.com', passwordHash: 'x' },
+    })
+    const { code } = await link.createLinkCode(user.id)
+    const { client } = makeBot()
+    const bot = new TelegramBot(client, createMockCatalogService(), { link, orders })
+    await bot.handleUpdate(msg(`/start ${code}`))
+
+    // Показываем предложения по двум разным запчастям (последняя — диск).
+    await bot.handleUpdate(cb('oem:1J0698151')) // колодки
+    await bot.handleUpdate(cb('oem:1K0615301AA')) // диск
+
+    // Нажимаем «в корзину» на кнопке ПЕРВОЙ запчасти (старое сообщение).
+    await bot.handleUpdate(cb('add:ECONOMY:1J0698151'))
+
+    const cart = await orders.getCart(user.id)
+    expect(cart.order?.items).toHaveLength(1)
+    expect(cart.order?.items[0]?.oemNumber).toBe('1J0698151')
   })
 
   test('без привязки добавление в корзину просит привязать аккаунт', async () => {

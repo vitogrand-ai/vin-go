@@ -20,8 +20,12 @@ type ChatSession = {
   vin?: string
   /** Карта oemNumber → название запчасти из последнего поиска. */
   parts?: Record<string, string>
-  /** Контекст последней выдачи предложений (для кнопок «в корзину»). */
-  offer?: { oemNumber: string; partName: string; picks: TierPick[] }
+  /**
+   * Контекст выдачи предложений по каждому OEM (для кнопок «в корзину»).
+   * Ключ — oemNumber, поэтому нажатие кнопки на старом сообщении добавит именно
+   * ту запчасть, а не последнюю показанную.
+   */
+  offers?: Record<string, { oemNumber: string; partName: string; picks: TierPick[] }>
 }
 
 /** Сервисы кабинета — доступны боту, когда аккаунт привязан. */
@@ -170,7 +174,13 @@ export class TelegramBot {
       return
     }
     if (data.startsWith('add:')) {
-      await this.addToCart(chatId, callback.from.id, data.slice('add:'.length))
+      // Формат callback: add:<tier>:<oem>. OEM в кнопке защищает от добавления
+      // не той запчасти при нажатии на старое сообщение.
+      const rest = data.slice('add:'.length)
+      const separator = rest.indexOf(':')
+      const tier = separator === -1 ? rest : rest.slice(0, separator)
+      const oemNumber = separator === -1 ? undefined : rest.slice(separator + 1)
+      await this.addToCart(chatId, callback.from.id, tier, oemNumber)
     }
   }
 
@@ -178,18 +188,23 @@ export class TelegramBot {
     const session = this.session(chatId)
     const { picks, offers } = await this.catalog.getOffers(oemNumber)
     const partName = session.parts?.[oemNumber] ?? oemNumber
-    session.offer = { oemNumber, partName, picks }
+    ;(session.offers ??= {})[oemNumber] = { oemNumber, partName, picks }
     await this.client.sendMessage(chatId, offersMessage(oemNumber, picks, offers), {
       parseMode: 'HTML',
-      replyMarkup: picks.length > 0 ? tierAddKeyboard(picks) : undefined,
+      replyMarkup: picks.length > 0 ? tierAddKeyboard(picks, oemNumber) : undefined,
     })
   }
 
-  private async addToCart(chatId: number, telegramUserId: number, tier: string): Promise<void> {
+  private async addToCart(
+    chatId: number,
+    telegramUserId: number,
+    tier: string,
+    oemNumber: string | undefined,
+  ): Promise<void> {
     const userId = await this.requireUser(chatId, telegramUserId)
     if (!userId) return
 
-    const offerContext = this.session(chatId).offer
+    const offerContext = oemNumber ? this.session(chatId).offers?.[oemNumber] : undefined
     const pick = offerContext?.picks.find((candidate) => candidate.tier === tier)
     if (!offerContext || !pick) {
       await this.client.sendMessage(chatId, 'Сначала выберите запчасть и откройте предложения.')

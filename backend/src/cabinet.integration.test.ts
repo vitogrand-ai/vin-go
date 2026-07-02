@@ -88,6 +88,31 @@ maybeDescribe('личный кабинет: гараж, корзина, зака
     expect(after.vehicles).toHaveLength(0)
   })
 
+  test('гонка: параллельные добавления в корзину создают один черновик', async () => {
+    const token = await registerUser()
+    const offersRes = await app.request('/api/catalog/offers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ oemNumber: '1J0698151' }),
+    })
+    const economy = ((await offersRes.json()) as OffersResponse).picks.find(
+      (p) => p.tier === 'ECONOMY',
+    )!.offer
+
+    // Две одновременные вставки в корзину для одного пользователя.
+    const item = { oemNumber: economy.oemNumber, offerId: economy.id, partName: 'Колодки' }
+    const [a, b] = await Promise.all([
+      authed(token, '/api/cart/items', item),
+      authed(token, '/api/cart/items', item),
+    ])
+    expect(a.status).toBe(200)
+    expect(b.status).toBe(200)
+
+    // Черновик остаётся ровно один: unique draftKey исключает второй.
+    const drafts = await prisma.order.count({ where: { status: 'DRAFT' } })
+    expect(drafts).toBe(1)
+  })
+
   test('корзина: добавление, количество, итог и оформление заказа', async () => {
     const token = await registerUser()
 

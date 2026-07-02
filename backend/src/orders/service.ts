@@ -93,17 +93,13 @@ export class OrdersService {
 
   /** Привязывает текущую корзину (черновик) к автомобилю по VIN. */
   async setCartVehicle(userId: string, vin: string): Promise<OrderResponse> {
-    const draft = await this.db.order.findFirst({ where: { userId, status: 'DRAFT' } })
-    const order = draft
-      ? await this.db.order.update({
-          where: { id: draft.id },
-          data: { vehicleVin: vin },
-          include: itemsInclude,
-        })
-      : await this.db.order.create({
-          data: { userId, status: 'DRAFT', vehicleVin: vin, currency: 'RUB' },
-          include: itemsInclude,
-        })
+    // Атомарный get-or-create по unique draftKey — без гонки на два черновика.
+    const order = await this.db.order.upsert({
+      where: { draftKey: userId },
+      create: { userId, status: 'DRAFT', draftKey: userId, vehicleVin: vin, currency: 'RUB' },
+      update: { vehicleVin: vin },
+      include: itemsInclude,
+    })
     return { order: toOrderDto(order) }
   }
 
@@ -130,18 +126,22 @@ export class OrdersService {
     const quantity = input.quantity ?? 1
 
     const order = await this.db.$transaction(async (tx) => {
-      let draft = await tx.order.findFirst({ where: { userId, status: 'DRAFT' } })
-      if (!draft) {
-        draft = await tx.order.create({
-          data: {
-            userId,
-            status: 'DRAFT',
-            currency: offer.price.currency,
-            vehicleVin: input.vehicleVin ?? null,
-          },
-        })
-      } else if (input.vehicleVin && !draft.vehicleVin) {
-        draft = await tx.order.update({
+      // Атомарный get-or-create корзины: unique draftKey (= userId) исключает
+      // гонку из двух черновиков при параллельных addItem (веб/бот/мобильное).
+      const draft = await tx.order.upsert({
+        where: { draftKey: userId },
+        create: {
+          userId,
+          status: 'DRAFT',
+          draftKey: userId,
+          currency: offer.price.currency,
+          vehicleVin: input.vehicleVin ?? null,
+        },
+        update: {},
+        select: { id: true, vehicleVin: true },
+      })
+      if (input.vehicleVin && !draft.vehicleVin) {
+        await tx.order.update({
           where: { id: draft.id },
           data: { vehicleVin: input.vehicleVin },
         })
@@ -232,7 +232,8 @@ export class OrdersService {
     }
     const order = await this.db.order.update({
       where: { id: draft.id },
-      data: { status: 'PLACED', placedAt: new Date() },
+      // draftKey → null: заказ перестаёт быть корзиной, освобождая место под новую.
+      data: { status: 'PLACED', placedAt: new Date(), draftKey: null },
       include: itemsInclude,
     })
     return { order: toOrderDto(order) }

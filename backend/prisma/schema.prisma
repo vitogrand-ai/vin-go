@@ -107,6 +107,9 @@ model Order {
   id         String      @id @default(dbgenerated("uuidv7()")) @db.Uuid
   userId     String      @db.Uuid @map("user_id")
   status     OrderStatus @default(DRAFT)
+  /// Гарантирует единственность корзины: = userId, пока заказ DRAFT, и null после
+  /// оформления. Уникальность (NULL допускают дубли) не даёт создать два черновика.
+  draftKey   String?     @unique @map("draft_key")
   vehicleVin String?     @map("vehicle_vin")
   notes      String?
   currency   String      @default("RUB")

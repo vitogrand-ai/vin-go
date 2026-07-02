@@ -62,13 +62,13 @@ export function partsMessage(parts: Part[]): { text: string; keyboard: InlineKey
   }
 }
 
-/** Клавиатура «в корзину» по тирам (callback add:<TIER>). */
-export function tierAddKeyboard(picks: TierPick[]): InlineKeyboard {
+/** Клавиатура «в корзину» по тирам (callback add:<TIER>:<OEM>). */
+export function tierAddKeyboard(picks: TierPick[], oemNumber: string): InlineKeyboard {
   return {
     inline_keyboard: picks.map((pick) => [
       {
         text: `🛒 ${TIER_LABEL[pick.tier]} — ${formatMoney(pick.offer.price)}`,
-        callback_data: `add:${pick.tier}`,
+        callback_data: `add:${pick.tier}:${oemNumber}`,
       },
     ]),
   }
