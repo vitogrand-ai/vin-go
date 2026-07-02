@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
+import { useSearch } from '@tanstack/react-router'
 import type { Offer, OfferTier, Part, TierPick, Vehicle } from '@web-app-demo/contracts'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
@@ -21,6 +22,11 @@ import { ApiRequestError } from '@/lib/api'
 import { describeApiError } from '@/lib/errors'
 import { formatDelivery, formatMoney, TIER_META } from '@/lib/format'
 import { publicApi } from '@/lib/public-api'
+import {
+  pushSearchHistory,
+  readSearchHistory,
+  type SearchHistoryEntry,
+} from '@/lib/search-history'
 import { useAuth } from '@/lib/use-auth'
 import { cn } from '@/lib/utils'
 
@@ -32,11 +38,14 @@ const DEMO_PLATES = ['А123ВС777', 'О001АА199', 'Е777КХ797']
 type SearchMode = 'vin' | 'plate'
 
 export function SearchPage() {
+  // Deep-link: /search?vin=... прификлит VIN (кнопка «Подобрать запчасти» из гаража).
+  const urlSearch = useSearch({ strict: false }) as { vin?: string }
   const [mode, setMode] = useState<SearchMode>('vin')
-  const [vin, setVin] = useState('')
+  const [vin, setVin] = useState(() => (urlSearch.vin ?? '').toUpperCase())
   const [plate, setPlate] = useState('')
   const [query, setQuery] = useState('')
   const [selectedPart, setSelectedPart] = useState<Part | null>(null)
+  const [history, setHistory] = useState<SearchHistoryEntry[]>(() => readSearchHistory())
 
   const search = useMutation({
     mutationFn: (resolvedVin: string) => publicApi.searchParts({ vin: resolvedVin, query }),
@@ -50,6 +59,7 @@ export function SearchPage() {
       setVin(data.vehicle.vin)
       toast.success(`Авто определено: ${data.vehicle.make} ${data.vehicle.model}`)
       search.mutate(data.vehicle.vin)
+      setHistory(pushSearchHistory({ mode: 'plate', value: plate, query }))
     },
     onError: (error) => toast.error(describeError(error)),
   })
@@ -60,10 +70,22 @@ export function SearchPage() {
     event.preventDefault()
     if (!query.trim()) return
     if (mode === 'vin') {
-      if (vin.trim()) search.mutate(vin)
+      if (vin.trim()) {
+        search.mutate(vin, {
+          onSuccess: () => setHistory(pushSearchHistory({ mode: 'vin', value: vin, query })),
+        })
+      }
     } else if (plate.trim()) {
       plateLookup.mutate()
     }
+  }
+
+  // Клик по записи истории — прификл формы (пользователь жмёт «Найти»).
+  const applyHistory = (entry: SearchHistoryEntry) => {
+    setMode(entry.mode)
+    if (entry.mode === 'vin') setVin(entry.value)
+    else setPlate(entry.value)
+    setQuery(entry.query)
   }
 
   const vehicle = search.data?.vehicle ?? null
@@ -175,6 +197,24 @@ export function SearchPage() {
               </button>
             ))}
           </div>
+
+          {history.length > 0 ? (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <Typography variant="bodyXs" tone="muted">
+                Недавние:
+              </Typography>
+              {history.map((entry) => (
+                <button
+                  key={`${entry.mode}:${entry.value}:${entry.query}`}
+                  type="button"
+                  onClick={() => applyHistory(entry)}
+                  className="rounded-md border px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-secondary-foreground"
+                >
+                  <span className="font-mono">{entry.value}</span> · {entry.query}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -352,33 +392,94 @@ function OffersPanel({ part, vehicleVin }: { part: Part; vehicleVin?: string }) 
 
       <Separator />
 
-      <details className="group">
-        <summary className="cursor-pointer list-none">
-          <Typography variant="control" tone="muted" className="hover:text-foreground">
-            Все предложения ({offers.length}) ▾
-          </Typography>
-        </summary>
-        <div className="mt-3 overflow-x-auto rounded-lg border">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-left text-muted-foreground">
-              <tr>
-                <th className="p-3 font-medium">Бренд</th>
-                <th className="p-3 font-medium">Поставщик</th>
-                <th className="p-3 font-medium">Наличие</th>
-                <th className="p-3 font-medium">Срок</th>
-                <th className="p-3 text-right font-medium">Цена</th>
-                <th className="p-3" aria-label="Действие" />
-              </tr>
-            </thead>
-            <tbody>
-              {offers.map((offer) => (
-                <OfferRow key={offer.id} offer={offer} onAdd={handleAdd} />
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </details>
+      <OffersTable offers={offers} onAdd={handleAdd} />
     </div>
+  )
+}
+
+type OfferSort = 'price' | 'delivery' | 'brand'
+
+function OffersTable({ offers, onAdd }: { offers: Offer[]; onAdd: AddToCart }) {
+  const [sort, setSort] = useState<OfferSort>('price')
+  const [inStockOnly, setInStockOnly] = useState(false)
+  const [originalOnly, setOriginalOnly] = useState(false)
+
+  const visible = useMemo(() => {
+    const filtered = offers.filter(
+      (offer) => (!inStockOnly || offer.inStock) && (!originalOnly || offer.isOriginal),
+    )
+    return [...filtered].sort((a, b) => {
+      if (sort === 'price') return a.price.amount - b.price.amount
+      if (sort === 'delivery') return a.deliveryDays - b.deliveryDays
+      return a.brand.localeCompare(b.brand, 'ru')
+    })
+  }, [offers, sort, inStockOnly, originalOnly])
+
+  return (
+    <details className="group" open>
+      <summary className="cursor-pointer list-none">
+        <Typography variant="control" tone="muted" className="hover:text-foreground">
+          Все предложения ({visible.length} из {offers.length}) ▾
+        </Typography>
+      </summary>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+        <label className="flex items-center gap-1.5 text-muted-foreground">
+          Сортировка
+          <select
+            value={sort}
+            onChange={(event) => setSort(event.target.value as OfferSort)}
+            className="rounded-md border bg-background px-2 py-1 text-foreground"
+          >
+            <option value="price">по цене</option>
+            <option value="delivery">по сроку</option>
+            <option value="brand">по бренду</option>
+          </select>
+        </label>
+        <label className="flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-muted-foreground hover:text-foreground">
+          <input
+            type="checkbox"
+            checked={inStockOnly}
+            onChange={(event) => setInStockOnly(event.target.checked)}
+          />
+          В наличии
+        </label>
+        <label className="flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-muted-foreground hover:text-foreground">
+          <input
+            type="checkbox"
+            checked={originalOnly}
+            onChange={(event) => setOriginalOnly(event.target.checked)}
+          />
+          Только оригинал
+        </label>
+      </div>
+
+      <div className="mt-3 overflow-x-auto rounded-lg border">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50 text-left text-muted-foreground">
+            <tr>
+              <th className="p-3 font-medium">Бренд</th>
+              <th className="p-3 font-medium">Поставщик</th>
+              <th className="p-3 font-medium">Наличие</th>
+              <th className="p-3 font-medium">Срок</th>
+              <th className="p-3 text-right font-medium">Цена</th>
+              <th className="p-3" aria-label="Действие" />
+            </tr>
+          </thead>
+          <tbody>
+            {visible.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="p-4 text-center text-muted-foreground">
+                  Под фильтры ничего не подходит.
+                </td>
+              </tr>
+            ) : (
+              visible.map((offer) => <OfferRow key={offer.id} offer={offer} onAdd={onAdd} />)
+            )}
+          </tbody>
+        </table>
+      </div>
+    </details>
   )
 }
 

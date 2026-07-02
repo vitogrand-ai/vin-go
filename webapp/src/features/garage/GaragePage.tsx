@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { toast } from 'sonner'
 
@@ -117,7 +118,7 @@ function Garage() {
                 <CardTitle>{vehicle.nickname ?? `${vehicle.make} ${vehicle.model}`}</CardTitle>
                 <CardDescription className="font-mono">{vehicle.vin}</CardDescription>
               </CardHeader>
-              <CardContent className="flex items-end justify-between gap-3">
+              <CardContent className="grid gap-3">
                 <div className="grid gap-0.5">
                   <Typography variant="bodySmMedium">
                     {vehicle.make} {vehicle.model}, {vehicle.year}
@@ -126,19 +127,26 @@ function Garage() {
                     {vehicle.engine ?? 'Двигатель не определён'}
                   </Typography>
                 </div>
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="sm"
-                  disabled={removeVehicle.isPending}
-                  onClick={() =>
-                    removeVehicle.mutate(vehicle.id, {
-                      onError: (error) => toast.error(describeApiError(error)),
-                    })
-                  }
-                >
-                  Удалить
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button asChild size="sm">
+                    <Link to="/search" search={{ vin: vehicle.vin }}>
+                      Подобрать запчасти
+                    </Link>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={removeVehicle.isPending}
+                    onClick={() =>
+                      removeVehicle.mutate(vehicle.id, {
+                        onError: (error) => toast.error(describeApiError(error)),
+                      })
+                    }
+                  >
+                    Удалить
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           ))}

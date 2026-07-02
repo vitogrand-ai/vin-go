@@ -22,6 +22,10 @@ const indexRoute = createRoute({
 const searchRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/search',
+  // Deep-link: /search?vin=... прификлит VIN (используется кнопкой из гаража).
+  validateSearch: (search: Record<string, unknown>): { vin?: string } => ({
+    vin: typeof search.vin === 'string' ? search.vin : undefined,
+  }),
   component: SearchPage,
 })
 
