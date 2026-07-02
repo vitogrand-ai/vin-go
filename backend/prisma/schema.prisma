@@ -1,0 +1,202 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String        @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  email        String        @unique
+  passwordHash String        @map("password_hash")
+  displayName  String?       @map("display_name")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  sessions     AuthSession[]
+  vehicles     Vehicle[]
+  orders       Order[]
+  telegram     TelegramAccount?
+  telegramCodes TelegramLinkCode[]
+  devices      DeviceToken[]
+
+  @@map("users")
+}
+
+/// Push-токен устройства (Expo) для уведомлений.
+model DeviceToken {
+  id        String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  userId    String   @db.Uuid @map("user_id")
+  token     String   @unique
+  platform  String?
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "device_tokens_user_id_fkey")
+
+  @@index([userId], map: "device_tokens_user_id_idx")
+  @@map("device_tokens")
+}
+
+/// Привязка Telegram-аккаунта к пользователю (1:1).
+model TelegramAccount {
+  id             String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  userId         String   @unique @db.Uuid @map("user_id")
+  telegramUserId BigInt   @unique @map("telegram_user_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "telegram_accounts_user_id_fkey")
+
+  @@map("telegram_accounts")
+}
+
+/// Одноразовый код привязки Telegram (генерируется в вебе, гасится ботом).
+model TelegramLinkCode {
+  code      String   @id
+  userId    String   @db.Uuid @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "telegram_link_codes_user_id_fkey")
+
+  @@index([userId], map: "telegram_link_codes_user_id_idx")
+  @@map("telegram_link_codes")
+}
+
+/// Сохранённый автомобиль пользователя («гараж»).
+model Vehicle {
+  id        String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  userId    String   @db.Uuid @map("user_id")
+  vin       String
+  make      String
+  model     String
+  year      Int
+  engine    String?
+  bodyType  String?  @map("body_type")
+  nickname  String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "vehicles_user_id_fkey")
+
+  @@unique([userId, vin], map: "vehicles_user_id_vin_key")
+  @@index([userId], map: "vehicles_user_id_idx")
+  @@map("vehicles")
+}
+
+enum OrderStatus {
+  DRAFT
+  PLACED
+  PAID
+  PROCESSING
+  READY
+  COMPLETED
+  CANCELLED
+  REFUNDED
+
+  @@map("order_status")
+}
+
+/// Заказ. Черновик (DRAFT) играет роль корзины — у пользователя он один.
+model Order {
+  id         String      @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  userId     String      @db.Uuid @map("user_id")
+  status     OrderStatus @default(DRAFT)
+  vehicleVin String?     @map("vehicle_vin")
+  notes      String?
+  currency   String      @default("RUB")
+  createdAt  DateTime    @default(now()) @map("created_at")
+  updatedAt  DateTime    @updatedAt @map("updated_at")
+  placedAt   DateTime?   @map("placed_at")
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade, map: "orders_user_id_fkey")
+  items      OrderItem[]
+  payments   Payment[]
+
+  @@index([userId, status], map: "orders_user_id_status_idx")
+  @@map("orders")
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  CANCELED
+
+  @@map("payment_status")
+}
+
+/// Платёж по заказу. Провайдер-агностично: mock сейчас, ЮKassa позже.
+model Payment {
+  id                String        @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  orderId           String        @db.Uuid @map("order_id")
+  userId            String        @db.Uuid @map("user_id")
+  provider          String
+  providerPaymentId String?       @map("provider_payment_id")
+  status            PaymentStatus @default(PENDING)
+  method            String?
+  amount            Int
+  currency          String
+  confirmationUrl   String?       @map("confirmation_url")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+  paidAt            DateTime?     @map("paid_at")
+  order             Order         @relation(fields: [orderId], references: [id], onDelete: Cascade, map: "payments_order_id_fkey")
+  refunds           Refund[]
+
+  @@index([orderId], map: "payments_order_id_idx")
+  @@index([providerPaymentId], map: "payments_provider_payment_id_idx")
+  @@map("payments")
+}
+
+/// Возврат средств по платежу.
+model Refund {
+  id               String        @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  paymentId        String        @db.Uuid @map("payment_id")
+  orderId          String        @db.Uuid @map("order_id")
+  userId           String        @db.Uuid @map("user_id")
+  amount           Int
+  currency         String
+  status           PaymentStatus @default(PENDING)
+  providerRefundId String?       @map("provider_refund_id")
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+  payment          Payment       @relation(fields: [paymentId], references: [id], onDelete: Cascade, map: "refunds_payment_id_fkey")
+
+  @@index([orderId], map: "refunds_order_id_idx")
+  @@map("refunds")
+}
+
+/// Позиция заказа — снимок предложения на момент добавления (цена авторитетна с сервера).
+model OrderItem {
+  id            String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  orderId       String   @db.Uuid @map("order_id")
+  oemNumber     String   @map("oem_number")
+  partName      String   @map("part_name")
+  brand         String
+  articleNumber String   @map("article_number")
+  supplierName  String   @map("supplier_name")
+  quality       String
+  isOriginal    Boolean  @map("is_original")
+  tier          String?
+  priceAmount   Int      @map("price_amount")
+  currency      String
+  deliveryDays  Int      @map("delivery_days")
+  quantity      Int      @default(1)
+  createdAt     DateTime @default(now()) @map("created_at")
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade, map: "order_items_order_id_fkey")
+
+  @@index([orderId], map: "order_items_order_id_idx")
+  @@map("order_items")
+}
+
+model AuthSession {
+  id               String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  userId           String    @db.Uuid @map("user_id")
+  refreshTokenHash String    @unique(map: "auth_sessions_refresh_token_hash_key") @map("refresh_token_hash")
+  expiresAt        DateTime  @map("expires_at")
+  revokedAt        DateTime? @map("revoked_at")
+  userAgent        String?   @map("user_agent")
+  ipAddress        String?   @map("ip_address")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade, map: "auth_sessions_user_id_fkey")
+
+  @@index([userId], map: "auth_sessions_user_id_idx")
+  @@index([expiresAt], map: "auth_sessions_expires_at_idx")
+  @@map("auth_sessions")
+}

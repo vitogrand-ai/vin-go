@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "VIN GO",
+    "slug": "vingo",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "backgroundColor": "#0f172a"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.vingo.app"
+    },
+    "android": {
+      "package": "com.vingo.app"
+    }
+  }
+}
