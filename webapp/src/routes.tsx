@@ -7,7 +7,7 @@ import { OrdersPage } from './features/orders/OrdersPage'
 import { PayPage } from './features/payment/PayPage'
 import { SearchPage } from './features/search/SearchPage'
 import { SettingsPage } from './features/settings/SettingsPage'
-import { AppPage, HomePage, RootLayout } from './pages'
+import { HomePage, RootLayout } from './pages'
 
 const rootRoute = createRootRoute({
   component: RootLayout,
@@ -61,12 +61,6 @@ const settingsRoute = createRoute({
   component: SettingsPage,
 })
 
-const appRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/app',
-  component: AppPage,
-})
-
 const routeTree = rootRoute.addChildren([
   indexRoute,
   searchRoute,
@@ -76,7 +70,6 @@ const routeTree = rootRoute.addChildren([
   orderDetailRoute,
   payRoute,
   settingsRoute,
-  appRoute,
 ])
 
 export const router = createRouter({ routeTree })

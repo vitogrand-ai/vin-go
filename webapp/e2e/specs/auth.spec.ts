@@ -1,31 +1,33 @@
 import { e2ePassword, expect, test, uniqueEmail } from '../helpers/test'
 
-test('registers, restores the session, opens protected UI, and logs out', async ({ page }) => {
+test('регистрация, восстановление сессии, кабинет и выход', async ({ page }) => {
   const email = uniqueEmail()
   const displayName = 'Web E2E User'
+  const greeting = new RegExp(`Здравствуйте, ${displayName}`)
 
   await page.goto('/')
 
-  await expect(page.getByRole('heading', { name: /auth, validation/i })).toBeVisible()
-  await page.getByRole('button', { name: 'Create account' }).click()
+  await expect(page.getByRole('heading', { name: /Автозапчасти по VIN/i })).toBeVisible()
+  await page.getByRole('button', { name: 'Создать аккаунт' }).click()
+  // Сообщения валидации приходят из Zod-контрактов (пока на английском).
   await expect(page.getByText('Invalid email address')).toBeVisible()
   await expect(page.getByText('Password must be at least 8 characters')).toBeVisible()
 
-  await page.getByLabel('Name').fill('A')
+  await page.getByLabel('Имя').fill('A')
   await page.getByLabel('Email').fill(email)
-  await page.getByLabel('Password').fill(e2ePassword)
-  await page.getByRole('tab', { name: 'Login' }).click()
-  await expect(page.getByLabel('Name')).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Login' })).toBeEnabled()
+  await page.getByLabel('Пароль').fill(e2ePassword)
+  await page.getByRole('tab', { name: 'Вход' }).click()
+  await expect(page.getByLabel('Имя')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Войти' })).toBeEnabled()
 
-  await page.getByRole('tab', { name: 'Register' }).click()
-  await page.getByLabel('Name').fill(displayName)
+  await page.getByRole('tab', { name: 'Регистрация' }).click()
+  await page.getByLabel('Имя').fill(displayName)
   await page.getByLabel('Email').fill(email)
-  await page.getByLabel('Password').fill(e2ePassword)
-  await page.getByRole('button', { name: 'Create account' }).click()
+  await page.getByLabel('Пароль').fill(e2ePassword)
+  await page.getByRole('button', { name: 'Создать аккаунт' }).click()
 
-  await expect(page.getByRole('heading', { name: 'Session is active' })).toBeVisible()
-  await expect(page.getByText(email)).toBeVisible()
+  // После регистрации — дашборд кабинета (заменил служебный /app).
+  await expect(page.getByRole('heading', { name: greeting })).toBeVisible()
   await expect
     .poll(async () =>
       (await page.context().cookies()).some(
@@ -46,25 +48,18 @@ test('registers, restores the session, opens protected UI, and logs out', async 
 
   await expect((await refreshAfterReload).status()).toBe(200)
   await expect((await meAfterReload).status()).toBe(200)
-  await expect(page.getByRole('heading', { name: 'Session is active' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: greeting })).toBeVisible()
 
-  await page.getByRole('link', { name: 'Open app' }).click()
-  await expect(page.getByRole('heading', { name: displayName })).toBeVisible()
-  await expect(page.getByText(email)).toBeVisible()
+  await page.getByRole('button', { name: 'Выйти' }).click()
+  await expect(page.getByRole('heading', { name: /Автозапчасти по VIN/i })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Logout' }).click()
-  await expect(page.getByRole('heading', { name: 'Login required' })).toBeVisible()
-
-  await page.getByRole('link', { name: 'Go to auth' }).click()
-  await expect(page.getByRole('button', { name: 'Create account' })).toBeVisible()
-
-  await page.getByRole('tab', { name: 'Login' }).click()
+  await page.getByRole('tab', { name: 'Вход' }).click()
   await page.getByLabel('Email').fill(email)
-  await page.getByLabel('Password').fill('wrong-password')
-  await page.getByRole('button', { name: 'Login' }).click()
+  await page.getByLabel('Пароль').fill('wrong-password')
+  await page.getByRole('button', { name: 'Войти' }).click()
   await expect(page.getByText('Invalid email or password')).toBeVisible()
 
-  await page.getByLabel('Password').fill(e2ePassword)
-  await page.getByRole('button', { name: 'Login' }).click()
-  await expect(page.getByRole('heading', { name: 'Session is active' })).toBeVisible()
+  await page.getByLabel('Пароль').fill(e2ePassword)
+  await page.getByRole('button', { name: 'Войти' }).click()
+  await expect(page.getByRole('heading', { name: greeting })).toBeVisible()
 })

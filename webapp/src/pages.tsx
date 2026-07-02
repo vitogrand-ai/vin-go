@@ -10,7 +10,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
 import { Typography } from '@/components/ui/typography'
 import { cn } from '@/lib/utils'
@@ -80,6 +79,18 @@ export function RootLayout() {
   )
 }
 
+const TIERS = [
+  { name: 'Эконом', desc: 'Дешевле, с приоритетом наличия' },
+  { name: 'Оптимальный', desc: 'Баланс цены и качества' },
+  { name: 'Оригинал', desc: 'Заводская деталь производителя' },
+] as const
+
+const QUICK_ACTIONS = [
+  { to: '/search', title: 'Поиск', desc: 'VIN или госномер → запчасти' },
+  { to: '/garage', title: 'Гараж', desc: 'Сохранённые автомобили' },
+  { to: '/orders', title: 'Заказы', desc: 'История и статусы' },
+] as const
+
 export function HomePage() {
   const auth = useAuth()
 
@@ -87,103 +98,66 @@ export function HomePage() {
     return <LoadingState />
   }
 
+  // Вошедший пользователь: дашборд с быстрыми действиями (заменяет служебный /app).
   if (auth.user) {
     return (
-      <section className="mx-auto grid w-full max-w-6xl gap-6 px-5 py-16">
-        <Badge variant="outline" className="w-fit">
-          Authenticated starter
-        </Badge>
-        <div className="grid max-w-3xl gap-4">
-          <Typography variant="h1">Session is active</Typography>
-          <Typography className="max-w-2xl" tone="muted">
-            Logged in as{' '}
-            <Typography as="strong" variant="emphasis" tone="default">
-              {auth.user.email}
-            </Typography>
-            .
-            This is the baseline auth pattern for future web features.
+      <section className="mx-auto grid w-full max-w-6xl gap-6 px-5 py-12">
+        <div className="grid gap-2">
+          <Typography variant="h1">
+            Здравствуйте, {auth.user.displayName ?? auth.user.email}
           </Typography>
+          <Typography tone="muted">С чего начнём?</Typography>
         </div>
-        <Button asChild size="lg" className="w-fit">
-          <Link to="/app">Open app</Link>
-        </Button>
+        <div className="grid gap-4 sm:grid-cols-3">
+          {QUICK_ACTIONS.map((action) => (
+            <Link
+              key={action.to}
+              to={action.to}
+              aria-label={action.title}
+              className="rounded-2xl transition-transform hover:-translate-y-0.5 focus-visible:-translate-y-0.5 focus-visible:outline-none"
+            >
+              <Card className="h-full hover:ring-foreground/25 focus-visible:ring-foreground/25">
+                <CardHeader>
+                  <CardTitle>{action.title}</CardTitle>
+                  <CardDescription>{action.desc}</CardDescription>
+                </CardHeader>
+              </Card>
+            </Link>
+          ))}
+        </div>
       </section>
     )
   }
 
+  // Гость: краткий оффер VIN GO + форма входа.
   return (
-    <section className="mx-auto grid w-full max-w-6xl gap-8 px-5 py-12 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-center">
-      <div className="grid gap-5">
+    <section className="mx-auto grid w-full max-w-6xl gap-10 px-5 py-12 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-start">
+      <div className="grid gap-6">
         <Badge variant="outline" className="w-fit">
-          Golden path template
+          Ранний доступ
         </Badge>
         <Typography className="max-w-3xl" variant="h1">
-          Auth, validation, API state, and forms are wired from day one.
+          Автозапчасти по VIN и госномеру
         </Typography>
         <Typography className="max-w-2xl" tone="muted">
-          The web app uses shared Zod contracts, TanStack Query for server state, TanStack Form for
-          input state, and an API client that refreshes sessions through the backend.
+          Введите VIN или госномер — определим автомобиль, подберём каталожный номер и покажем
+          предложения в трёх тирах. Для небольших автосервисов: гараж, корзина, заказы и оплата.
+        </Typography>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {TIERS.map((tier) => (
+            <Card key={tier.name} size="sm">
+              <CardHeader>
+                <CardTitle>{tier.name}</CardTitle>
+                <CardDescription>{tier.desc}</CardDescription>
+              </CardHeader>
+            </Card>
+          ))}
+        </div>
+        <Typography variant="bodyXs" tone="muted">
+          Сейчас данные демонстрационные — подключение реальных каталогов и поставщиков в работе.
         </Typography>
       </div>
       <AuthForm />
-    </section>
-  )
-}
-
-export function AppPage() {
-  const auth = useAuth()
-
-  if (auth.isBootstrapping) {
-    return <LoadingState />
-  }
-
-  if (!auth.user) {
-    return (
-      <section className="mx-auto grid w-full max-w-6xl gap-6 px-5 py-16">
-        <Badge variant="outline" className="w-fit">
-          Protected example
-        </Badge>
-        <div className="grid max-w-3xl gap-4">
-          <Typography variant="h1">Login required</Typography>
-          <Typography className="max-w-2xl" tone="muted">
-            This route intentionally stays small and shows where protected product UI begins.
-          </Typography>
-        </div>
-        <Button asChild size="lg" className="w-fit">
-          <Link to="/">Go to auth</Link>
-        </Button>
-      </section>
-    )
-  }
-
-  return (
-    <section className="mx-auto grid w-full max-w-6xl gap-6 px-5 py-12">
-      <div className="grid gap-3">
-        <Badge variant="outline" className="w-fit">
-          Current user
-        </Badge>
-        <Typography variant="h1">
-          {auth.user.displayName ?? auth.user.email}
-        </Typography>
-        <Typography tone="muted">{auth.user.email}</Typography>
-      </div>
-
-      <Separator />
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Card size="sm">
-          <CardHeader>
-            <CardTitle>User ID</CardTitle>
-            <CardDescription wrap="break">{auth.user.id}</CardDescription>
-          </CardHeader>
-        </Card>
-        <Card size="sm">
-          <CardHeader>
-            <CardTitle>Created</CardTitle>
-            <CardDescription>{new Date(auth.user.createdAt).toLocaleString()}</CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
     </section>
   )
 }
@@ -195,7 +169,7 @@ function LoadingState() {
         <CardContent className="flex items-center gap-3">
           <Spinner />
           <Typography variant="bodySm" tone="muted">
-            Checking session...
+            Проверяем сессию...
           </Typography>
         </CardContent>
       </Card>
