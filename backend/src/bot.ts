@@ -24,7 +24,7 @@ export async function main() {
   // каталог и корзину, чтобы будущие кэш/лимиты реального API не расходились.
   const providers = createCatalogProviders(env)
   const catalog = new CatalogService(providers.catalog, providers.suppliers, providers.plates)
-  const orders = new OrdersService(prisma, providers.suppliers)
+  const orders = new OrdersService(prisma, providers.suppliers, undefined, providers.offerResolver)
   const link = new TelegramLinkService(prisma, env.TELEGRAM_BOT_USERNAME)
 
   const client = new HttpTelegramClient(env.TELEGRAM_BOT_TOKEN)

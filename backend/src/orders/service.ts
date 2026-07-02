@@ -13,8 +13,10 @@ import {
   type UserRole,
 } from '@web-app-demo/contracts'
 
+import type { OfferResolver } from '../catalog/offer-cache'
 import type { SupplierProvider } from '../catalog/providers'
 import type { DbClient } from '../db'
+import { Prisma } from '../generated/prisma/client'
 import { AppError } from '../http/errors'
 import type { NotificationService } from '../notifications/service'
 
@@ -72,6 +74,8 @@ export class OrdersService {
     private readonly db: DbClient,
     private readonly suppliers: SupplierProvider,
     private readonly notifications?: NotificationService,
+    /** Снимок выдачи для резолва offerId; при промахе — fallback на getOffers. */
+    private readonly offerCache?: OfferResolver,
   ) {}
 
   async getCart(userId: string): Promise<CartResponse> {
@@ -93,14 +97,48 @@ export class OrdersService {
 
   /** Привязывает текущую корзину (черновик) к автомобилю по VIN. */
   async setCartVehicle(userId: string, vin: string): Promise<OrderResponse> {
-    // Атомарный get-or-create по unique draftKey — без гонки на два черновика.
-    const order = await this.db.order.upsert({
-      where: { draftKey: userId },
-      create: { userId, status: 'DRAFT', draftKey: userId, vehicleVin: vin, currency: 'RUB' },
-      update: { vehicleVin: vin },
+    const draftId = await this.ensureDraft(userId, 'RUB', vin)
+    const order = await this.db.order.update({
+      where: { id: draftId },
+      data: { vehicleVin: vin },
       include: itemsInclude,
     })
     return { order: toOrderDto(order) }
+  }
+
+  /**
+   * Возвращает id корзины пользователя, создавая её при отсутствии. Гонку двух
+   * черновиков исключает unique-констрейнт draftKey: параллельный проигравший
+   * запрос ловит P2002 и перечитывает уже созданный черновик. Вынесено из
+   * транзакции addItem, чтобы конфликт не отравлял её (в Postgres ошибка в
+   * транзакции переводит её в aborted).
+   */
+  private async ensureDraft(
+    userId: string,
+    currency: string,
+    vehicleVin?: string | null,
+  ): Promise<string> {
+    const existing = await this.db.order.findFirst({
+      where: { userId, status: 'DRAFT' },
+      select: { id: true },
+    })
+    if (existing) return existing.id
+    try {
+      const created = await this.db.order.create({
+        data: { userId, status: 'DRAFT', draftKey: userId, currency, vehicleVin: vehicleVin ?? null },
+        select: { id: true },
+      })
+      return created.id
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        const draft = await this.db.order.findFirstOrThrow({
+          where: { userId, status: 'DRAFT' },
+          select: { id: true },
+        })
+        return draft.id
+      }
+      throw error
+    }
   }
 
   async updateNotes(userId: string, orderId: string, notes: string): Promise<OrderResponse> {
@@ -117,39 +155,35 @@ export class OrdersService {
   }
 
   async addItem(userId: string, input: AddCartItemRequest): Promise<OrderResponse> {
-    const offers = await this.suppliers.getOffers(input.oemNumber)
-    const offer = offers.find((candidate) => candidate.id === input.offerId)
+    // Сначала берём предложение из снимка выдачи (id стабилен между поиском и
+    // «в корзину»); при промахе снимка — повторный getOffers (работает для мока,
+    // а для реального API означает «предложение устарело, найдите заново»).
+    const offer =
+      this.offerCache?.findOffer(input.offerId) ??
+      (await this.suppliers.getOffers(input.oemNumber)).find(
+        (candidate) => candidate.id === input.offerId,
+      )
     if (!offer) {
       throw new AppError(404, 'NOT_FOUND', 'Предложение не найдено или больше недоступно')
     }
 
     const quantity = input.quantity ?? 1
 
+    // Get-or-create корзины вне транзакции (защита от гонки на draftKey внутри).
+    const draftId = await this.ensureDraft(userId, offer.price.currency, input.vehicleVin)
+
     const order = await this.db.$transaction(async (tx) => {
-      // Атомарный get-or-create корзины: unique draftKey (= userId) исключает
-      // гонку из двух черновиков при параллельных addItem (веб/бот/мобильное).
-      const draft = await tx.order.upsert({
-        where: { draftKey: userId },
-        create: {
-          userId,
-          status: 'DRAFT',
-          draftKey: userId,
-          currency: offer.price.currency,
-          vehicleVin: input.vehicleVin ?? null,
-        },
-        update: {},
-        select: { id: true, vehicleVin: true },
-      })
-      if (input.vehicleVin && !draft.vehicleVin) {
-        await tx.order.update({
-          where: { id: draft.id },
+      // Привязываем авто, только если ещё не привязано (без гонки на чтении).
+      if (input.vehicleVin) {
+        await tx.order.updateMany({
+          where: { id: draftId, vehicleVin: null },
           data: { vehicleVin: input.vehicleVin },
         })
       }
 
       const existing = await tx.orderItem.findFirst({
         where: {
-          orderId: draft.id,
+          orderId: draftId,
           oemNumber: offer.oemNumber,
           brand: offer.brand,
           articleNumber: offer.articleNumber,
@@ -168,7 +202,7 @@ export class OrdersService {
       } else {
         await tx.orderItem.create({
           data: {
-            orderId: draft.id,
+            orderId: draftId,
             oemNumber: offer.oemNumber,
             partName: input.partName,
             brand: offer.brand,
@@ -185,7 +219,7 @@ export class OrdersService {
         })
       }
 
-      return tx.order.findFirstOrThrow({ where: { id: draft.id }, include: itemsInclude })
+      return tx.order.findFirstOrThrow({ where: { id: draftId }, include: itemsInclude })
     })
 
     return { order: toOrderDto(order) }
@@ -313,6 +347,10 @@ export class OrdersService {
   private async reloadDraft(orderId: string): Promise<OrderRecord> {
     return this.db.order.findFirstOrThrow({ where: { id: orderId }, include: itemsInclude })
   }
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'
 }
 
 function toOrderDto(order: OrderRecord): OrderDto {

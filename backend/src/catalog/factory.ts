@@ -1,11 +1,14 @@
 import type { AppEnv } from '../env'
 import { MockCatalogProvider, MockPlateProvider, MockSupplierProvider } from './mock-providers'
+import { CachingSupplierProvider, type OfferResolver } from './offer-cache'
 import type { CatalogProvider, PlateProvider, SupplierProvider } from './providers'
 
 export type CatalogProviders = {
   catalog: CatalogProvider
   suppliers: SupplierProvider
   plates: PlateProvider
+  /** Снимок выдачи для резолва offerId корзиной (тот же инстанс, что suppliers). */
+  offerResolver: OfferResolver
 }
 
 /**
@@ -23,9 +26,13 @@ export type CatalogProviders = {
  *     : new MockSupplierProvider()
  */
 export function createCatalogProviders(_env: AppEnv): CatalogProviders {
+  // Поставщики оборачиваются кэшем-снимком: поиск запоминает предложения по id,
+  // корзина резолвит выбранное из снимка (см. CachingSupplierProvider).
+  const suppliers = new CachingSupplierProvider(new MockSupplierProvider())
   return {
     catalog: new MockCatalogProvider(),
-    suppliers: new MockSupplierProvider(),
+    suppliers,
     plates: new MockPlateProvider(),
+    offerResolver: suppliers,
   }
 }

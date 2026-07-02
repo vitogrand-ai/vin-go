@@ -8,8 +8,12 @@ import type {
 } from '@web-app-demo/contracts'
 
 import { createApp } from './app'
+import { MockSupplierProvider } from './catalog/mock-providers'
+import { CachingSupplierProvider } from './catalog/offer-cache'
+import type { SupplierProvider } from './catalog/providers'
 import { createPrisma } from './db'
 import type { AppEnv } from './env'
+import { OrdersService } from './orders/service'
 
 const databaseUrl = process.env.TEST_DATABASE_URL
 const maybeDescribe = databaseUrl ? describe : describe.skip
@@ -86,6 +90,37 @@ maybeDescribe('личный кабинет: гараж, корзина, зака
     await authed(token, '/api/vehicles/remove', { id: list.vehicles[0]!.id })
     const after = (await (await authed(token, '/api/vehicles')).json()) as GarageResponse
     expect(after.vehicles).toHaveLength(0)
+  })
+
+  test('снимок выдачи: addItem резолвит offerId без повторного запроса к поставщику', async () => {
+    const user = await prisma.user.create({
+      data: { email: 'snapshot@example.com', passwordHash: 'x' },
+    })
+    let getOffersCalls = 0
+    const inner: SupplierProvider = {
+      getOffers: async (oem, region) => {
+        getOffersCalls += 1
+        return new MockSupplierProvider().getOffers(oem, region)
+      },
+    }
+    const caching = new CachingSupplierProvider(inner)
+    const svc = new OrdersService(prisma, caching, undefined, caching)
+
+    // Поиск: наполняет снимок (1-й и единственный вызов getOffers).
+    const offers = await caching.getOffers('1J0698151')
+    expect(getOffersCalls).toBe(1)
+
+    // В корзину по id из снимка — без повторного getOffers.
+    await svc.addItem(user.id, {
+      oemNumber: '1J0698151',
+      offerId: offers[0]!.id,
+      partName: 'Колодки',
+    })
+    expect(getOffersCalls).toBe(1)
+
+    const cart = await svc.getCart(user.id)
+    expect(cart.order?.items).toHaveLength(1)
+    expect(cart.order?.items[0]?.oemNumber).toBe('1J0698151')
   })
 
   test('гонка: параллельные добавления в корзину создают один черновик', async () => {

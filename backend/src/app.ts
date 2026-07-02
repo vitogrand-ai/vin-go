@@ -51,8 +51,12 @@ type CreateAppOptions = {
 
 export function createApp({ env, prisma }: CreateAppOptions) {
   const authService = new AuthService(prisma, env)
-  const { catalog: catalogProvider, suppliers: supplierProvider, plates: plateProvider } =
-    createCatalogProviders(env)
+  const {
+    catalog: catalogProvider,
+    suppliers: supplierProvider,
+    plates: plateProvider,
+    offerResolver,
+  } = createCatalogProviders(env)
   const catalogService = new CatalogService(catalogProvider, supplierProvider, plateProvider)
   const garageService = new GarageService(prisma, catalogProvider)
   const notificationService = new NotificationService(prisma, {
@@ -60,7 +64,7 @@ export function createApp({ env, prisma }: CreateAppOptions) {
     telegramSend: env.TELEGRAM_BOT_TOKEN ? makeTelegramSend(env.TELEGRAM_BOT_TOKEN) : undefined,
   })
   const deviceService = new DeviceService(prisma)
-  const ordersService = new OrdersService(prisma, supplierProvider, notificationService)
+  const ordersService = new OrdersService(prisma, supplierProvider, notificationService, offerResolver)
   const paymentProvider = createPaymentProvider(env)
   const webappOrigin = env.CORS_ORIGINS[0] ?? 'http://localhost:5173'
   const paymentService = new PaymentService(
