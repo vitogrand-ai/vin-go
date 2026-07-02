@@ -6,11 +6,7 @@ import type { DbClient } from './db'
 import type { AppEnv } from './env'
 import { createAuthRoutes } from './auth/routes'
 import { AuthService } from './auth/service'
-import {
-  MockCatalogProvider,
-  MockPlateProvider,
-  MockSupplierProvider,
-} from './catalog/mock-providers'
+import { createCatalogProviders } from './catalog/factory'
 import { createCatalogRoutes } from './catalog/routes'
 import { CatalogService } from './catalog/service'
 import { createGarageRoutes } from './garage/routes'
@@ -55,9 +51,8 @@ type CreateAppOptions = {
 
 export function createApp({ env, prisma }: CreateAppOptions) {
   const authService = new AuthService(prisma, env)
-  const catalogProvider = new MockCatalogProvider()
-  const supplierProvider = new MockSupplierProvider()
-  const plateProvider = new MockPlateProvider()
+  const { catalog: catalogProvider, suppliers: supplierProvider, plates: plateProvider } =
+    createCatalogProviders(env)
   const catalogService = new CatalogService(catalogProvider, supplierProvider, plateProvider)
   const garageService = new GarageService(prisma, catalogProvider)
   const notificationService = new NotificationService(prisma, {

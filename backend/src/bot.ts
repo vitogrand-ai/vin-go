@@ -1,7 +1,7 @@
 import 'dotenv/config'
 
-import { MockSupplierProvider } from './catalog/mock-providers'
-import { createMockCatalogService } from './catalog/service'
+import { createCatalogProviders } from './catalog/factory'
+import { CatalogService } from './catalog/service'
 import { createPrisma } from './db'
 import { loadEnv } from './env'
 import { OrdersService } from './orders/service'
@@ -20,8 +20,11 @@ export async function main() {
   }
 
   const prisma = createPrisma(env.DATABASE_URL)
-  const catalog = createMockCatalogService()
-  const orders = new OrdersService(prisma, new MockSupplierProvider())
+  // Единый набор провайдеров (те же, что у API) — один инстанс поставщиков на
+  // каталог и корзину, чтобы будущие кэш/лимиты реального API не расходились.
+  const providers = createCatalogProviders(env)
+  const catalog = new CatalogService(providers.catalog, providers.suppliers, providers.plates)
+  const orders = new OrdersService(prisma, providers.suppliers)
   const link = new TelegramLinkService(prisma, env.TELEGRAM_BOT_USERNAME)
 
   const client = new HttpTelegramClient(env.TELEGRAM_BOT_TOKEN)
