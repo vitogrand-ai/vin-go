@@ -242,7 +242,8 @@ export class TelegramBot {
   private async handleOrders(chatId: number, telegramUserId: number): Promise<void> {
     const userId = await this.requireUser(chatId, telegramUserId)
     if (!userId) return
-    const { orders } = await this.cabinet!.orders.listOrders(userId)
+    // Пользователь бота — всегда клиент: показываем только его заказы.
+    const { orders } = await this.cabinet!.orders.listOrders(userId, 'USER')
     await this.client.sendMessage(chatId, ordersMessage(orders), { parseMode: 'HTML' })
   }
 

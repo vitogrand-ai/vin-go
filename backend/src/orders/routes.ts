@@ -12,6 +12,8 @@ import {
 } from '@web-app-demo/contracts'
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi'
 
+import type { UserRole } from '@web-app-demo/contracts'
+
 import { requireAuth } from '../auth/middleware'
 import type { AuthService } from '../auth/service'
 import { validationErrorHook } from '../http/errors'
@@ -22,6 +24,7 @@ type OrdersRouteEnv = {
     authService: AuthService
     ordersService: OrdersService
     userId: string
+    role: UserRole
   }
 }
 
@@ -231,17 +234,17 @@ export function createOrdersRoutes() {
   routes.openapi(updateStatusRoute, async (c) => {
     const service = c.get('ordersService')
     const { orderId, status } = c.req.valid('json')
-    return c.json(await service.updateStatus(c.get('userId'), orderId, status), 200)
+    return c.json(await service.updateStatus(c.get('userId'), c.get('role'), orderId, status), 200)
   })
 
   routes.openapi(listOrdersRoute, async (c) => {
     const service = c.get('ordersService')
-    return c.json(await service.listOrders(c.get('userId')), 200)
+    return c.json(await service.listOrders(c.get('userId'), c.get('role')), 200)
   })
 
   routes.openapi(getOrderRoute, async (c) => {
     const service = c.get('ordersService')
-    return c.json(await service.getOrder(c.get('userId'), c.req.valid('param').id), 200)
+    return c.json(await service.getOrder(c.get('userId'), c.get('role'), c.req.valid('param').id), 200)
   })
 
   return routes

@@ -10,8 +10,9 @@ import type { AuthService } from './service'
 export function requireAuth(): MiddlewareHandler {
   return async (c, next) => {
     const authService = c.get('authService') as AuthService
-    const { userId } = await authService.authenticate(bearerToken(c))
+    const { userId, role } = await authService.authenticate(bearerToken(c))
     c.set('userId', userId)
+    c.set('role', role)
     await next()
   }
 }

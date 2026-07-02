@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { allowedOrderTransitions, type OrderDto, type OrderStatus } from '@web-app-demo/contracts'
+import { allowedOrderTransitionsFor, type OrderDto, type OrderStatus } from '@web-app-demo/contracts'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -18,6 +18,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { Typography } from '@/components/ui/typography'
 import { RequireAuth } from '@/features/cabinet/RequireAuth'
 import { useCreatePayment, useOrders, useUpdateOrderStatus } from '@/features/cabinet/queries'
+import { useAuth } from '@/lib/use-auth'
 import { describeApiError } from '@/lib/errors'
 import { formatMoney } from '@/lib/format'
 import { STATUS_LABEL, TRANSITION_LABEL } from './status'
@@ -116,13 +117,15 @@ function matchesSearch(order: OrderDto, query: string): boolean {
 }
 
 function OrderCard({ order }: { order: OrderDto }) {
+  const { user } = useAuth()
   const status = STATUS_LABEL[order.status]
   const placed = order.placedAt ?? order.createdAt
   const createPayment = useCreatePayment()
   const updateStatus = useUpdateOrderStatus()
 
   const canPay = order.status === 'PLACED' && order.paymentStatus !== 'SUCCEEDED'
-  const transitions = allowedOrderTransitions(order.status)
+  // Клиент видит только отмену до оплаты; операторские переходы — у оператора.
+  const transitions = allowedOrderTransitionsFor(user?.role ?? 'USER', order.status)
 
   const handleStatus = (target: OrderStatus) => {
     updateStatus.mutate(

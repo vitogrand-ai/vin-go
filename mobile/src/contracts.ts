@@ -15,6 +15,8 @@ export const userSchema = z.object({
   id: z.string(),
   email: z.string(),
   displayName: z.string().nullable(),
+  // Роль: клиент или оператор автосервиса (зеркало @web-app-demo/contracts).
+  role: z.enum(['USER', 'OPERATOR']).default('USER'),
   createdAt: z.string(),
 })
 

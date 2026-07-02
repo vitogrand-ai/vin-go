@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import type { UserRole } from './auth'
 import { moneySchema, offerTierSchema, partQualitySchema, vinSchema } from './catalog'
 import { orderPaymentStatusSchema } from './payments'
 
@@ -38,6 +39,37 @@ export function allowedOrderTransitions(
   status: z.infer<typeof orderStatusSchema>,
 ): Array<z.infer<typeof orderStatusSchema>> {
   return ORDER_STATUS_TRANSITIONS[status]
+}
+
+/**
+ * Переходы, доступные КЛИЕНТУ (владельцу заказа): только отмена ещё не
+ * оплаченного заказа. Дальше по жизненному циклу заказ ведёт оператор —
+ * клиент не должен сам переводить свой заказ в «В работе»/«Выдан».
+ */
+const CLIENT_ORDER_TRANSITIONS: Record<
+  z.infer<typeof orderStatusSchema>,
+  Array<z.infer<typeof orderStatusSchema>>
+> = {
+  DRAFT: [],
+  PLACED: ['CANCELLED'],
+  PAID: [],
+  PROCESSING: [],
+  READY: [],
+  COMPLETED: [],
+  CANCELLED: [],
+  REFUNDED: [],
+}
+
+/**
+ * Разрешённые переходы статуса с учётом роли. Оператор ведёт полный жизненный
+ * цикл (ORDER_STATUS_TRANSITIONS), клиент — только отмену до оплаты. Единый
+ * источник правды для бэкенда (проверка) и фронтенда (какие кнопки показывать).
+ */
+export function allowedOrderTransitionsFor(
+  role: UserRole,
+  status: z.infer<typeof orderStatusSchema>,
+): Array<z.infer<typeof orderStatusSchema>> {
+  return role === 'OPERATOR' ? ORDER_STATUS_TRANSITIONS[status] : CLIENT_ORDER_TRANSITIONS[status]
 }
 
 export const orderItemSchema = z.object({

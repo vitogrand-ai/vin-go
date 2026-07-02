@@ -1,6 +1,6 @@
 import { Link, useParams } from '@tanstack/react-router'
 import {
-  allowedOrderTransitions,
+  allowedOrderTransitionsFor,
   type OrderDto,
   type OrderItemDto,
   type OrderStatus,
@@ -25,6 +25,7 @@ import {
   useUpdateOrderNotes,
   useUpdateOrderStatus,
 } from '@/features/cabinet/queries'
+import { useAuth } from '@/lib/use-auth'
 import { describeApiError } from '@/lib/errors'
 import { formatMoney } from '@/lib/format'
 import { STATUS_LABEL, TRANSITION_LABEL } from './status'
@@ -68,8 +69,10 @@ function OrderDetail() {
 }
 
 function Loaded({ order }: { order: OrderDto }) {
+  const { user } = useAuth()
   const status = STATUS_LABEL[order.status]
-  const transitions = allowedOrderTransitions(order.status)
+  // Клиент видит только отмену до оплаты; операторские переходы — у оператора.
+  const transitions = allowedOrderTransitionsFor(user?.role ?? 'USER', order.status)
   const placed = order.placedAt ?? order.createdAt
 
   const createPayment = useCreatePayment()

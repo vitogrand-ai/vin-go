@@ -15,10 +15,18 @@ export const passwordSchema = z
   .min(8, 'Password must be at least 8 characters')
   .max(128, 'Password must be at most 128 characters')
 
+/**
+ * Роль пользователя. USER — клиент (свой гараж/корзина/заказы). OPERATOR —
+ * сотрудник автосервиса: ведёт чужие заказы по жизненному циклу
+ * (PAID → PROCESSING → READY → COMPLETED) и видит все заказы.
+ */
+export const userRoleSchema = z.enum(['USER', 'OPERATOR'])
+
 export const userSchema = z.object({
   id: z.string(),
   email: emailSchema,
   displayName: z.string().nullable(),
+  role: userRoleSchema,
   createdAt: z.string().datetime(),
 })
 
@@ -62,6 +70,7 @@ export const meResponseSchema = z.object({
   user: userSchema,
 })
 
+export type UserRole = z.infer<typeof userRoleSchema>
 export type UserDto = z.infer<typeof userSchema>
 export type RegisterRequest = z.input<typeof registerRequestSchema>
 export type RegisterPayload = z.output<typeof registerRequestSchema>

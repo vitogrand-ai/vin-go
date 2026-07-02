@@ -1,5 +1,5 @@
 import {
-  allowedOrderTransitions,
+  allowedOrderTransitionsFor,
   type AddCartItemRequest,
   type CartResponse,
   type Currency,
@@ -10,6 +10,7 @@ import {
   type OrdersResponse,
   type OrderStatus,
   type PartQuality,
+  type UserRole,
 } from '@web-app-demo/contracts'
 
 import type { SupplierProvider } from '../catalog/providers'
@@ -78,9 +79,10 @@ export class OrdersService {
     return { order: order ? toOrderDto(order) : null }
   }
 
-  async getOrder(userId: string, orderId: string): Promise<OrderResponse> {
+  async getOrder(userId: string, role: UserRole, orderId: string): Promise<OrderResponse> {
     const order = await this.db.order.findFirst({
-      where: { id: orderId, userId },
+      // Оператор может открыть любой заказ, клиент — только свой.
+      where: role === 'OPERATOR' ? { id: orderId } : { id: orderId, userId },
       include: itemsInclude,
     })
     if (!order) {
@@ -114,7 +116,8 @@ export class OrdersService {
     if (result.count === 0) {
       throw new AppError(404, 'NOT_FOUND', 'Заказ не найден')
     }
-    return this.getOrder(userId, orderId)
+    // Заметка редактируется владельцем своего заказа (where уже по userId).
+    return this.getOrder(userId, 'USER', orderId)
   }
 
   async addItem(userId: string, input: AddCartItemRequest): Promise<OrderResponse> {
@@ -235,20 +238,27 @@ export class OrdersService {
     return { order: toOrderDto(order) }
   }
 
-  /** Переход статуса заказа оператором (с проверкой допустимости перехода). */
+  /**
+   * Переход статуса заказа с учётом роли. Клиент может только отменить свой
+   * ещё не оплаченный заказ; вести заказ по жизненному циклу
+   * (PAID → PROCESSING → READY → COMPLETED) может только оператор, причём по
+   * любому заказу. Уведомление уходит владельцу заказа, а не тому, кто меняет статус.
+   */
   async updateStatus(
     userId: string,
+    role: UserRole,
     orderId: string,
     status: OrderStatus,
   ): Promise<OrderResponse> {
     const order = await this.db.order.findFirst({
-      where: { id: orderId, userId },
-      select: { id: true, status: true },
+      // Оператор ведёт чужие заказы, клиент — только свои.
+      where: role === 'OPERATOR' ? { id: orderId } : { id: orderId, userId },
+      select: { id: true, status: true, userId: true },
     })
     if (!order) {
       throw new AppError(404, 'NOT_FOUND', 'Заказ не найден')
     }
-    if (!allowedOrderTransitions(order.status as OrderStatus).includes(status)) {
+    if (!allowedOrderTransitionsFor(role, order.status as OrderStatus).includes(status)) {
       throw new AppError(
         400,
         'BAD_REQUEST',
@@ -263,7 +273,7 @@ export class OrdersService {
 
     // Уведомляем владельца заказа (push + Telegram). Не должно ломать ответ.
     await this.notifications?.notifyUser(
-      userId,
+      order.userId,
       'Статус заказа изменён',
       `Заказ № ${updated.id.slice(0, 8).toUpperCase()}: ${ORDER_STATUS_LABEL_RU[status]}`,
     )
@@ -271,9 +281,10 @@ export class OrdersService {
     return { order: toOrderDto(updated) }
   }
 
-  async listOrders(userId: string): Promise<OrdersResponse> {
+  async listOrders(userId: string, role: UserRole): Promise<OrdersResponse> {
     const orders = await this.db.order.findMany({
-      where: { userId, status: { not: 'DRAFT' } },
+      // Оператор видит очередь всех заказов, клиент — только свои.
+      where: { status: { not: 'DRAFT' }, ...(role === 'OPERATOR' ? {} : { userId }) },
       include: itemsInclude,
       orderBy: { placedAt: 'desc' },
     })

@@ -101,12 +101,15 @@ maybeDescribe('оплата заказа (мок-провайдер)', () => {
     expect(orders.orders[0]?.status).toBe('PAID')
   })
 
-  test('жизненный цикл статуса: PAID → PROCESSING → READY → COMPLETED', async () => {
+  test('оператор ведёт жизненный цикл: PAID → PROCESSING → READY → COMPLETED', async () => {
     const { token, orderId } = await setupPaidableOrder()
     const created = (await (
       await authed(token, '/api/payments/create', { orderId })
     ).json()) as CreatePaymentResponse
     await authed(token, '/api/payments/mock/confirm', { paymentId: created.payment.id })
+
+    // Операторские переходы доступны только роли OPERATOR.
+    await prisma.user.update({ where: { email: 'pay@example.com' }, data: { role: 'OPERATOR' } })
 
     for (const status of ['PROCESSING', 'READY', 'COMPLETED'] as const) {
       const res = (await (
@@ -114,6 +117,14 @@ maybeDescribe('оплата заказа (мок-провайдер)', () => {
       ).json()) as OrderResponse
       expect(res.order.status).toBe(status)
     }
+  })
+
+  test('клиент не может провести операторский переход PAID → PROCESSING (400)', async () => {
+    const { token, orderId } = await setupPaidableOrder()
+    await payOrder(token, orderId)
+    // Пользователь остаётся клиентом (USER) — операторский переход запрещён.
+    const res = await authed(token, '/api/orders/status', { orderId, status: 'PROCESSING' })
+    expect(res.status).toBe(400)
   })
 
   async function payOrder(token: string, orderId: string): Promise<void> {

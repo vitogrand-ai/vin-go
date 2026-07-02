@@ -69,7 +69,8 @@ maybeDescribe('NotificationService', () => {
 
     const notifications = new NotificationService(prisma, { pushSend, telegramSend })
     const orders = new OrdersService(prisma, new MockSupplierProvider(), notifications)
-    await orders.updateStatus(user.id, order.id, 'PROCESSING')
+    // Переход PAID → PROCESSING — операторский.
+    await orders.updateStatus(user.id, 'OPERATOR', order.id, 'PROCESSING')
 
     expect(pushCalls).toHaveLength(1)
     expect(pushCalls[0]?.title).toBe('Статус заказа изменён')

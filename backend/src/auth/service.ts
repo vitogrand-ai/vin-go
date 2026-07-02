@@ -2,6 +2,7 @@ import type {
   LoginRequest,
   RegisterPayload,
   UserDto,
+  UserRole,
 } from '@web-app-demo/contracts'
 
 import type { DbClient } from '../db'
@@ -21,6 +22,7 @@ type UserRecord = {
   id: string
   email: string
   displayName: string | null
+  role: UserRole
   createdAt: Date
 }
 
@@ -155,12 +157,13 @@ export class AuthService {
     }
   }
 
-  /** Проверяет access-токен и активную сессию, возвращает идентификатор пользователя. */
+  /** Проверяет access-токен и активную сессию, возвращает идентификатор и роль пользователя. */
   async authenticate(accessToken: string | undefined) {
     const session = await this.resolveSession(accessToken)
     return {
       userId: session.user.id,
       email: session.user.email,
+      role: session.user.role as UserRole,
       sessionId: session.id,
     }
   }
@@ -251,6 +254,7 @@ export function toUserDto(user: UserRecord): UserDto {
     id: user.id,
     email: user.email,
     displayName: user.displayName,
+    role: user.role,
     createdAt: user.createdAt.toISOString(),
   }
 }
