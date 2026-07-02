@@ -31,6 +31,7 @@ import { YooKassaPaymentProvider } from './payments/yookassa-provider'
 import { createTelegramRoutes } from './telegram/routes'
 import { TelegramLinkService } from './telegram/service'
 import { errorResponse, handleError, validationErrorHook } from './http/errors'
+import { FixedWindowRateLimiter, rateLimit } from './http/rate-limit'
 import { createStorageServiceFromEnv, type StorageService } from './storage/service'
 
 type AppBindings = {
@@ -107,6 +108,24 @@ export function createApp({ env, prisma }: CreateAppOptions) {
     c.set('storageService', storageService)
     await next()
   })
+
+  // Rate limiting (опционально, по env). Регистрируем до роутов, чтобы лимитер
+  // отрабатывал раньше обработчика. Ключ — по IP клиента (X-Forwarded-For).
+  const rateLimitWindowMs = (env.RATE_LIMIT_WINDOW_SECONDS ?? 60) * 1000
+  if (env.RATE_LIMIT_AUTH_MAX) {
+    const authRateLimit = rateLimit(
+      new FixedWindowRateLimiter(env.RATE_LIMIT_AUTH_MAX, rateLimitWindowMs),
+      'auth',
+    )
+    app.use('/api/auth/login', authRateLimit)
+    app.use('/api/auth/register', authRateLimit)
+  }
+  if (env.RATE_LIMIT_PUBLIC_MAX) {
+    app.use(
+      '/api/catalog/*',
+      rateLimit(new FixedWindowRateLimiter(env.RATE_LIMIT_PUBLIC_MAX, rateLimitWindowMs), 'public'),
+    )
+  }
 
   app.get('/', (c) => {
     return c.json({

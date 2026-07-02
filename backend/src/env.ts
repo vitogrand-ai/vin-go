@@ -26,6 +26,12 @@ const stringWithDefault = (defaultValue: string) =>
     return trimmed === '' ? undefined : trimmed
   }, z.string().min(1).default(defaultValue))
 
+const optionalPositiveIntSchema = z.preprocess((value) => {
+  if (typeof value !== 'string') return value
+  const trimmed = value.trim()
+  return trimmed === '' ? undefined : trimmed
+}, z.coerce.number().int().positive().optional())
+
 const envSchema = z.object({
   NODE_ENV: z.string().optional(),
   PORT: z.coerce.number().int().positive().default(3000),
@@ -61,6 +67,11 @@ const envSchema = z.object({
   // Ограничивать webhook оплаты диапазонами IP ЮKassa. Включать только за
   // доверенным прокси (X-Forwarded-For); по умолчанию выкл (локаль/тесты).
   YOOKASSA_WEBHOOK_IP_ALLOWLIST: booleanStringSchema,
+  // Rate limiting (in-memory, на инстанс). Пусто — выключено (локаль/тесты).
+  // MAX-переменные задают лимит на IP в окне; окно — RATE_LIMIT_WINDOW_SECONDS (60 по умолчанию).
+  RATE_LIMIT_AUTH_MAX: optionalPositiveIntSchema, // защита логина/регистрации от подбора
+  RATE_LIMIT_PUBLIC_MAX: optionalPositiveIntSchema, // всплески на публичном каталоге
+  RATE_LIMIT_WINDOW_SECONDS: optionalPositiveIntSchema,
   // Telegram-бот. Пусто — бот не запускается (entrypoint завершится с подсказкой).
   TELEGRAM_BOT_TOKEN: optionalStringSchema,
   // Имя бота (без @) для deep-link привязки t.me/<bot>?start=<code>.
