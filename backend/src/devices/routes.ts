@@ -1,4 +1,8 @@
-import { apiErrorSchema, registerDeviceRequestSchema } from '@web-app-demo/contracts'
+import {
+  apiErrorSchema,
+  registerDeviceRequestSchema,
+  unregisterDeviceRequestSchema,
+} from '@web-app-demo/contracts'
 import { createRoute, OpenAPIHono } from '@hono/zod-openapi'
 
 import { requireAuth } from '../auth/middleware'
@@ -27,6 +31,17 @@ const registerRoute = createRoute({
   },
 })
 
+const unregisterRoute = createRoute({
+  method: 'post',
+  path: '/unregister',
+  request: { body: { content: { 'application/json': { schema: unregisterDeviceRequestSchema } } } },
+  responses: {
+    204: { description: 'Токен отозван' },
+    400: { content: errorResponseContent, description: 'Некорректный токен' },
+    401: { content: errorResponseContent, description: 'Требуется авторизация' },
+  },
+})
+
 export function createDeviceRoutes() {
   const routes = new OpenAPIHono<DeviceRouteEnv>({
     defaultHook: validationErrorHook,
@@ -37,6 +52,12 @@ export function createDeviceRoutes() {
   routes.openapi(registerRoute, async (c) => {
     const service = c.get('deviceService')
     await service.register(c.get('userId'), c.req.valid('json'))
+    return c.body(null, 204)
+  })
+
+  routes.openapi(unregisterRoute, async (c) => {
+    const service = c.get('deviceService')
+    await service.unregister(c.get('userId'), c.req.valid('json').token)
     return c.body(null, 204)
   })
 

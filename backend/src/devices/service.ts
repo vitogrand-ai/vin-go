@@ -14,4 +14,9 @@ export class DeviceService {
       update: { userId, platform: input.platform ?? null },
     })
   }
+
+  /** Отзыв токена устройства при выходе (удаляем только свой токен). */
+  async unregister(userId: string, token: string): Promise<void> {
+    await this.db.deviceToken.deleteMany({ where: { token, userId } })
+  }
 }

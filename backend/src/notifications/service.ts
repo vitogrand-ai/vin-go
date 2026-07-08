@@ -1,6 +1,11 @@
 import type { DbClient } from '../db'
 
-export type PushSend = (tokens: string[], title: string, body: string) => Promise<void>
+/** Отправка push. Возвращает токены, которые Expo счёл невалидными (удаляем их). */
+export type PushSend = (
+  tokens: string[],
+  title: string,
+  body: string,
+) => Promise<{ invalidTokens: string[] }>
 export type TelegramSend = (chatId: string, text: string) => Promise<void>
 
 /**
@@ -36,23 +41,46 @@ export class NotificationService {
       select: { token: true },
     })
     if (tokens.length === 0) return
-    await this.opts.pushSend(
+    const { invalidTokens } = await this.opts.pushSend(
       tokens.map((device) => device.token),
       title,
       body,
     )
+    // Чистим мёртвые токены (DeviceNotRegistered), чтобы они не копились.
+    if (invalidTokens.length > 0) {
+      await this.db.deviceToken.deleteMany({ where: { token: { in: invalidTokens } } })
+    }
   }
 }
 
-/** Реальная отправка push через Expo Push API. */
+const EXPO_PUSH_CHUNK = 100
+
+type ExpoTicket = { status?: string; details?: { error?: string } }
+
+/** Реальная отправка push через Expo Push API (чанки по 100, чистка мёртвых токенов). */
 export function makeExpoPushSend(): PushSend {
   return async (tokens, title, body) => {
-    const messages = tokens.map((to) => ({ to, title, body, sound: 'default' }))
-    await fetch('https://exp.host/--/api/v2/push/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify(messages),
-    }).catch(() => undefined)
+    const invalidTokens: string[] = []
+    for (let start = 0; start < tokens.length; start += EXPO_PUSH_CHUNK) {
+      const chunk = tokens.slice(start, start + EXPO_PUSH_CHUNK)
+      try {
+        const response = await fetch('https://exp.host/--/api/v2/push/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify(chunk.map((to) => ({ to, title, body, sound: 'default' }))),
+        })
+        const payload = (await response.json()) as { data?: ExpoTicket[] }
+        payload.data?.forEach((ticket, index) => {
+          if (ticket.status === 'error' && ticket.details?.error === 'DeviceNotRegistered') {
+            const token = chunk[index]
+            if (token) invalidTokens.push(token)
+          }
+        })
+      } catch {
+        // Сеть/Expo недоступны — не критично, токены не трогаем.
+      }
+    }
+    return { invalidTokens }
   }
 }
 

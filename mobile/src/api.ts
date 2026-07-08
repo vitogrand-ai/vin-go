@@ -45,12 +45,30 @@ type RequestOptions = {
   auth?: boolean
 }
 
+/**
+ * Хуки жизненного цикла сессии. ApiClient сам обновляет access-токен по 401
+ * (см. rawRequest); auth.tsx поставляет доступ к refresh-токену и реакцию на
+ * протухшую сессию.
+ */
+export type SessionHooks = {
+  loadRefreshToken: () => Promise<string | null>
+  persistRefreshToken: (token: string | null) => Promise<void>
+  onSessionExpired: () => void
+}
+
 /** Клиент бэкенда. Заголовок mobile-платформы → refresh-токен приходит в теле. */
 export class ApiClient {
   private accessToken: string | null = null
+  private sessionHooks: SessionHooks | null = null
+  private refreshInFlight: Promise<boolean> | null = null
 
   setAccessToken(token: string | null) {
     this.accessToken = token
+  }
+
+  /** auth.tsx регистрирует хуки один раз при старте провайдера. */
+  setSessionHooks(hooks: SessionHooks | null) {
+    this.sessionHooks = hooks
   }
 
   getAccessToken(): string | null {
@@ -180,6 +198,14 @@ export class ApiClient {
     })
   }
 
+  async unregisterDevice(token: string): Promise<void> {
+    await this.rawRequest('/api/devices/unregister', {
+      method: 'POST',
+      body: { token },
+      auth: true,
+    })
+  }
+
   private async request<TSchema extends z.ZodTypeAny>(
     path: string,
     schema: TSchema,
@@ -189,7 +215,11 @@ export class ApiClient {
     return schema.parse(await response.json())
   }
 
-  private async rawRequest(path: string, options: RequestOptions): Promise<Response> {
+  private async rawRequest(
+    path: string,
+    options: RequestOptions,
+    allowRefresh = true,
+  ): Promise<Response> {
     const headers: Record<string, string> = { 'X-Client-Platform': 'mobile' }
     if (options.body !== undefined) headers['Content-Type'] = 'application/json'
     if (options.auth && this.accessToken) headers.Authorization = `Bearer ${this.accessToken}`
@@ -200,10 +230,47 @@ export class ApiClient {
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
     })
 
+    // Access-токен живёт минуты: по 401 на авторизованном запросе один раз
+    // прозрачно обновляем токен и повторяем запрос.
+    if (response.status === 401 && options.auth && allowRefresh && this.sessionHooks) {
+      if (await this.ensureRefreshed()) {
+        return this.rawRequest(path, options, false)
+      }
+    }
+
     if (!response.ok) {
       throw await toApiError(response)
     }
     return response
+  }
+
+  /** Один общий refresh на все параллельные 401 — иначе гонки ротации токена. */
+  private ensureRefreshed(): Promise<boolean> {
+    if (!this.refreshInFlight) {
+      this.refreshInFlight = this.doRefresh().finally(() => {
+        this.refreshInFlight = null
+      })
+    }
+    return this.refreshInFlight
+  }
+
+  private async doRefresh(): Promise<boolean> {
+    const hooks = this.sessionHooks
+    if (!hooks) return false
+    try {
+      const refreshToken = await hooks.loadRefreshToken()
+      if (!refreshToken) throw new Error('нет refresh-токена')
+      const refreshed = await this.refresh(refreshToken)
+      this.accessToken = refreshed.accessToken
+      if (refreshed.refreshToken) await hooks.persistRefreshToken(refreshed.refreshToken)
+      return true
+    } catch {
+      // Refresh протух/отозван — гасим сессию, вызывающий получит исходный 401.
+      this.accessToken = null
+      await hooks.persistRefreshToken(null)
+      hooks.onSessionExpired()
+      return false
+    }
   }
 }
 

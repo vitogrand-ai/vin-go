@@ -2,6 +2,7 @@ import { afterAll, beforeEach, describe, expect, test } from 'bun:test'
 
 import { MockSupplierProvider } from '../catalog/mock-providers'
 import { createPrisma } from '../db'
+import { DeviceService } from '../devices/service'
 import { OrdersService } from '../orders/service'
 import { MockPaymentProvider } from '../payments/providers'
 import { PaymentService } from '../payments/service'
@@ -17,6 +18,7 @@ maybeDescribe('NotificationService', () => {
   const tgCalls: { chatId: string; text: string }[] = []
   const pushSend: PushSend = async (tokens, title, body) => {
     pushCalls.push({ tokens, title, body })
+    return { invalidTokens: [] }
   }
   const telegramSend: TelegramSend = async (chatId, text) => {
     tgCalls.push({ chatId, text })
@@ -108,5 +110,39 @@ maybeDescribe('NotificationService', () => {
     expect(pushCalls).toHaveLength(1)
     expect(pushCalls[0]?.title).toBe('Статус заказа изменён')
     expect(pushCalls[0]?.body).toContain('оплачен')
+  })
+
+  test('невалидный push-токен удаляется после отправки', async () => {
+    const user = await prisma.user.create({ data: { email: 'dead@example.com', passwordHash: 'x' } })
+    await prisma.deviceToken.create({
+      data: { userId: user.id, token: 'ExponentPushToken[dead]' },
+    })
+
+    const notifications = new NotificationService(prisma, {
+      pushSend: async () => ({ invalidTokens: ['ExponentPushToken[dead]'] }),
+    })
+    await notifications.notifyUser(user.id, 'Заголовок', 'Текст')
+
+    const remaining = await prisma.deviceToken.count({ where: { userId: user.id } })
+    expect(remaining).toBe(0)
+  })
+
+  test('unregister удаляет только указанный токен пользователя', async () => {
+    const user = await prisma.user.create({ data: { email: 'unreg@example.com', passwordHash: 'x' } })
+    await prisma.deviceToken.create({
+      data: { userId: user.id, token: 'ExponentPushToken[keep]' },
+    })
+    await prisma.deviceToken.create({
+      data: { userId: user.id, token: 'ExponentPushToken[drop]' },
+    })
+
+    const devices = new DeviceService(prisma)
+    await devices.unregister(user.id, 'ExponentPushToken[drop]')
+
+    const tokens = await prisma.deviceToken.findMany({
+      where: { userId: user.id },
+      select: { token: true },
+    })
+    expect(tokens.map((item) => item.token)).toEqual(['ExponentPushToken[keep]'])
   })
 })

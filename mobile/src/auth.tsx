@@ -10,6 +10,7 @@ import {
 
 import { ApiClient } from './api'
 import type { User } from './contracts'
+import { unregisterForPush } from './push'
 import { getRefreshToken, setRefreshToken } from './storage'
 
 type AuthContextValue = {
@@ -28,6 +29,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const api = apiRef.current
   const [user, setUser] = useState<User | null>(null)
   const [isBootstrapping, setIsBootstrapping] = useState(true)
+
+  // Авто-refresh access-токена по 401 внутри ApiClient: даём ему доступ к
+  // refresh-токену и сброс сессии, когда refresh протух/отозван.
+  useEffect(() => {
+    api.setSessionHooks({
+      loadRefreshToken: getRefreshToken,
+      persistRefreshToken: setRefreshToken,
+      onSessionExpired: () => setUser(null),
+    })
+  }, [api])
 
   // Восстановление сессии: refresh-токен → access → профиль.
   useEffect(() => {
@@ -68,6 +79,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login: async (email, password) => applyAuth(await api.login({ email, password })),
       register: async (email, password) => applyAuth(await api.register({ email, password })),
       logout: async () => {
+        // Отзываем push-токен, пока access-токен ещё валиден, — чтобы на это
+        // устройство не приходили уведомления вышедшего пользователя.
+        await unregisterForPush(api)
         const refreshToken = await getRefreshToken()
         await api.logout(refreshToken)
         await setRefreshToken(null)
