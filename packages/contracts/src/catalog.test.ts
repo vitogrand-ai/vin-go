@@ -1,9 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+  frameSchema,
   offerTierSchema,
   plateSchema,
   searchPartsRequestSchema,
+  vinOrFrameSchema,
   vinSchema,
 } from './catalog'
 
@@ -21,6 +23,35 @@ describe('vinSchema', () => {
     expect(() => vinSchema.parse('WVWZZZ1JZ3W38675O')).toThrow()
     expect(() => vinSchema.parse('IWVWZZZ1JZ3W38675')).toThrow()
     expect(() => vinSchema.parse('QWVWZZZ1JZ3W38675')).toThrow()
+  })
+})
+
+describe('frameSchema (номер кузова JDM)', () => {
+  test('принимает frame и приводит к верхнему регистру', () => {
+    expect(frameSchema.parse(' sxa10-0012345 ')).toBe('SXA10-0012345')
+    expect(frameSchema.parse('NZE121-3123456')).toBe('NZE121-3123456')
+  })
+
+  test('отвергает строки без дефиса и без серийной части', () => {
+    expect(() => frameSchema.parse('SXA100012345')).toThrow()
+    expect(() => frameSchema.parse('SXA10-')).toThrow()
+    expect(() => frameSchema.parse('-0012345')).toThrow()
+  })
+})
+
+describe('vinOrFrameSchema (единый идентификатор авто)', () => {
+  test('принимает и VIN, и frame', () => {
+    expect(vinOrFrameSchema.parse('WVWZZZ1JZ3W386752')).toBe('WVWZZZ1JZ3W386752')
+    expect(vinOrFrameSchema.parse('sxa10-0012345')).toBe('SXA10-0012345')
+  })
+
+  test('отвергает мусор', () => {
+    expect(() => vinOrFrameSchema.parse('ABC123')).toThrow()
+  })
+
+  test('searchPartsRequestSchema принимает frame вместо VIN', () => {
+    const parsed = searchPartsRequestSchema.parse({ vin: 'SXA10-0012345', query: 'колодки' })
+    expect(parsed.vin).toBe('SXA10-0012345')
   })
 })
 

@@ -16,6 +16,20 @@ export const vinSchema = z
   .toUpperCase()
   .regex(VIN_PATTERN, 'VIN должен содержать 17 символов (латиница и цифры, без I, O, Q)')
 
+// Frame (номер кузова, JDM/правый руль): код модели + дефис + серийный номер,
+// например SXA10-0012345. У «серых» японцев VIN нет — каталоги ищут по frame.
+// Максимум 17 символов — совпадает с ограничением полей ввода VIN.
+const FRAME_PATTERN = /^[A-Z][A-Z0-9]{1,7}-\d{4,8}$/
+
+export const frameSchema = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(FRAME_PATTERN, 'Номер кузова (frame) — вида SXA10-0012345')
+
+/** Идентификатор автомобиля: VIN (17 симв.) или frame-номер кузова (JDM). */
+export const vinOrFrameSchema = z.union([vinSchema, frameSchema])
+
 // Госномер РФ: буква + 3 цифры + 2 буквы + 2–3 цифры региона.
 // Разрешены только буквы, совпадающие по начертанию с латиницей.
 const PLATE_PATTERN = /^[АВЕКМНОРСТУХ]\d{3}[АВЕКМНОРСТУХ]{2}\d{2,3}$/u
@@ -66,7 +80,8 @@ export const partQualitySchema = z.enum(['BUDGET', 'AFTERMARKET', 'PREMIUM', 'OE
 export const offerTierSchema = z.enum(['ECONOMY', 'BALANCED', 'ORIGINAL'])
 
 export const vehicleSchema = z.object({
-  vin: vinSchema,
+  /** VIN или frame-номер кузова (JDM) — единый идентификатор автомобиля. */
+  vin: vinOrFrameSchema,
   make: z.string(),
   model: z.string(),
   year: z.number().int(),
@@ -116,7 +131,7 @@ export const tierPickSchema = z.object({
 // --- Запросы и ответы ---
 
 export const decodeVinRequestSchema = z.object({
-  vin: vinSchema,
+  vin: vinOrFrameSchema,
 })
 
 export const decodeVinResponseSchema = z.object({
@@ -132,7 +147,7 @@ export const resolvePlateResponseSchema = z.object({
 })
 
 export const searchPartsRequestSchema = z.object({
-  vin: vinSchema,
+  vin: vinOrFrameSchema,
   query: z.string().trim().min(1, 'Введите название запчасти').max(120),
 })
 

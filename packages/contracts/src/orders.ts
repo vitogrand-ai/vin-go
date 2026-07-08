@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import type { UserRole } from './auth'
-import { moneySchema, offerTierSchema, partQualitySchema, vinSchema } from './catalog'
+import { moneySchema, offerTierSchema, partQualitySchema, vinOrFrameSchema } from './catalog'
 import { orderPaymentStatusSchema } from './payments'
 
 export const orderStatusSchema = z.enum([
@@ -111,7 +111,7 @@ export const addCartItemRequestSchema = z.object({
   partName: z.string().trim().min(1).max(160),
   tier: offerTierSchema.optional(),
   quantity: z.number().int().min(1).max(99).optional(),
-  vehicleVin: vinSchema.optional(),
+  vehicleVin: vinOrFrameSchema.optional(),
 })
 
 export const updateCartItemRequestSchema = z.object({
@@ -134,7 +134,7 @@ export const updateOrderNotesRequestSchema = z.object({
 })
 
 export const setCartVehicleRequestSchema = z.object({
-  vin: vinSchema,
+  vin: vinOrFrameSchema,
 })
 
 /** Корзина = черновик заказа; null, если корзина ещё не создавалась. */

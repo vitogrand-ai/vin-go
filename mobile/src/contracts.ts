@@ -41,6 +41,16 @@ export const vinSchema = z
   .toUpperCase()
   .regex(/^[A-HJ-NPR-Z0-9]{17}$/, 'VIN — 17 символов (латиница и цифры, без I, O, Q)')
 
+// Frame (номер кузова, JDM/правый руль), например SXA10-0012345.
+export const frameSchema = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-Z][A-Z0-9]{1,7}-\d{4,8}$/, 'Номер кузова (frame) — вида SXA10-0012345')
+
+/** Идентификатор автомобиля: VIN (17 симв.) или frame-номер кузова (JDM). */
+export const vinOrFrameSchema = z.union([vinSchema, frameSchema])
+
 const LATIN_TO_CYRILLIC: Record<string, string> = {
   A: 'А', B: 'В', E: 'Е', K: 'К', M: 'М', H: 'Н', O: 'О', P: 'Р', C: 'С', T: 'Т', Y: 'У', X: 'Х',
 }

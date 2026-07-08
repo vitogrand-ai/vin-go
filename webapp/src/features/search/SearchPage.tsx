@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useSearch } from '@tanstack/react-router'
-import type { Offer, OfferTier, Part, TierPick, Vehicle } from '@web-app-demo/contracts'
+import { vinOrFrameSchema, type Offer, type OfferTier, type Part, type TierPick, type Vehicle } from '@web-app-demo/contracts'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -344,7 +344,8 @@ function OffersPanel({ part, vehicleVin }: { part: Part; vehicleVin?: string }) 
         offerId: offer.id,
         partName: part.name,
         tier,
-        vehicleVin: vehicleVin && /^[A-HJ-NPR-Z0-9]{17}$/.test(vehicleVin) ? vehicleVin : undefined,
+        vehicleVin:
+          vehicleVin && vinOrFrameSchema.safeParse(vehicleVin).success ? vehicleVin : undefined,
       },
       {
         onSuccess: () => toast.success(`«${part.name}» добавлено в корзину`),

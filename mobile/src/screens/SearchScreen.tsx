@@ -14,7 +14,7 @@ import {
 
 import { ApiRequestError } from '../api'
 import { useAuth } from '../auth'
-import type { Offer, Part, TierPick, Vehicle } from '../contracts'
+import { vinOrFrameSchema, type Offer, type Part, type TierPick, type Vehicle } from '../contracts'
 import { formatDelivery, formatMoney, TIER_META } from '../format'
 import { theme } from '../theme'
 
@@ -213,7 +213,8 @@ function OffersSection({ part, vehicleVin }: { part: Part; vehicleVin?: string }
         offerId: vars.offer.id,
         partName: part.name,
         tier: vars.tier,
-        vehicleVin: vehicleVin && /^[A-HJ-NPR-Z0-9]{17}$/.test(vehicleVin) ? vehicleVin : undefined,
+        vehicleVin:
+          vehicleVin && vinOrFrameSchema.safeParse(vehicleVin).success ? vehicleVin : undefined,
       }),
     onSuccess: () => Alert.alert('Корзина', `«${part.name}» добавлено`),
     onError: (error) => Alert.alert('Ошибка', describeError(error)),

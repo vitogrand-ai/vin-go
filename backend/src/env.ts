@@ -79,6 +79,40 @@ const envSchema = z.object({
   RATE_LIMIT_AUTH_MAX: optionalPositiveIntSchema, // защита логина/регистрации от подбора
   RATE_LIMIT_PUBLIC_MAX: optionalPositiveIntSchema, // всплески на публичном каталоге
   RATE_LIMIT_WINDOW_SECONDS: optionalPositiveIntSchema,
+  // Каталог acat.online (400+ марок, поиск по VIN/Frame). Пусто — мок-каталог.
+  // Ключ включает боевой OEM-адаптер в createCatalogProviders (шире, чем Laximo).
+  ACAT_API_KEY: optionalStringSchema,
+  // Базовый URL API acat (по умолчанию ACAT_DEFAULT_BASE_URL). Переопределять
+  // при смене хоста/версии по документации провайдера.
+  ACAT_BASE_URL: optionalUrlSchema,
+  // Каталог PartsIndex (parts-index.ru) — второй OEM-источник, свежие китайцы.
+  // Ключ включает адаптер; с acat вместе агрегируются через FallbackCatalogProvider.
+  PARTSINDEX_API_KEY: optionalStringSchema,
+  // Базовый URL API PartsIndex (по умолчанию PARTSINDEX_DEFAULT_BASE_URL).
+  PARTSINDEX_BASE_URL: optionalUrlSchema,
+  // JDM-каталог (epcdata/amayama) — японцы с правым рулём, поиск по frame-номеру.
+  // Третий источник каталога в fallback-цепочке. ⚠️ Публичного API у них нет —
+  // ключ появится после договорённости о доступе.
+  EPCDATA_API_KEY: optionalStringSchema,
+  // Базовый URL API JDM-каталога (по умолчанию EPCDATA_DEFAULT_BASE_URL).
+  EPCDATA_BASE_URL: optionalUrlSchema,
+  // Реестр госномер→VIN (Avtocod). Ключ включает боевой PlateProvider;
+  // пусто — мок-реестр (демо-номера).
+  AVTOCOD_API_KEY: optionalStringSchema,
+  // Базовый URL API Avtocod (по умолчанию AVTOCOD_DEFAULT_BASE_URL).
+  AVTOCOD_BASE_URL: optionalUrlSchema,
+  // Поставщики ABCP (слой цен/наличия по OEM-номеру). Логин+пароль задаются
+  // ВМЕСТЕ и включают боевой SupplierProvider; пусто — мок-поставщики.
+  ABCP_LOGIN: optionalStringSchema,
+  ABCP_PASSWORD: optionalStringSchema,
+  // Базовый URL API ABCP (по умолчанию ABCP_DEFAULT_BASE_URL). Переопределять
+  // под свой хост/версию по документации провайдера.
+  ABCP_API_URL: optionalUrlSchema,
+  // Поставщик Emex — второй источник предложений. Вместе с ABCP выдачи
+  // сливаются (MergingSupplierProvider): сравнение цен из нескольких источников.
+  EMEX_API_KEY: optionalStringSchema,
+  // Базовый URL API Emex (по умолчанию EMEX_DEFAULT_BASE_URL).
+  EMEX_BASE_URL: optionalUrlSchema,
   // Telegram-бот. Пусто — бот не запускается (entrypoint завершится с подсказкой).
   TELEGRAM_BOT_TOKEN: optionalStringSchema,
   // Имя бота (без @) для deep-link привязки t.me/<bot>?start=<code>.
@@ -88,6 +122,7 @@ const envSchema = z.object({
   validateCorsOrigins(env, ctx)
   validateStorageEnv(env, ctx)
   validatePaymentEnv(env, ctx)
+  validateAbcpEnv(env, ctx)
 })
 
 export type AppEnv = z.infer<typeof envSchema>
@@ -187,6 +222,18 @@ function validatePaymentEnv(env: z.infer<typeof envSchema>, ctx: z.RefinementCtx
       code: 'custom',
       path: [hasShopId ? 'YOOKASSA_SECRET_KEY' : 'YOOKASSA_SHOP_ID'],
       message: 'YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY должны задаваться вместе',
+    })
+  }
+}
+
+function validateAbcpEnv(env: z.infer<typeof envSchema>, ctx: z.RefinementCtx) {
+  const hasLogin = env.ABCP_LOGIN !== undefined
+  const hasPassword = env.ABCP_PASSWORD !== undefined
+  if (hasLogin !== hasPassword) {
+    ctx.addIssue({
+      code: 'custom',
+      path: [hasLogin ? 'ABCP_PASSWORD' : 'ABCP_LOGIN'],
+      message: 'ABCP_LOGIN и ABCP_PASSWORD должны задаваться вместе',
     })
   }
 }

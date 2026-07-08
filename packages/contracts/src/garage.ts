@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { vehicleSchema, vinSchema } from './catalog'
+import { vehicleSchema, vinOrFrameSchema } from './catalog'
 
 /** Сохранённый автомобиль в гараже пользователя. */
 export const savedVehicleSchema = vehicleSchema.extend({
@@ -10,7 +10,7 @@ export const savedVehicleSchema = vehicleSchema.extend({
 })
 
 export const addVehicleRequestSchema = z.object({
-  vin: vinSchema,
+  vin: vinOrFrameSchema,
   nickname: z.string().trim().min(1).max(60).optional(),
 })
 

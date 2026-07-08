@@ -1,4 +1,4 @@
-import { plateSchema, type TierPick } from '@web-app-demo/contracts'
+import { plateSchema, vinOrFrameSchema, type TierPick } from '@web-app-demo/contracts'
 
 import type { CatalogService } from '../catalog/service'
 import type { OrdersService } from '../orders/service'
@@ -13,8 +13,6 @@ import {
   WELCOME,
 } from './formatters'
 import type { TelegramClient, TgCallbackQuery, TgMessage, TgUpdate } from './telegram'
-
-const VIN_PATTERN = /^[A-HJ-NPR-Z0-9]{17}$/
 
 type ChatSession = {
   vin?: string
@@ -98,9 +96,10 @@ export class TelegramBot {
       return
     }
 
-    const vinCandidate = text.toUpperCase().replace(/\s+/g, '')
-    if (VIN_PATTERN.test(vinCandidate)) {
-      await this.handleVin(chatId, vinCandidate)
+    // VIN (17 симв.) или frame-номер кузова JDM (SXA10-0012345) — общий контракт.
+    const vinCandidate = vinOrFrameSchema.safeParse(text.replace(/\s+/g, ''))
+    if (vinCandidate.success) {
+      await this.handleVin(chatId, vinCandidate.data)
       return
     }
 
@@ -121,7 +120,7 @@ export class TelegramBot {
     } catch {
       await this.client.sendMessage(
         chatId,
-        'Не удалось распознать этот VIN. Проверьте номер (17 символов) и пришлите снова.',
+        'Не удалось найти автомобиль по этому номеру. Проверьте VIN (17 символов) или номер кузова (например SXA10-0012345) и пришлите снова.',
       )
     }
   }
