@@ -56,7 +56,20 @@ export async function requestProviderJson(opts: {
     throw unavailable(provider, `HTTP ${response.status}`)
   }
 
-  const text = await response.text()
+  // Чтение тела — под тем же таймаут-сигналом: AbortSignal может сработать уже
+  // после получения заголовков, во время стриминга тела (большие ответы,
+  // медленный канал) — это тоже отказ провайдера, а не наш баг (500).
+  let text: string
+  try {
+    text = await response.text()
+  } catch (cause) {
+    if (isTimeout(cause)) {
+      console.error(`[${provider}] таймаут чтения ответа (${timeoutMs} мс)`, url)
+      throw unavailable(provider, `тело ответа не дочитано за ${timeoutMs} мс`)
+    }
+    console.error(`[${provider}] обрыв чтения ответа`, url, cause)
+    throw unavailable(provider, 'обрыв при чтении ответа')
+  }
   if (!text.trim()) return null
 
   try {

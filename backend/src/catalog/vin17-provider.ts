@@ -136,6 +136,10 @@ export class Vin17CatalogProvider implements CatalogProvider {
       provider: '17vin',
       url,
       fetchImpl: this.fetchImpl,
+      // Хост в Китае + объёмные ответы декодирования: стандартных 5 секунд
+      // не хватает (живой замер) — даём больше, пользовательский запрос всё
+      // равно ограничен этим потолком.
+      timeoutMs: 15_000,
     })
     if (envelope === null) return null
     if (!isRecord(envelope)) {
