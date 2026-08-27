@@ -41,6 +41,11 @@ describe('translatePartQuery', () => {
     expect(translatePartQuery('замена маслоотделителя')).toBe('分离器')
   })
 
+  test('клапанная крышка → 气缸盖罩; специфичнее одиночной «крышки» нет — та не переводится', () => {
+    expect(translatePartQuery('клапанная крышка')).toBe('气缸盖罩')
+    expect(translatePartQuery('крышка')).toBeNull()
+  })
+
   test('неизвестный запрос → null (сырьё для пополнения словаря)', () => {
     expect(translatePartQuery('тормозная жидкость')).toBeNull()
     expect(translatePartQuery('какая-то штука')).toBeNull()

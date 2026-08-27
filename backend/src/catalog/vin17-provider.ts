@@ -201,31 +201,78 @@ export function safeBase64(value: string): string {
  * Payload декодирования → карточка авто. Английские поля предпочитаются
  * китайским. null — если марку/модель определить не удалось. Код бренда `epc`
  * сохраняется в raw — он нужен searchParts (и деталям бренда в целом).
+ *
+ * Два источника в порядке приоритета:
+ *   1) model_list — китайская модельная база (заполнен для машин рынка КНР);
+ *   2) model_original_epc_list[].CarAttributes — атрибуты оригинального EPC.
+ *      Для импортных/неоднозначных VIN (напр. европейский BMW, у которого
+ *      шасси имеет несколько заводских конфигураций) model_list ПУСТ, но EPC
+ *      отдаёт Brand/Model/Year/Engine — без этого фолбэка такие VIN ошибочно
+ *      считались «не найденными» (живой случай: WBA… → BMW 520dX Touring).
  */
 export function mapVehicle(vin: string, payload: Record<string, unknown>): Vehicle | null {
   const model = (asArray(payload['model_list']) ?? [])[0] ?? null
+  const attrs = model ? null : extractEpcAttributes(payload)
 
-  const make = (model && str(model, ['Brand_en'])) ?? str(payload, ['brand'])
-  const modelName = model ? str(model, ['Model_en', 'Series_en', 'Model_detail_en']) : null
+  const make =
+    (model && str(model, ['Brand_en'])) ??
+    attrs?.get('brand') ??
+    str(payload, ['brand'])
+  const modelName = model
+    ? str(model, ['Model_en', 'Series_en', 'Model_detail_en'])
+    : (attrs?.get('model') ?? attrs?.get('model name') ?? attrs?.get('series') ?? null)
   if (!make && !modelName) return null
 
   const epc = str(payload, ['epc'])
+  const modelDetail =
+    (model && str(model, ['Model_detail_en'])) ??
+    attrs?.get('series and chassis no') ??
+    null
   return {
     vin,
-    make: make ?? 'Не определено',
+    make: make ? normalizeBrand(make) : 'Не определено',
     model: modelName ?? 'Не определено',
     // Год из самого VIN точнее года поколения модели (Model_year).
-    year: int(payload, ['model_year_from_vin']) ?? (model ? (int(model, ['Model_year']) ?? 0) : 0),
-    engine: model ? str(model, ['Engine_no_en', 'Engine_no']) : null,
-    bodyType: model ? str(model, ['Body_type_en', 'Body_type', 'Chassis_code']) : null,
+    year:
+      int(payload, ['model_year_from_vin']) ??
+      (model ? (int(model, ['Model_year']) ?? 0) : Number.parseInt(attrs?.get('year') ?? '', 10) || 0),
+    engine: model
+      ? str(model, ['Engine_no_en', 'Engine_no'])
+      : (attrs?.get('engine') ?? attrs?.get('engine code') ?? null),
+    bodyType: model
+      ? str(model, ['Body_type_en', 'Body_type', 'Chassis_code'])
+      : (attrs?.get('body') ?? null),
     // Только нужное: полный ответ 17vin с регуляторными списками слишком жирный.
     raw: {
       ...(epc ? { epc } : {}),
-      ...(model && str(model, ['Model_detail_en'])
-        ? { modelDetail: str(model, ['Model_detail_en']) }
-        : {}),
+      ...(modelDetail ? { modelDetail } : {}),
     },
   }
+}
+
+/**
+ * CarAttributes оригинального EPC → карта «имя атрибута (в нижнем регистре) →
+ * значение». Английские значения приоритетнее китайских.
+ */
+function extractEpcAttributes(payload: Record<string, unknown>): Map<string, string> | null {
+  const entry = (asArray(payload['model_original_epc_list']) ?? [])[0]
+  if (!entry) return null
+
+  const attrs = new Map<string, string>()
+  for (const attr of asArray(entry['CarAttributes']) ?? []) {
+    const name = str(attr, ['Col_name'])
+    const value = str(attr, ['Col_value'])
+    if (!name || !value) continue
+    const key = name.toLowerCase()
+    if (str(attr, ['Language']) === 'en' || !attrs.has(key)) attrs.set(key, value)
+  }
+  return attrs.size > 0 ? attrs : null
+}
+
+/** EPC отдаёт бренды в нижнем регистре ('bmw') — приводим к читаемому виду. */
+function normalizeBrand(value: string): string {
+  if (!/^[a-z]+$/.test(value)) return value
+  return value.length <= 3 ? value.toUpperCase() : value[0]!.toUpperCase() + value.slice(1)
 }
 
 /**

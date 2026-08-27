@@ -237,6 +237,39 @@ describe('mapVehicle', () => {
     expect(mapVehicle(VIN, { full_vin: VIN, model_list: [] })).toBeNull()
   })
 
+  test('model_list пуст → фолбэк на атрибуты оригинального EPC (импортный BMW)', () => {
+    // Живой формат ответа для WBA…: китайская база модель не знает,
+    // но EPC отдаёт CarAttributes в парах zh/en.
+    const vehicle = mapVehicle('WBAJP51070BJ28779', {
+      epc: 'bmw',
+      brand: '',
+      model_year_from_vin: '2018',
+      model_list: [],
+      model_original_epc_list: [
+        {
+          Epc_id: 12541,
+          CarAttributes: [
+            { Language: 'zh', Col_name: '品牌', Col_value: '宝马' },
+            { Language: 'en', Col_name: 'Brand', Col_value: 'bmw' },
+            { Language: 'en', Col_name: 'Model', Col_value: '520dX' },
+            { Language: 'en', Col_name: 'Series And Chassis No', Col_value: "5' G31 Touring" },
+            { Language: 'en', Col_name: 'Year', Col_value: '2018' },
+            { Language: 'en', Col_name: 'Engine', Col_value: 'B47D' },
+            { Language: 'en', Col_name: 'Body', Col_value: 'Touring' },
+          ],
+        },
+      ],
+    })
+
+    expect(vehicle).not.toBeNull()
+    expect(vehicle!.make).toBe('BMW') // нижний регистр EPC нормализован
+    expect(vehicle!.model).toBe('520dX')
+    expect(vehicle!.year).toBe(2018)
+    expect(vehicle!.engine).toBe('B47D')
+    expect(vehicle!.bodyType).toBe('Touring')
+    expect(vehicle!.raw?.['epc']).toBe('bmw') // поиск деталей остаётся возможен
+  })
+
   test('модель без английских полей → китайский brand как запасной вариант', () => {
     const vehicle = mapVehicle(VIN, { brand: '丰田', model_list: [{ Model_en: 'Prado' }] })
     expect(vehicle!.make).toBe('丰田')
