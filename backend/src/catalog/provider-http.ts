@@ -21,15 +21,21 @@ export async function requestProviderJson(opts: {
   url: string
   fetchImpl: typeof fetch
   headers?: Record<string, string>
+  /** HTTP-метод (по умолчанию GET). POST — для провайдеров с form-запросами (VINqu). */
+  method?: 'GET' | 'POST'
+  /** Тело запроса для POST (FormData/URLSearchParams сами проставляют Content-Type). */
+  body?: BodyInit
   /** Таймаут ответа, мс (по умолчанию PROVIDER_TIMEOUT_MS). */
   timeoutMs?: number
 }): Promise<unknown | null> {
-  const { provider, url, fetchImpl, headers } = opts
+  const { provider, url, fetchImpl, headers, method, body } = opts
   const timeoutMs = opts.timeoutMs ?? PROVIDER_TIMEOUT_MS
 
   let response: Response
   try {
     response = await fetchImpl(url, {
+      method: method ?? 'GET',
+      body,
       headers: { Accept: 'application/json', ...headers },
       signal: AbortSignal.timeout(timeoutMs),
     })

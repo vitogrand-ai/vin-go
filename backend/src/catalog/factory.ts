@@ -1,5 +1,5 @@
 import type { AppEnv } from '../env'
-import { ABCP_DEFAULT_BASE_URL, AbcpSupplierProvider } from './abcp-provider'
+import { AbcpSupplierProvider } from './abcp-provider'
 import { ACAT_DEFAULT_BASE_URL, AcatCatalogProvider } from './acat-provider'
 import { AVTOCOD_DEFAULT_BASE_URL, AvtocodPlateProvider } from './avtocod-provider'
 import { EMEX_DEFAULT_BASE_URL, EmexSupplierProvider } from './emex-provider'
@@ -10,6 +10,7 @@ import { MockCatalogProvider, MockPlateProvider, MockSupplierProvider } from './
 import { CachingSupplierProvider, type OfferResolver } from './offer-cache'
 import { PARTSINDEX_DEFAULT_BASE_URL, PartsIndexCatalogProvider } from './partsindex-provider'
 import type { CatalogProvider, PlateProvider, SupplierProvider } from './providers'
+import { VIN17_DEFAULT_BASE_URL, Vin17CatalogProvider } from './vin17-provider'
 
 export type CatalogProviders = {
   catalog: CatalogProvider
@@ -28,11 +29,13 @@ export type CatalogProviders = {
  * меняются, потому что все они работают через интерфейсы провайдеров.
  *
  * Каталог: агрегация источников по ключам — acat (`ACAT_API_KEY`, широкий primary)
- *   + PartsIndex (`PARTSINDEX_API_KEY`, свежие китайцы) + epcdata (`EPCDATA_API_KEY`,
+ *   + PartsIndex (`PARTSINDEX_API_KEY`, свежие китайцы) + 17vin (`VIN17_USER`+
+ *   `VIN17_PASSWORD`, китайский EPC, $0.15/VIN) + epcdata (`EPCDATA_API_KEY`,
  *   JDM по frame-номеру). 2+ заданы → связка через FallbackCatalogProvider;
  *   один → он; ни одного → мок.
- * Поставщики: слияние источников по ключам — ABCP (`ABCP_LOGIN`+`ABCP_PASSWORD`)
- *   + Emex (`EMEX_API_KEY`). Оба заданы → MergingSupplierProvider (сравнение цен);
+ * Поставщики: слияние источников по ключам — ABCP/4mycar (`ABCP_LOGIN`+
+ *   `ABCP_PASSWORD`+`ABCP_API_URL` — хост клиентского API магазина) + Emex
+ *   (`EMEX_API_KEY`). Оба заданы → MergingSupplierProvider (сравнение цен);
  *   один → он; ни одного → мок.
  * Госномера: `AVTOCOD_API_KEY` → боевой Avtocod (госномер→VIN), иначе мок.
  */
@@ -58,13 +61,13 @@ export function createCatalogProviders(env: AppEnv): CatalogProviders {
 function createSupplierProvider(env: AppEnv): SupplierProvider {
   const sources: NamedSupplierProvider[] = []
 
-  if (env.ABCP_LOGIN && env.ABCP_PASSWORD) {
+  if (env.ABCP_LOGIN && env.ABCP_PASSWORD && env.ABCP_API_URL) {
     sources.push({
       name: 'abcp',
       provider: new AbcpSupplierProvider({
         login: env.ABCP_LOGIN,
         password: env.ABCP_PASSWORD,
-        baseUrl: env.ABCP_API_URL ?? ABCP_DEFAULT_BASE_URL,
+        baseUrl: env.ABCP_API_URL,
       }),
     })
   }
@@ -104,6 +107,20 @@ function createCatalogProvider(env: AppEnv): CatalogProvider {
       provider: new PartsIndexCatalogProvider({
         apiKey: env.PARTSINDEX_API_KEY,
         baseUrl: env.PARTSINDEX_BASE_URL ?? PARTSINDEX_DEFAULT_BASE_URL,
+      }),
+    })
+  }
+
+  // Китайский EPC: после широких каталогов — платит $0.15 за каждый новый VIN,
+  // поэтому пусть сперва отвечают источники с абонентской платой. Добирает
+  // китайские авто (и локализованные иномарки), которые они не опознали.
+  if (env.VIN17_USER && env.VIN17_PASSWORD) {
+    sources.push({
+      name: 'vin17',
+      provider: new Vin17CatalogProvider({
+        user: env.VIN17_USER,
+        password: env.VIN17_PASSWORD,
+        baseUrl: env.VIN17_BASE_URL ?? VIN17_DEFAULT_BASE_URL,
       }),
     })
   }

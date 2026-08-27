@@ -53,6 +53,38 @@ describe('loadEnv', () => {
     expect(env.SPACES_CDN_BASE_URL).toBe('https://images.example.com')
   })
 
+  test('требует полную тройку ABCP: логин+пароль без хоста API — ошибка', () => {
+    const baseEnv = {
+      DATABASE_URL: 'postgresql://superuser:superpassword@localhost:54329/web_app_demo',
+      JWT_SECRET: '12345678901234567890123456789012',
+    }
+
+    // Хост клиентского API у ABCP свой у каждого магазина (idNNNN.public.api.abcp.ru),
+    // поэтому без него провайдер неработоспособен.
+    expect(() =>
+      loadEnv({
+        ...baseEnv,
+        ABCP_LOGIN: 'vinq',
+        ABCP_PASSWORD: 'secret',
+      }),
+    ).toThrow('ABCP_API_URL')
+
+    expect(() =>
+      loadEnv({
+        ...baseEnv,
+        ABCP_API_URL: 'https://id123.public.api.abcp.ru',
+      }),
+    ).toThrow('ABCP_LOGIN')
+
+    const env = loadEnv({
+      ...baseEnv,
+      ABCP_LOGIN: 'vinq',
+      ABCP_PASSWORD: 'secret',
+      ABCP_API_URL: 'https://id123.public.api.abcp.ru',
+    })
+    expect(env.ABCP_API_URL).toBe('https://id123.public.api.abcp.ru')
+  })
+
   test('rejects known weak JWT secrets in production-like runtimes', () => {
     expect(() =>
       loadEnv({

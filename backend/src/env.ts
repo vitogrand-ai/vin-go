@@ -96,17 +96,26 @@ const envSchema = z.object({
   EPCDATA_API_KEY: optionalStringSchema,
   // Базовый URL API JDM-каталога (по умолчанию EPCDATA_DEFAULT_BASE_URL).
   EPCDATA_BASE_URL: optionalUrlSchema,
+  // Каталог 17vin.com — китайский EPC (VIN→авто→оригинальные детали), сильная
+  // сторона — китайские авто и китайский рынок. Логин+пароль задаются ВМЕСТЕ.
+  // Тариф: $0.15/VIN, повторы по тому же VIN 3 месяца бесплатны.
+  VIN17_USER: optionalStringSchema,
+  VIN17_PASSWORD: optionalStringSchema,
+  // Базовый URL API 17vin (по умолчанию VIN17_DEFAULT_BASE_URL — HTTP, порт 8080).
+  VIN17_BASE_URL: optionalUrlSchema,
   // Реестр госномер→VIN (Avtocod). Ключ включает боевой PlateProvider;
   // пусто — мок-реестр (демо-номера).
   AVTOCOD_API_KEY: optionalStringSchema,
   // Базовый URL API Avtocod (по умолчанию AVTOCOD_DEFAULT_BASE_URL).
   AVTOCOD_BASE_URL: optionalUrlSchema,
-  // Поставщики ABCP (слой цен/наличия по OEM-номеру). Логин+пароль задаются
-  // ВМЕСТЕ и включают боевой SupplierProvider; пусто — мок-поставщики.
+  // Поставщик на платформе ABCP, напр. 4mycar.ru (слой цен/наличия по
+  // OEM-номеру). Все ТРИ значения задаются вместе и включают боевой
+  // SupplierProvider; пусто — мок-поставщики.
   ABCP_LOGIN: optionalStringSchema,
   ABCP_PASSWORD: optionalStringSchema,
-  // Базовый URL API ABCP (по умолчанию ABCP_DEFAULT_BASE_URL). Переопределять
-  // под свой хост/версию по документации провайдера.
+  // Хост клиентского API магазина (формат https://idNNNN.public.api.abcp.ru).
+  // Универсального дефолта нет — хост выдаёт поддержка магазина вместе с
+  // включением API-доступа для аккаунта.
   ABCP_API_URL: optionalUrlSchema,
   // Поставщик Emex — второй источник предложений. Вместе с ABCP выдачи
   // сливаются (MergingSupplierProvider): сравнение цен из нескольких источников.
@@ -123,6 +132,7 @@ const envSchema = z.object({
   validateStorageEnv(env, ctx)
   validatePaymentEnv(env, ctx)
   validateAbcpEnv(env, ctx)
+  validateVin17Env(env, ctx)
 })
 
 export type AppEnv = z.infer<typeof envSchema>
@@ -227,13 +237,28 @@ function validatePaymentEnv(env: z.infer<typeof envSchema>, ctx: z.RefinementCtx
 }
 
 function validateAbcpEnv(env: z.infer<typeof envSchema>, ctx: z.RefinementCtx) {
-  const hasLogin = env.ABCP_LOGIN !== undefined
-  const hasPassword = env.ABCP_PASSWORD !== undefined
-  if (hasLogin !== hasPassword) {
+  // Хост клиентского API у ABCP индивидуален для магазина, поэтому без
+  // ABCP_API_URL логин/пароль бесполезны — требуем все три сразу.
+  const keys = ['ABCP_LOGIN', 'ABCP_PASSWORD', 'ABCP_API_URL'] as const
+  const missing = keys.filter((key) => env[key] === undefined)
+  if (missing.length === 0 || missing.length === keys.length) return
+  for (const key of missing) {
     ctx.addIssue({
       code: 'custom',
-      path: [hasLogin ? 'ABCP_PASSWORD' : 'ABCP_LOGIN'],
-      message: 'ABCP_LOGIN и ABCP_PASSWORD должны задаваться вместе',
+      path: [key],
+      message: 'ABCP_LOGIN, ABCP_PASSWORD и ABCP_API_URL должны задаваться вместе',
+    })
+  }
+}
+
+function validateVin17Env(env: z.infer<typeof envSchema>, ctx: z.RefinementCtx) {
+  const hasUser = env.VIN17_USER !== undefined
+  const hasPassword = env.VIN17_PASSWORD !== undefined
+  if (hasUser !== hasPassword) {
+    ctx.addIssue({
+      code: 'custom',
+      path: [hasUser ? 'VIN17_PASSWORD' : 'VIN17_USER'],
+      message: 'VIN17_USER и VIN17_PASSWORD должны задаваться вместе',
     })
   }
 }
