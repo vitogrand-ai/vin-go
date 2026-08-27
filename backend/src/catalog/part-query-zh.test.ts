@@ -36,6 +36,11 @@ describe('translatePartQuery', () => {
     expect(translatePartQuery('подушка')).toBeNull()
   })
 
+  test('маслоотделитель → родовой EPC-«сепаратор» (запрос с пилота)', () => {
+    expect(translatePartQuery('маслоотделитель')).toBe('分离器')
+    expect(translatePartQuery('замена маслоотделителя')).toBe('分离器')
+  })
+
   test('неизвестный запрос → null (сырьё для пополнения словаря)', () => {
     expect(translatePartQuery('тормозная жидкость')).toBeNull()
     expect(translatePartQuery('какая-то штука')).toBeNull()
