@@ -1,5 +1,9 @@
 import type { Money, Offer, OrderDto, Part, TierPick, Vehicle } from '@web-app-demo/contracts'
 
+import {
+  selectServiceAlerts,
+  type IntervalStatus,
+} from '../garage/service-intervals'
 import type { InlineKeyboard } from './telegram'
 
 const rubFormatter = new Intl.NumberFormat('ru-RU', {
@@ -33,9 +37,11 @@ function escapeHtml(value: string): string {
 export const WELCOME =
   'Привет! Я помогу подобрать автозапчасти.\n\n' +
   '1. Пришлите <b>VIN</b> (17 символов) или <b>госномер</b> (например, А123ВС777).\n' +
+  '   Можно просто <b>сфотографировать шильдик</b> — прочитаю номер сам.\n' +
   '2. Затем — название запчасти (например, «тормозные колодки»).\n' +
+  '   Понимаю <b>голосовые</b> и мастерской жаргон: «гранатка», «воздухан», «жабка».\n' +
   '3. Я покажу варианты: эконом, оптимальный и оригинал.\n\n' +
-  'Команды: /start — помощь.'
+  'Команды: /cart — корзина, /orders — заказы, /checkout — оформить, /start — помощь.'
 
 export function formatVehicle(vehicle: Vehicle): string {
   const lines = [
@@ -48,9 +54,15 @@ export function formatVehicle(vehicle: Vehicle): string {
   return lines.join('\n')
 }
 
-export function partsMessage(parts: Part[]): { text: string; keyboard: InlineKeyboard } {
+export function partsMessage(
+  parts: Part[],
+  resolvedQuery?: string,
+): { text: string; keyboard: InlineKeyboard } {
+  // Если искали не тем словом, что прислал мастер, — говорим об этом прямо,
+  // иначе выдача по «гранатке» выглядит как ошибка бота.
+  const hint = resolvedQuery ? `🔎 Искал как «${escapeHtml(resolvedQuery)}».\n` : ''
   return {
-    text: `Найдено запчастей: ${parts.length}. Выберите нужную:`,
+    text: `${hint}Найдено запчастей: ${parts.length}. Выберите нужную:`,
     keyboard: {
       inline_keyboard: parts.map((part) => [
         {
@@ -130,6 +142,51 @@ export function offersMessage(oemNumber: string, picks: TierPick[], offers: Offe
 
   lines.push(`Всего предложений: ${offers.length}.`)
   return lines.join('\n')
+}
+
+/**
+ * Сообщение «что пора менять». Показываем просроченное и ближайшее; позиции с
+ * большим запасом опускаем — простыня из двенадцати строк не читается в чате.
+ * Названия кликабельны как обычный запрос: они канонические, поиск их понимает.
+ */
+export function serviceIntervalsMessage(mileageKm: number, statuses: IntervalStatus[]): string {
+  if (statuses.length === 0) {
+    return 'Не смог посчитать регламент по этим данным. Проверьте пробег.'
+  }
+
+  const { overdue, soon } = selectServiceAlerts(statuses)
+  const lines = [`🔧 <b>Регламент ТО</b> на пробеге ${formatKm(mileageKm)}`, '']
+
+  if (overdue.length > 0) {
+    lines.push('<b>Просрочено:</b>')
+    for (const status of overdue) {
+      lines.push(`• ${escapeHtml(status.title)} — на ${formatKm(-status.kmRemaining)} назад`)
+    }
+    lines.push('')
+  }
+
+  if (soon.length > 0) {
+    lines.push('<b>Скоро:</b>')
+    for (const status of soon) {
+      lines.push(`• ${escapeHtml(status.title)} — через ${formatKm(status.kmRemaining)}`)
+    }
+    lines.push('')
+  }
+
+  if (overdue.length === 0 && soon.length === 0) {
+    const nearest = [...statuses].sort((a, b) => a.kmRemaining - b.kmRemaining)[0]!
+    lines.push(
+      `Ничего срочного. Ближайшее — ${escapeHtml(nearest.title)} через ${formatKm(nearest.kmRemaining)}.`,
+      '',
+    )
+  }
+
+  lines.push('Пришлите название позиции — подберу артикулы под вашу машину.')
+  return lines.join('\n')
+}
+
+function formatKm(km: number): string {
+  return `${Math.round(km).toLocaleString('ru-RU')} км`
 }
 
 function truncate(value: string, max: number): string {

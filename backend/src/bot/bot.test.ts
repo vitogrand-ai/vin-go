@@ -21,6 +21,11 @@ class FakeTelegramClient implements TelegramClient {
   async answerCallbackQuery(callbackQueryId: string): Promise<void> {
     this.answered.push(callbackQueryId)
   }
+
+  /** Файлы по умолчанию недоступны — тесты вложений подменяют этот метод. */
+  async downloadFile(): Promise<Uint8Array | null> {
+    return null
+  }
 }
 
 const CHAT_ID = 42

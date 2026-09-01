@@ -3,16 +3,20 @@ import { plateSchema, vinOrFrameSchema, type TierPick } from '@web-app-demo/cont
 import type { CatalogService } from '../catalog/service'
 import type { OrdersService } from '../orders/service'
 import type { TelegramLinkService } from '../telegram/service'
+import { computeServiceIntervals } from '../garage/service-intervals'
 import {
   cartMessage,
   formatVehicle,
   offersMessage,
   ordersMessage,
   partsMessage,
+  serviceIntervalsMessage,
   tierAddKeyboard,
   WELCOME,
 } from './formatters'
 import type { TelegramClient, TgCallbackQuery, TgMessage, TgUpdate } from './telegram'
+import { detectImageMediaType, type VinOcrProvider } from './vin-ocr'
+import type { VoiceTranscriber } from './voice-transcribe'
 
 type ChatSession = {
   vin?: string
@@ -33,6 +37,21 @@ export type BotCabinet = {
 }
 
 /**
+ * Распознавание вложений. Каждый пункт включается своим ключом в env и
+ * отсутствует по умолчанию: без них бот работает как раньше, просто просит
+ * прислать данные текстом.
+ */
+export type BotMedia = {
+  /** Фото шильдика → VIN. */
+  vinOcr?: VinOcrProvider
+  /** Голосовое → текст запроса. */
+  voice?: VoiceTranscriber
+}
+
+/** Больше 20 МБ Bot API не отдаёт — не тратим вызов getFile впустую. */
+const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
+
+/**
  * Telegram-бот: поиск по VIN/госномеру + кабинет (корзина, заказы) после
  * привязки аккаунта. Переиспользует CatalogService и OrdersService напрямую.
  */
@@ -43,14 +62,124 @@ export class TelegramBot {
     private readonly client: TelegramClient,
     private readonly catalog: CatalogService,
     private readonly cabinet?: BotCabinet,
+    private readonly media: BotMedia = {},
   ) {}
 
   async handleUpdate(update: TgUpdate): Promise<void> {
-    if (update.message?.text) {
-      await this.handleMessage(update.message)
+    const message = update.message
+    if (message?.text) {
+      await this.handleMessage(message)
+    } else if (message?.voice) {
+      await this.handleVoice(message)
+    } else if (message?.photo?.length || isImageDocument(message?.document?.mime_type)) {
+      await this.handlePhoto(message!)
     } else if (update.callback_query) {
       await this.handleCallback(update.callback_query)
     }
+  }
+
+  /**
+   * Голосовое → текст → обычная обработка. Расшифрованный текст проходит тот же
+   * путь, что и набранный: он может оказаться и VIN-ом, и названием детали,
+   * и командой, поэтому разбирать его отдельно не нужно.
+   */
+  private async handleVoice(message: TgMessage): Promise<void> {
+    const chatId = message.chat.id
+    if (!this.media.voice) {
+      await this.client.sendMessage(
+        chatId,
+        'Голосовые я пока не разбираю — напишите текстом, пожалуйста.',
+      )
+      return
+    }
+
+    const audio = await this.downloadAttachment(message.voice!.file_id, message.voice!.file_size)
+    if (!audio) {
+      await this.client.sendMessage(chatId, 'Не смог скачать голосовое. Повторите текстом.')
+      return
+    }
+
+    const text = await this.media.voice.transcribe(audio)
+    if (!text) {
+      await this.client.sendMessage(
+        chatId,
+        'Не разобрал голосовое. Попробуйте записать ещё раз или напишите текстом.',
+      )
+      return
+    }
+
+    await this.client.sendMessage(chatId, `🎤 Распознал: «${text}»`)
+    await this.handleMessage({ ...message, text })
+  }
+
+  /**
+   * Фото шильдика → VIN. Берётся самый крупный размер: на мелком превью
+   * символы не читаются. Фото, присланное файлом («без сжатия»), — лучший
+   * случай, оно приходит в document и не пережато мессенджером.
+   */
+  private async handlePhoto(message: TgMessage): Promise<void> {
+    const chatId = message.chat.id
+    if (!this.media.vinOcr) {
+      await this.client.sendMessage(
+        chatId,
+        'Распознавание фото сейчас недоступно — пришлите VIN текстом (17 символов).',
+      )
+      return
+    }
+
+    const attachment = pickBestPhoto(message)
+    if (!attachment) return
+
+    const bytes = await this.downloadAttachment(attachment.fileId, attachment.fileSize)
+    if (!bytes) {
+      await this.client.sendMessage(chatId, 'Не смог скачать фото. Пришлите VIN текстом.')
+      return
+    }
+
+    const mediaType = detectImageMediaType(bytes)
+    if (!mediaType) {
+      await this.client.sendMessage(
+        chatId,
+        'Этот формат снимка я не читаю. Пришлите обычное фото (JPG/PNG) или VIN текстом.',
+      )
+      return
+    }
+
+    const vin = await this.media.vinOcr.extractVin({ bytes, mediaType })
+    if (!vin) {
+      await this.client.sendMessage(
+        chatId,
+        'Не разобрал номер на фото. Снимите табличку крупнее и без бликов — ' +
+          'или пришлите VIN текстом (17 символов).',
+      )
+      return
+    }
+
+    await this.client.sendMessage(chatId, `📷 Распознал VIN: <code>${vin}</code>`, {
+      parseMode: 'HTML',
+    })
+    await this.handleVin(chatId, vin)
+  }
+
+  /**
+   * «Что пора менять на таком пробеге» — повод вернуться в бота между поломками
+   * и готовая корзина расходников. Названия позиций канонические, поэтому
+   * следующим сообщением мастер просто присылает нужное и получает артикулы.
+   */
+  private async handleServiceIntervals(chatId: number, mileageKm: number): Promise<void> {
+    const statuses = computeServiceIntervals(mileageKm)
+    await this.client.sendMessage(chatId, serviceIntervalsMessage(mileageKm, statuses), {
+      parseMode: 'HTML',
+    })
+  }
+
+  /** Скачивание вложения с проверкой лимита Bot API. */
+  private async downloadAttachment(
+    fileId: string,
+    fileSize: number | undefined,
+  ): Promise<Uint8Array | null> {
+    if (fileSize !== undefined && fileSize > MAX_ATTACHMENT_BYTES) return null
+    return this.client.downloadFile(fileId)
   }
 
   private session(chatId: number): ChatSession {
@@ -93,6 +222,21 @@ export class TelegramBot {
     }
     if (command === '/checkout' || command === 'оформить') {
       await this.handleCheckout(chatId, telegramUserId)
+      return
+    }
+
+    const mileage = parseServiceCommand(text)
+    if (mileage !== null) {
+      await this.handleServiceIntervals(chatId, mileage)
+      return
+    }
+    // Команда без пробега — в любом написании: «/то», «/to», «ТО».
+    if (/^\/?(?:то|to)$/i.test(command)) {
+      await this.client.sendMessage(
+        chatId,
+        'Укажите пробег: например <code>/то 145000</code> — покажу, что пора менять.',
+        { parseMode: 'HTML' },
+      )
       return
     }
 
@@ -148,7 +292,7 @@ export class TelegramBot {
       return
     }
 
-    const { parts } = await this.catalog.searchParts(session.vin, query)
+    const { parts, resolvedQuery } = await this.catalog.searchParts(session.vin, query)
     if (parts.length === 0) {
       await this.client.sendMessage(
         chatId,
@@ -158,8 +302,8 @@ export class TelegramBot {
     }
 
     session.parts = Object.fromEntries(parts.map((part) => [part.oemNumber, part.name]))
-    const { text, keyboard } = partsMessage(parts)
-    await this.client.sendMessage(chatId, text, { replyMarkup: keyboard })
+    const { text, keyboard } = partsMessage(parts, resolvedQuery)
+    await this.client.sendMessage(chatId, text, { parseMode: 'HTML', replyMarkup: keyboard })
   }
 
   private async handleCallback(callback: TgCallbackQuery): Promise<void> {
@@ -319,6 +463,41 @@ export class TelegramBot {
       }
     }
   }
+}
+
+/**
+ * Пробег из команды ТО: «/то 145000», «/to 145 000», «ТО 145000».
+ * Возвращает null, если это не команда ТО или пробег неправдоподобен —
+ * миллион километров и «0» почти всегда опечатка, а не запрос.
+ */
+export function parseServiceCommand(text: string): number | null {
+  const match = /^\/?(?:то|to)\s+([\d\s]+)$/i.exec(text.trim())
+  if (!match) return null
+
+  const mileage = Number.parseInt(match[1]!.replace(/\s+/g, ''), 10)
+  if (!Number.isFinite(mileage) || mileage <= 0 || mileage > 2_000_000) return null
+  return mileage
+}
+
+/** Прислан ли документ, который является изображением (фото «без сжатия»). */
+function isImageDocument(mimeType: string | undefined): boolean {
+  return mimeType?.startsWith('image/') ?? false
+}
+
+/**
+ * Какой файл читать: документ-изображение приоритетнее — Telegram не жмёт его,
+ * и мелкие символы VIN остаются различимыми. Иначе берётся самый крупный из
+ * размеров сжатого фото (Telegram отдаёт их по возрастанию).
+ */
+function pickBestPhoto(
+  message: TgMessage,
+): { fileId: string; fileSize: number | undefined } | null {
+  if (isImageDocument(message.document?.mime_type)) {
+    return { fileId: message.document!.file_id, fileSize: message.document!.file_size }
+  }
+  const sizes = message.photo ?? []
+  const largest = sizes[sizes.length - 1]
+  return largest ? { fileId: largest.file_id, fileSize: largest.file_size } : null
 }
 
 function formatTotal(total: { amount: number; currency: string }): string {

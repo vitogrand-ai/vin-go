@@ -23,6 +23,10 @@ class FakeTelegramClient implements TelegramClient {
     this.sent.push({ chatId, text })
   }
   async answerCallbackQuery(): Promise<void> {}
+  /** Вложения в сценариях кабинета не используются. */
+  async downloadFile(): Promise<Uint8Array | null> {
+    return null
+  }
   lastText(): string {
     return this.sent.at(-1)?.text ?? ''
   }
