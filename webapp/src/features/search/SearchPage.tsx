@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useSearch } from '@tanstack/react-router'
 import { vinOrFrameSchema, type Offer, type OfferTier, type Part, type TierPick, type Vehicle } from '@web-app-demo/contracts'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
@@ -32,10 +32,13 @@ import { cn } from '@/lib/utils'
 
 type AddToCart = (offer: Offer, tier?: OfferTier) => void
 
-const DEMO_VINS = ['WVWZZZ1JZ3W386752', 'XTA210990Y2293564', 'JTDBR32E430123456']
-const DEMO_PLATES = ['А123ВС777', 'О001АА199', 'Е777КХ797']
+const DEMO_VINS = ['WVWZZZ1JZ3W386752', 'XTA210990Y2293564', 'LFV3B2FY2N3102396']
+const DEMO_PLATES = ['А123ВС777', 'О001АА199', 'У454УС198']
 
 type SearchMode = 'vin' | 'plate'
+
+/** Какое поле формы не прошло проверку — подсвечиваем его и объясняем причину. */
+type FormError = { field: 'vehicle' | 'query'; message: string }
 
 export function SearchPage() {
   // Deep-link: /search?vin=... прификлит VIN (кнопка «Подобрать запчасти» из гаража).
@@ -46,6 +49,9 @@ export function SearchPage() {
   const [query, setQuery] = useState('')
   const [selectedPart, setSelectedPart] = useState<Part | null>(null)
   const [history, setHistory] = useState<SearchHistoryEntry[]>(() => readSearchHistory())
+  const [formError, setFormError] = useState<FormError | null>(null)
+  const vehicleInputRef = useRef<HTMLInputElement>(null)
+  const queryInputRef = useRef<HTMLInputElement>(null)
 
   const search = useMutation({
     mutationFn: (resolvedVin: string) => publicApi.searchParts({ vin: resolvedVin, query }),
@@ -66,22 +72,43 @@ export function SearchPage() {
 
   const isBusy = search.isPending || plateLookup.isPending
 
+  // Кнопка «Найти» всегда активна: молча заблокированная кнопка не объясняет,
+  // чего не хватает. Проверяем поля на отправке и указываем на пустое.
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
-    if (!query.trim()) return
+
+    if (mode === 'vin' ? !vin.trim() : !plate.trim()) {
+      setFormError({
+        field: 'vehicle',
+        message: mode === 'vin' ? 'Введите VIN автомобиля' : 'Введите госномер автомобиля',
+      })
+      vehicleInputRef.current?.focus()
+      return
+    }
+
+    if (!query.trim()) {
+      setFormError({
+        field: 'query',
+        message: 'Укажите, что ищем — например, «тормозные колодки»',
+      })
+      queryInputRef.current?.focus()
+      return
+    }
+
+    setFormError(null)
+
     if (mode === 'vin') {
-      if (vin.trim()) {
-        search.mutate(vin, {
-          onSuccess: () => setHistory(pushSearchHistory({ mode: 'vin', value: vin, query })),
-        })
-      }
-    } else if (plate.trim()) {
+      search.mutate(vin, {
+        onSuccess: () => setHistory(pushSearchHistory({ mode: 'vin', value: vin, query })),
+      })
+    } else {
       plateLookup.mutate()
     }
   }
 
   // Клик по записи истории — прификл формы (пользователь жмёт «Найти»).
   const applyHistory = (entry: SearchHistoryEntry) => {
+    setFormError(null)
     setMode(entry.mode)
     if (entry.mode === 'vin') setVin(entry.value)
     else setPlate(entry.value)
@@ -113,7 +140,10 @@ export function SearchPage() {
               <button
                 key={value}
                 type="button"
-                onClick={() => setMode(value)}
+                onClick={() => {
+                  setMode(value)
+                  setFormError(null)
+                }}
                 className={cn(
                   'rounded-md px-3 py-1 text-sm font-medium transition-colors',
                   mode === value
@@ -133,14 +163,20 @@ export function SearchPage() {
                   VIN
                 </Typography>
                 <Input
+                  ref={vehicleInputRef}
                   value={vin}
-                  onChange={(event) => setVin(event.target.value.toUpperCase())}
+                  onChange={(event) => {
+                    setVin(event.target.value.toUpperCase())
+                    setFormError(null)
+                  }}
                   placeholder="WVWZZZ1JZ3W386752"
                   maxLength={17}
                   autoCapitalize="characters"
                   spellCheck={false}
+                  aria-invalid={formError?.field === 'vehicle'}
                   className="font-mono"
                 />
+                <FieldError error={formError} field="vehicle" />
               </div>
             ) : (
               <div className="grid gap-1.5">
@@ -148,14 +184,20 @@ export function SearchPage() {
                   Госномер
                 </Typography>
                 <Input
+                  ref={vehicleInputRef}
                   value={plate}
-                  onChange={(event) => setPlate(event.target.value.toUpperCase())}
+                  onChange={(event) => {
+                    setPlate(event.target.value.toUpperCase())
+                    setFormError(null)
+                  }}
                   placeholder="А123ВС777"
                   maxLength={9}
                   autoCapitalize="characters"
                   spellCheck={false}
+                  aria-invalid={formError?.field === 'vehicle'}
                   className="font-mono"
                 />
+                <FieldError error={formError} field="vehicle" />
               </div>
             )}
             <div className="grid gap-1.5">
@@ -163,19 +205,22 @@ export function SearchPage() {
                 Запчасть
               </Typography>
               <Input
+                ref={queryInputRef}
                 value={query}
-                onChange={(event) => setQuery(event.target.value)}
+                onChange={(event) => {
+                  setQuery(event.target.value)
+                  setFormError(null)
+                }}
                 placeholder="тормозные колодки"
+                aria-invalid={formError?.field === 'query'}
               />
+              <FieldError error={formError} field="query" />
             </div>
             <div className="grid gap-1.5">
               <Typography variant="label" tone="muted" className="sm:opacity-0">
                 &nbsp;
               </Typography>
-              <Button
-                type="submit"
-                disabled={isBusy || !query.trim() || (mode === 'vin' ? !vin.trim() : !plate.trim())}
-              >
+              <Button type="submit" disabled={isBusy}>
                 {isBusy ? <Spinner /> : null}
                 Найти
               </Button>
@@ -190,7 +235,11 @@ export function SearchPage() {
               <button
                 key={demo}
                 type="button"
-                onClick={() => (mode === 'vin' ? setVin(demo) : setPlate(demo))}
+                onClick={() => {
+                  if (mode === 'vin') setVin(demo)
+                  else setPlate(demo)
+                  setFormError(null)
+                }}
                 className="rounded-md border px-2 py-0.5 font-mono text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-secondary-foreground"
               >
                 {demo}
@@ -232,6 +281,16 @@ export function SearchPage() {
         <OffersPanel part={selectedPart} vehicleVin={vehicle?.vin} />
       ) : null}
     </section>
+  )
+}
+
+function FieldError({ error, field }: { error: FormError | null; field: FormError['field'] }) {
+  if (error?.field !== field) return null
+
+  return (
+    <Typography variant="bodyXs" tone="destructive" role="alert">
+      {error.message}
+    </Typography>
   )
 }
 

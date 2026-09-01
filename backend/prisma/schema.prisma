@@ -212,3 +212,19 @@ model AuthSession {
   @@index([expiresAt], map: "auth_sessions_expires_at_idx")
   @@map("auth_sessions")
 }
+
+/// Кэш перевода текстов каталога на русский: названия деталей и категории
+/// приходят от EPC-провайдеров латиницей/иероглифами. Перевод платный, поэтому
+/// одна исходная строка переводится один раз и переиспользуется всеми
+/// пользователями (см. CatalogTranslator).
+model CatalogTranslation {
+  id        String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  /// Исходный текст провайдера как есть — ключ кэша.
+  source    String   @unique(map: "catalog_translations_source_key")
+  ru        String
+  /// Чем переведено: модель ИИ. Нужно для точечного сброса при смене модели.
+  model     String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("catalog_translations")
+}

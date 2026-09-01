@@ -22,7 +22,7 @@ export async function main() {
   const prisma = createPrisma(env.DATABASE_URL)
   // Единый набор провайдеров (те же, что у API) — один инстанс поставщиков на
   // каталог и корзину, чтобы будущие кэш/лимиты реального API не расходились.
-  const providers = createCatalogProviders(env)
+  const providers = createCatalogProviders(env, prisma)
   const catalog = new CatalogService(providers.catalog, providers.suppliers, providers.plates)
   const orders = new OrdersService(prisma, providers.suppliers, undefined, providers.offerResolver)
   const link = new TelegramLinkService(prisma, env.TELEGRAM_BOT_USERNAME)

@@ -7,6 +7,7 @@ import {
   MOCK_BRANDS,
   ORIGINAL_BRAND,
   makeFromVin,
+  yearFromVin,
 } from './mock-data'
 import type { CatalogProvider, PlateProvider, SupplierProvider } from './providers'
 
@@ -26,6 +27,16 @@ function seededUnit(seed: number): number {
   return x - Math.floor(x)
 }
 
+/**
+ * Совпадение слова запроса с токеном каталога: взаимное вхождение с ограничением
+ * разницы длин. Допуск в 3 символа покрывает русские окончания («тормозные» ↔
+ * «тормоз»), но не даёт «масло» ложно цепляться к «маслоотделитель».
+ */
+function wordMatches(word: string, token: string): boolean {
+  if (Math.abs(word.length - token.length) > 3) return false
+  return token.includes(word) || word.includes(token)
+}
+
 export class MockCatalogProvider implements CatalogProvider {
   async decodeVin(vin: string): Promise<Vehicle | null> {
     const known = KNOWN_VEHICLES[vin]
@@ -33,24 +44,28 @@ export class MockCatalogProvider implements CatalogProvider {
       return { vin, ...known }
     }
 
-    // Неизвестный VIN: синтезируем правдоподобную карточку по коду WMI.
+    // Неизвестный VIN: карточка по коду WMI и модельному году из 10-го символа.
     return {
       vin,
       make: makeFromVin(vin),
       model: 'Модель не определена (демо)',
-      year: 2000 + (hashString(vin) % 24),
+      year: yearFromVin(vin) ?? 2000 + (hashString(vin) % 24),
       engine: null,
       bodyType: null,
     }
   }
 
   async searchParts(_vehicle: Vehicle, query: string): Promise<Part[]> {
-    const needle = query.trim().toLowerCase()
-    if (!needle) return []
+    const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
+    if (words.length === 0) return []
 
     return CATALOG_PARTS.filter((part) => {
-      const haystack = [part.name.toLowerCase(), part.category.toLowerCase(), ...part.keywords]
-      return haystack.some((value) => value.includes(needle) || needle.includes(value))
+      const tokens = [
+        ...part.name.toLowerCase().split(/[\s(),]+/).filter(Boolean),
+        part.category.toLowerCase(),
+        ...part.keywords,
+      ]
+      return words.some((word) => tokens.some((token) => wordMatches(word, token)))
     }).map((part) => ({
       oemNumber: part.oemNumber,
       name: part.name,

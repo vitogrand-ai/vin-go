@@ -6,10 +6,12 @@ import { AppError } from '../http/errors'
 import {
   Vin17CatalogProvider,
   VIN17_MAX_PARTS,
+  brandFromEpc,
   buildVin17Token,
   mapParts,
   mapVehicle,
   safeBase64,
+  stripBrandPrefix,
 } from './vin17-provider'
 
 /** Стаб fetch: отвечает заданной функцией, без реальной сети. */
@@ -293,5 +295,33 @@ describe('mapParts', () => {
     expect(parts).toEqual([
       { oemNumber: '091140G010', name: '千斤顶把手', category: '', brand: null },
     ])
+  })
+})
+
+describe('brandFromEpc / stripBrandPrefix', () => {
+  test('марка берётся из кода каталога, когда поля brand нет (живой случай: корейцы)', () => {
+    expect(brandFromEpc('hyundai', 'HYUNDAI REURPH517 ACCENT/SOLARIS 17 (2017-2020)')).toBe('Hyundai')
+  })
+
+  test('мультибрендовый код каталога маркой не считается', () => {
+    expect(brandFromEpc('audi_vw', 'GOLF BLUEMOTION')).toBe('Golf')
+  })
+
+  test('код каталога с цифрами за марку не принимается', () => {
+    expect(brandFromEpc('audi_vw', 'REURPH517 ACCENT')).toBeNull()
+  })
+
+  test('дублирующий префикс марки из модели убирается', () => {
+    expect(stripBrandPrefix('HYUNDAI REURPH517 ACCENT/SOLARIS 17', 'Hyundai')).toBe(
+      'REURPH517 ACCENT/SOLARIS 17',
+    )
+  })
+
+  test('модель, состоящая только из марки, остаётся как есть', () => {
+    expect(stripBrandPrefix('Hyundai', 'Hyundai')).toBe('Hyundai')
+  })
+
+  test('модель без префикса не трогается', () => {
+    expect(stripBrandPrefix('Camry 70', 'Toyota')).toBe('Camry 70')
   })
 })

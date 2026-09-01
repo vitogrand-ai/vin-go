@@ -14,9 +14,10 @@
     "build": "bun run prisma:generate && tsc --noEmit",
     "typecheck": "bun run prisma:generate && tsc --noEmit",
     "test": "bun run test:unit && bun run test:integration",
-    "test:unit": "bun test src/env.test.ts src/db.test.ts src/contracts.test.ts src/cron.test.ts src/auth/access-tokens.test.ts src/auth/passwords.test.ts src/auth/refresh-tokens.test.ts src/auth/routes.test.ts src/storage/service.test.ts src/catalog/tiering.test.ts src/catalog/offer-cache.test.ts src/catalog/provider-http.test.ts src/catalog/acat-provider.test.ts src/catalog/abcp-provider.test.ts src/catalog/vinqu-client.test.ts src/catalog/vin17-provider.test.ts src/catalog/part-query-zh.test.ts src/catalog/brand-quality.test.ts src/catalog/partsindex-provider.test.ts src/catalog/fallback-catalog.test.ts src/catalog/avtocod-provider.test.ts src/catalog/emex-provider.test.ts src/catalog/merging-supplier.test.ts src/catalog/epcdata-provider.test.ts src/catalog/catalog.integration.test.ts src/bot/bot.test.ts src/payments/service.test.ts src/payments/webhook-ip.test.ts src/payments/yookassa-provider.test.ts src/http/rate-limit.test.ts",
+    "test:unit": "bun test src/env.test.ts src/db.test.ts src/contracts.test.ts src/cron.test.ts src/auth/access-tokens.test.ts src/auth/passwords.test.ts src/auth/refresh-tokens.test.ts src/auth/routes.test.ts src/storage/service.test.ts src/catalog/tiering.test.ts src/catalog/offer-cache.test.ts src/catalog/provider-http.test.ts src/catalog/acat-provider.test.ts src/catalog/abcp-provider.test.ts src/catalog/vinqu-client.test.ts src/catalog/vin17-provider.test.ts src/catalog/part-query-zh.test.ts src/catalog/brand-quality.test.ts src/catalog/partsindex-provider.test.ts src/catalog/fallback-catalog.test.ts src/catalog/avtocod-provider.test.ts src/catalog/emex-provider.test.ts src/catalog/merging-supplier.test.ts src/catalog/epcdata-provider.test.ts src/catalog/partscatalogs-provider.test.ts src/catalog/catalog.integration.test.ts src/bot/bot.test.ts src/payments/service.test.ts src/payments/webhook-ip.test.ts src/payments/yookassa-provider.test.ts src/http/rate-limit.test.ts",
     "test:integration": "bun scripts/test-integration.mjs",
     "smoke:docker": "bun scripts/docker-smoke.mjs",
+    "catalog:coverage": "bun scripts/catalog-coverage.ts",
     "prisma": "prisma",
     "prisma:generate": "bun scripts/prisma-generate.mjs",
     "prisma:generate:raw": "prisma generate",
@@ -25,6 +26,7 @@
     "prisma:validate": "prisma validate"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.122.0",
     "@aws-sdk/client-s3": "^3.1048.0",
     "@aws-sdk/s3-request-presigner": "^3.1048.0",
     "@hono/zod-openapi": "^1.4.0",

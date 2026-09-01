@@ -214,16 +214,23 @@ export function mapVehicle(vin: string, payload: Record<string, unknown>): Vehic
   const model = (asArray(payload['model_list']) ?? [])[0] ?? null
   const attrs = model ? null : extractEpcAttributes(payload)
 
+  const rawModelName = model
+    ? str(model, ['Model_en', 'Series_en', 'Model_detail_en'])
+    : (attrs?.get('model') ?? attrs?.get('model name') ?? attrs?.get('series') ?? null)
+
+  const epc = str(payload, ['epc'])
+  // У части импортных VIN (живьём: корейцы Hyundai/Kia) отдельного поля марки
+  // нет вовсе — `brand` пустой, а название модели идёт вместе с маркой:
+  // «HYUNDAI REURPH517 ACCENT/SOLARIS 17». Марку в таком случае даёт код
+  // каталога `epc`, а из модели её дублирующий префикс убираем.
   const make =
     (model && str(model, ['Brand_en'])) ??
     attrs?.get('brand') ??
-    str(payload, ['brand'])
-  const modelName = model
-    ? str(model, ['Model_en', 'Series_en', 'Model_detail_en'])
-    : (attrs?.get('model') ?? attrs?.get('model name') ?? attrs?.get('series') ?? null)
+    str(payload, ['brand']) ??
+    brandFromEpc(epc, rawModelName)
+  const modelName = stripBrandPrefix(rawModelName, make)
   if (!make && !modelName) return null
 
-  const epc = str(payload, ['epc'])
   const modelDetail =
     (model && str(model, ['Model_detail_en'])) ??
     attrs?.get('series and chassis no') ??
@@ -270,6 +277,36 @@ function extractEpcAttributes(payload: Record<string, unknown>): Map<string, str
 }
 
 /** EPC отдаёт бренды в нижнем регистре ('bmw') — приводим к читаемому виду. */
+/**
+ * Марка из кода каталога `epc`, когда отдельного поля марки в ответе нет.
+ * Мультибрендовые коды («audi_vw») маркой не считаем — по ним нельзя сказать,
+ * что именно за машина; в таком случае марку берём из первого слова модели,
+ * если оно похоже на название марки, а не на код каталога.
+ */
+export function brandFromEpc(epc: string | null, modelName: string | null): string | null {
+  if (epc && !epc.includes('_')) return normalizeBrand(epc)
+
+  const firstWord = modelName?.trim().split(/\s+/)[0] ?? ''
+  // Код каталога («REURPH517») от названия марки отличают цифры внутри.
+  if (/^[A-Za-z-]{2,}$/.test(firstWord)) return normalizeBrand(firstWord.toLowerCase())
+  return null
+}
+
+/**
+ * Убирает из названия модели дублирующий префикс марки: 17vin отдаёт
+ * «HYUNDAI REURPH517 ACCENT/SOLARIS 17», а показывать нужно модель без марки —
+ * марка выводится отдельным полем.
+ */
+export function stripBrandPrefix(modelName: string | null, make: string | null): string | null {
+  if (!modelName || !make) return modelName
+
+  const trimmed = modelName.trim()
+  if (!trimmed.toLowerCase().startsWith(make.toLowerCase())) return trimmed
+
+  const rest = trimmed.slice(make.length).trim()
+  return rest.length > 0 ? rest : trimmed
+}
+
 function normalizeBrand(value: string): string {
   if (!/^[a-z]+$/.test(value)) return value
   return value.length <= 3 ? value.toUpperCase() : value[0]!.toUpperCase() + value.slice(1)

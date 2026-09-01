@@ -37,6 +37,13 @@ export const KNOWN_VEHICLES: Record<string, KnownVehicle> = {
     engine: '1.6 VVT-i (3ZZ-FE)',
     bodyType: 'Седан',
   },
+  LFV3B2FY2N3102396: {
+    make: 'Audi',
+    model: 'Q5L (FY)',
+    year: 2022,
+    engine: '2.0 TFSI (EA888)',
+    bodyType: 'Кроссовер',
+  },
 }
 
 /** Демо-госномера (кириллица) → VIN. Реальный реестр подключается позже. */
@@ -44,6 +51,7 @@ export const KNOWN_PLATES: Record<string, string> = {
   А123ВС777: 'WVWZZZ1JZ3W386752',
   О001АА199: 'XTA210990Y2293564',
   Е777КХ797: 'JTDBR32E430123456',
+  У454УС198: 'LFV3B2FY2N3102396',
 }
 
 /** Сопоставление кода WMI (первые 3 символа VIN) с маркой — для неизвестных VIN. */
@@ -59,10 +67,39 @@ const WMI_TO_MAKE: Record<string, string> = {
   KNA: 'KIA',
   VF1: 'Renault',
   Z8N: 'Nissan',
+  WA1: 'Audi',
+  XW8: 'Volkswagen',
+  // Китайская сборка: заводские WMI совместных предприятий.
+  LFV: 'Volkswagen / Audi (FAW-VW)',
+  LSV: 'Volkswagen (SAIC)',
+  LBV: 'BMW (Brilliance)',
+  LVS: 'Ford (Changan)',
+  Z94: 'Hyundai / KIA',
 }
 
 export function makeFromVin(vin: string): string {
   return WMI_TO_MAKE[vin.slice(0, 3)] ?? 'Неизвестный производитель'
+}
+
+/**
+ * Коды модельного года (10-й символ VIN, ISO 3779): цикл 30 лет, буквы I, O, Q,
+ * U, Z и цифра 0 не используются. '1'→2001 … 'N'→2022 … 'Y'→2030.
+ */
+const VIN_YEAR_CODES = '123456789ABCDEFGHJKLMNPRSTVWXY'
+
+/**
+ * Модельный год из 10-го символа VIN. Код цикличен, поэтому берём последний
+ * год цикла, не превышающий следующий календарный ('3' в 2026 → 2003, не 2033).
+ * Возвращает null для недопустимого символа.
+ */
+export function yearFromVin(vin: string, now: Date = new Date()): number | null {
+  const index = VIN_YEAR_CODES.indexOf(vin.charAt(9))
+  if (index === -1) return null
+
+  let year = 2001 + index
+  const maxYear = now.getFullYear() + 1
+  while (year > maxYear) year -= 30
+  return year
 }
 
 export type CatalogPart = {
@@ -116,6 +153,12 @@ export const CATALOG_PARTS: CatalogPart[] = [
     name: 'Масло моторное 5W-40, 1 л',
     category: 'Технические жидкости',
     keywords: ['масло', 'моторное', 'oil', '5w-40', '5w40'],
+  },
+  {
+    oemNumber: '06L103495',
+    name: 'Маслоотделитель (сепаратор картерных газов)',
+    category: 'Двигатель',
+    keywords: ['маслоотделитель', 'сепаратор', 'картерных', 'газов', 'вкг', 'pcv', 'separator'],
   },
 ]
 

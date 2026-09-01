@@ -90,6 +90,13 @@ const envSchema = z.object({
   PARTSINDEX_API_KEY: optionalStringSchema,
   // Базовый URL API PartsIndex (по умолчанию PARTSINDEX_DEFAULT_BASE_URL).
   PARTSINDEX_BASE_URL: optionalUrlSchema,
+  // Мировой OEM-каталог parts-catalogs.com (легковые + грузовые, VIN и frame,
+  // данные локализуются на русский через Accept-Language). Ключ включает адаптер.
+  // Тестовый ключ ограничен квотой VIN (при исчерпании — ошибка 1004 QUOTA_DENY);
+  // доступ дополнительно привязан к IP-allowlist на стороне провайдера.
+  PARTSCATALOGS_API_KEY: optionalStringSchema,
+  // Базовый URL API parts-catalogs (по умолчанию PARTSCATALOGS_DEFAULT_BASE_URL).
+  PARTSCATALOGS_BASE_URL: optionalUrlSchema,
   // JDM-каталог (epcdata/amayama) — японцы с правым рулём, поиск по frame-номеру.
   // Третий источник каталога в fallback-цепочке. ⚠️ Публичного API у них нет —
   // ключ появится после договорённости о доступе.
@@ -122,6 +129,14 @@ const envSchema = z.object({
   EMEX_API_KEY: optionalStringSchema,
   // Базовый URL API Emex (по умолчанию EMEX_DEFAULT_BASE_URL).
   EMEX_BASE_URL: optionalUrlSchema,
+  // Перевод названий деталей и категорий каталога на русский (Claude). EPC-каталоги
+  // отдают заводские названия латиницей/иероглифами («CAP ASSY, OIL FILTER W/ELEMEMT»),
+  // а рынок пилота — СНГ. Ключ включает перевод; пусто — показываем как есть.
+  // Каждая строка переводится один раз и кладётся в кэш (таблица catalog_translations).
+  ANTHROPIC_API_KEY: optionalStringSchema,
+  // Модель перевода (по умолчанию DEFAULT_TRANSLATION_MODEL — claude-sonnet-5).
+  // claude-opus-5 — точнее на редком жаргоне, claude-haiku-4-5 — дешевле и быстрее.
+  TRANSLATION_MODEL: optionalStringSchema,
   // Telegram-бот. Пусто — бот не запускается (entrypoint завершится с подсказкой).
   TELEGRAM_BOT_TOKEN: optionalStringSchema,
   // Имя бота (без @) для deep-link привязки t.me/<bot>?start=<code>.

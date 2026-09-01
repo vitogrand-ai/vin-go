@@ -39,6 +39,23 @@ describe('catalog API', () => {
     expect(data.vehicle.make).toBe('Volkswagen')
   })
 
+  test('расшифровывает VIN китайской сборки (Audi Q5L)', async () => {
+    const res = await post('/api/catalog/decode-vin', { vin: 'LFV3B2FY2N3102396' })
+    expect(res.status).toBe(200)
+    const data = (await res.json()) as { vehicle: { make: string; year: number } }
+    expect(data.vehicle.make).toBe('Audi')
+    expect(data.vehicle.year).toBe(2022)
+  })
+
+  test('для неизвестного VIN берёт марку из WMI и год из 10-го символа', async () => {
+    // WAU → Audi, 10-й символ 'L' → модельный год 2020.
+    const res = await post('/api/catalog/decode-vin', { vin: 'WAUZZZ8R5LA123456' })
+    expect(res.status).toBe(200)
+    const data = (await res.json()) as { vehicle: { make: string; year: number } }
+    expect(data.vehicle.make).toBe('Audi')
+    expect(data.vehicle.year).toBe(2020)
+  })
+
   test('отвергает некорректный VIN с кодом 400', async () => {
     const res = await post('/api/catalog/decode-vin', { vin: 'SHORT' })
     expect(res.status).toBe(400)
@@ -75,6 +92,20 @@ describe('catalog API', () => {
     const data = (await res.json()) as SearchPartsResponse
     expect(data.parts.length).toBeGreaterThan(0)
     expect(data.parts[0]?.category).toBe('Тормозная система')
+  })
+
+  test('находит маслоотделитель без ложных совпадений по «масло»', async () => {
+    const res = await post('/api/catalog/search', {
+      vin: 'LFV3B2FY2N3102396',
+      query: 'маслоотделитель',
+    })
+    expect(res.status).toBe(200)
+    const data = (await res.json()) as SearchPartsResponse
+    const names = data.parts.map((p) => p.name)
+    expect(names).toContain('Маслоотделитель (сепаратор картерных газов)')
+    // Короткое слово «масло» не должно цепляться к длинному запросу.
+    expect(names).not.toContain('Масло моторное 5W-40, 1 л')
+    expect(names).not.toContain('Фильтр масляный')
   })
 
   test('возвращает предложения с тремя тирами', async () => {

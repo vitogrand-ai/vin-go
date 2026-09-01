@@ -35,3 +35,6 @@ backend/.prisma-generate.lock
 .vscode/
 *.swp
 *.swo
+
+# Claude Code: личные разрешения сессии
+.claude/settings.local.json

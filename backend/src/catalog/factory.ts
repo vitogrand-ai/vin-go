@@ -1,5 +1,9 @@
+import type { DbClient } from '../db'
 import type { AppEnv } from '../env'
 import { AbcpSupplierProvider } from './abcp-provider'
+import { CatalogTranslator } from './catalog-translator'
+import { TranslatingCatalogProvider } from './translating-catalog'
+import { AnthropicTranslationProvider } from './translation-provider'
 import { ACAT_DEFAULT_BASE_URL, AcatCatalogProvider } from './acat-provider'
 import { AVTOCOD_DEFAULT_BASE_URL, AvtocodPlateProvider } from './avtocod-provider'
 import { EMEX_DEFAULT_BASE_URL, EmexSupplierProvider } from './emex-provider'
@@ -8,6 +12,7 @@ import { FallbackCatalogProvider, type NamedCatalogProvider } from './fallback-c
 import { MergingSupplierProvider, type NamedSupplierProvider } from './merging-supplier'
 import { MockCatalogProvider, MockPlateProvider, MockSupplierProvider } from './mock-providers'
 import { CachingSupplierProvider, type OfferResolver } from './offer-cache'
+import { PARTSCATALOGS_DEFAULT_BASE_URL, PartsCatalogsCatalogProvider } from './partscatalogs-provider'
 import { PARTSINDEX_DEFAULT_BASE_URL, PartsIndexCatalogProvider } from './partsindex-provider'
 import type { CatalogProvider, PlateProvider, SupplierProvider } from './providers'
 import { VIN17_DEFAULT_BASE_URL, Vin17CatalogProvider } from './vin17-provider'
@@ -29,23 +34,26 @@ export type CatalogProviders = {
  * меняются, потому что все они работают через интерфейсы провайдеров.
  *
  * Каталог: агрегация источников по ключам — acat (`ACAT_API_KEY`, широкий primary)
- *   + PartsIndex (`PARTSINDEX_API_KEY`, свежие китайцы) + 17vin (`VIN17_USER`+
- *   `VIN17_PASSWORD`, китайский EPC, $0.15/VIN) + epcdata (`EPCDATA_API_KEY`,
- *   JDM по frame-номеру). 2+ заданы → связка через FallbackCatalogProvider;
- *   один → он; ни одного → мок.
+ *   + PartsIndex (`PARTSINDEX_API_KEY`, свежие китайцы) + parts-catalogs
+ *   (`PARTSCATALOGS_API_KEY`, мировой OEM с русской локализацией) + 17vin
+ *   (`VIN17_USER`+`VIN17_PASSWORD`, китайский EPC, $0.15/VIN) + epcdata
+ *   (`EPCDATA_API_KEY`, JDM по frame-номеру). 2+ заданы → связка через
+ *   FallbackCatalogProvider; один → он; ни одного → мок.
  * Поставщики: слияние источников по ключам — ABCP/4mycar (`ABCP_LOGIN`+
  *   `ABCP_PASSWORD`+`ABCP_API_URL` — хост клиентского API магазина) + Emex
  *   (`EMEX_API_KEY`). Оба заданы → MergingSupplierProvider (сравнение цен);
  *   один → он; ни одного → мок.
  * Госномера: `AVTOCOD_API_KEY` → боевой Avtocod (госномер→VIN), иначе мок.
+ * Перевод: `ANTHROPIC_API_KEY` + доступная БД → выдача каталога переводится на
+ *   русский с кэшем (TranslatingCatalogProvider); иначе — язык провайдера.
  */
-export function createCatalogProviders(env: AppEnv): CatalogProviders {
+export function createCatalogProviders(env: AppEnv, db?: DbClient): CatalogProviders {
   // Поставщики оборачиваются кэшем-снимком: поиск запоминает предложения по id,
   // корзина резолвит выбранное из снимка (см. CachingSupplierProvider).
   const suppliers = new CachingSupplierProvider(createSupplierProvider(env))
 
   return {
-    catalog: createCatalogProvider(env),
+    catalog: withTranslation(createCatalogProvider(env), env, db),
     suppliers,
     plates: env.AVTOCOD_API_KEY
       ? new AvtocodPlateProvider({
@@ -55,6 +63,24 @@ export function createCatalogProviders(env: AppEnv): CatalogProviders {
       : new MockPlateProvider(),
     offerResolver: suppliers,
   }
+}
+
+/**
+ * Оборачивает каталог переводом на русский, если есть ключ модели и БД под кэш.
+ * Кэш обязателен: без него каждый поиск заново оплачивал бы перевод тех же
+ * названий, поэтому при отсутствии `db` перевод не включается.
+ */
+function withTranslation(catalog: CatalogProvider, env: AppEnv, db?: DbClient): CatalogProvider {
+  if (!env.ANTHROPIC_API_KEY || !db) return catalog
+
+  const translator = new CatalogTranslator(
+    db,
+    new AnthropicTranslationProvider({
+      apiKey: env.ANTHROPIC_API_KEY,
+      model: env.TRANSLATION_MODEL,
+    }),
+  )
+  return new TranslatingCatalogProvider(catalog, translator)
 }
 
 /** Собирает поставщиков из доступных ключей: 0 → мок, 1 → он, 2+ → слияние выдач. */
@@ -107,6 +133,21 @@ function createCatalogProvider(env: AppEnv): CatalogProvider {
       provider: new PartsIndexCatalogProvider({
         apiKey: env.PARTSINDEX_API_KEY,
         baseUrl: env.PARTSINDEX_BASE_URL ?? PARTSINDEX_DEFAULT_BASE_URL,
+      }),
+    })
+  }
+
+  // Мировой OEM-каталог parts-catalogs.com: понимает VIN и frame, локализован на
+  // русский (запросы поиска работают без словаря перевода). Тестовый ключ имеет
+  // квоту по числу VIN, поэтому после подписочных источников, но перед 17vin:
+  // покрытие мировое, а у 17vin сильная сторона — только китайцы. Имя источника
+  // 'partscatalogs' захардкожено и в адаптере (проверка доверия к vehicle.raw).
+  if (env.PARTSCATALOGS_API_KEY) {
+    sources.push({
+      name: 'partscatalogs',
+      provider: new PartsCatalogsCatalogProvider({
+        apiKey: env.PARTSCATALOGS_API_KEY,
+        baseUrl: env.PARTSCATALOGS_BASE_URL ?? PARTSCATALOGS_DEFAULT_BASE_URL,
       }),
     })
   }

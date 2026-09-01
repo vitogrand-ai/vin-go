@@ -56,7 +56,7 @@ export function createApp({ env, prisma }: CreateAppOptions) {
     suppliers: supplierProvider,
     plates: plateProvider,
     offerResolver,
-  } = createCatalogProviders(env)
+  } = createCatalogProviders(env, prisma)
   const catalogService = new CatalogService(catalogProvider, supplierProvider, plateProvider)
   const garageService = new GarageService(prisma, catalogProvider)
   const notificationService = new NotificationService(prisma, {
