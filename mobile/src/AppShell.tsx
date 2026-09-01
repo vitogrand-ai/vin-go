@@ -30,7 +30,7 @@ export function AppShell() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.topbar}>
-        <Text style={styles.brand}>VIN GO</Text>
+        <Text style={styles.brand}>VINGO</Text>
         <Pressable onPress={() => void logout()} hitSlop={8}>
           <Text style={styles.logout}>Выйти</Text>
         </Pressable>

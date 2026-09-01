@@ -1,0 +1,170 @@
+/* ============================================================
+   vingo — design tokens
+   v1.0 · may 2026
+   
+   Drop this file at the root of your stylesheet stack.
+   Reference tokens via var(--token-name) in any CSS file.
+   ============================================================ */
+
+:root {
+  /* ─── color · primary ─────────────────────────────────────── */
+  --vg-navy-900: #0E1633;
+  --vg-navy-800: #1F2A4D;
+  --vg-navy-700: #374266;
+  --vg-navy-500: #5E6685;
+  --vg-navy-300: #A8AEC2;
+  --vg-navy-100: #E2E5EE;
+
+  --vg-crimson-700: #B82A2E;
+  --vg-crimson-600: #E03A3E;  /* accent · CTA · OEM marker */
+  --vg-crimson-500: #F25357;
+  --vg-crimson-100: #FAE0E0;
+
+  /* ─── color · neutrals ────────────────────────────────────── */
+  --vg-paper:      #FAFAF7;
+  --vg-paper-2:    #F2F3EF;
+  --vg-line:       #E0E1DC;
+  --vg-line-soft:  #ECECE8;
+  --vg-ink:        #2A2E33;
+  --vg-ink-soft:   #5C6066;
+  --vg-ink-muted:  #898C94;
+
+  /* ─── color · price tiers (product signal) ────────────────── */
+  --vg-tier-budget:        #E8B544;
+  --vg-tier-budget-bg:     #FBEFD2;
+  --vg-tier-standard:      #3F90B0;
+  --vg-tier-standard-bg:   #DBE9EF;
+  --vg-tier-original:      var(--vg-crimson-600);
+  --vg-tier-original-bg:   var(--vg-crimson-100);
+
+  /* ─── color · status ──────────────────────────────────────── */
+  --vg-ok:    #3F9B6A;
+  --vg-warn:  #D9A53D;
+  --vg-err:   var(--vg-crimson-600);
+
+  /* ─── typography ──────────────────────────────────────────── */
+  --vg-font-sans: "Manrope", system-ui, -apple-system, "Helvetica Neue", sans-serif;
+  --vg-font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --vg-text-display:  64px;
+  --vg-text-title-1:  36px;
+  --vg-text-title-2:  22px;
+  --vg-text-body:     15px;
+  --vg-text-caption:  13px;
+  --vg-text-mono:     14px;
+  --vg-text-eyebrow:  11px;
+
+  --vg-line-tight:   1.02;
+  --vg-line-snug:    1.2;
+  --vg-line-normal:  1.5;
+
+  --vg-track-tight:  -0.025em;
+  --vg-track-normal: 0;
+  --vg-track-mono:   0.04em;
+  --vg-track-eyebrow: 0.1em;
+
+  /* ─── radii ───────────────────────────────────────────────── */
+  --vg-radius-sm:   6px;
+  --vg-radius:      10px;   /* default controls */
+  --vg-radius-lg:   14px;   /* cards */
+  --vg-radius-xl:   26px;   /* logo mark, hero containers */
+  --vg-radius-pill: 9999px;
+
+  /* ─── spacing scale (4-based) ─────────────────────────────── */
+  --vg-space-1:  4px;
+  --vg-space-2:  8px;
+  --vg-space-3:  12px;
+  --vg-space-4:  16px;
+  --vg-space-5:  20px;
+  --vg-space-6:  24px;
+  --vg-space-8:  32px;
+  --vg-space-10: 40px;
+  --vg-space-12: 48px;
+  --vg-space-16: 64px;
+  --vg-space-24: 96px;
+
+  /* ─── shadows ─────────────────────────────────────────────── */
+  --vg-shadow-sm:  0 1px 2px rgba(14, 22, 51, 0.06);
+  --vg-shadow:     0 4px 12px -4px rgba(14, 22, 51, 0.12), 0 2px 4px rgba(14, 22, 51, 0.04);
+  --vg-shadow-lg:  0 24px 48px -24px rgba(14, 22, 51, 0.20), 0 8px 16px -8px rgba(14, 22, 51, 0.08);
+
+  /* ─── motion ──────────────────────────────────────────────── */
+  --vg-easing:     cubic-bezier(0.2, 0.8, 0.2, 1);
+  --vg-dur-fast:   120ms;
+  --vg-dur-mid:    240ms;
+  --vg-dur-slow:   400ms;
+
+  /* ─── layout ──────────────────────────────────────────────── */
+  --vg-control-h-sm:   36px;
+  --vg-control-h:      44px;   /* default touch target */
+  --vg-control-h-lg:   52px;
+  --vg-container:      1240px;
+  --vg-gutter:         clamp(24px, 4vw, 64px);
+}
+
+
+/* ============================================================
+   Base reset & typography (optional — include or strip)
+   ============================================================ */
+body {
+  font-family: var(--vg-font-sans);
+  font-feature-settings: "ss01", "cv11";
+  color: var(--vg-ink);
+  background: var(--vg-paper);
+  -webkit-font-smoothing: antialiased;
+}
+
+.vg-mono { font-family: var(--vg-font-mono); letter-spacing: var(--vg-track-mono); }
+.vg-eyebrow { font-family: var(--vg-font-mono); font-size: var(--vg-text-eyebrow); letter-spacing: var(--vg-track-eyebrow); text-transform: uppercase; color: var(--vg-ink-muted); }
+
+
+/* ============================================================
+   Core components — minimum viable set
+   ============================================================ */
+
+/* Buttons */
+.vg-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: var(--vg-control-h);
+  padding: 0 20px;
+  border-radius: var(--vg-radius);
+  font: 600 14px/1 var(--vg-font-sans);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background var(--vg-dur-fast) var(--vg-easing);
+}
+.vg-btn--primary { background: var(--vg-crimson-600); color: #fff; }
+.vg-btn--primary:hover { background: var(--vg-crimson-700); }
+.vg-btn--secondary { background: var(--vg-paper); color: var(--vg-navy-900); border-color: var(--vg-navy-900); }
+.vg-btn--ink { background: var(--vg-navy-900); color: #fff; }
+.vg-btn--ghost { background: transparent; color: var(--vg-ink-soft); }
+.vg-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Input */
+.vg-input {
+  display: flex; align-items: center; gap: 10px;
+  height: 48px; padding: 0 14px;
+  background: #fff; border: 1px solid var(--vg-line);
+  border-radius: var(--vg-radius);
+}
+.vg-input:focus-within { border-color: var(--vg-navy-900); }
+.vg-input > input {
+  flex: 1; border: 0; outline: 0; background: transparent;
+  font-family: var(--vg-font-mono); font-size: 16px; font-weight: 500;
+  letter-spacing: var(--vg-track-mono); color: var(--vg-ink);
+}
+
+/* Card */
+.vg-card {
+  background: #fff;
+  border: 1px solid var(--vg-line);
+  border-radius: var(--vg-radius-lg);
+  padding: 24px;
+}
+
+/* Tier tags */
+.vg-tag { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: var(--vg-radius-sm); font-size: 12px; font-weight: 600; }
+.vg-tag--budget   { background: var(--vg-tier-budget-bg);   color: #6B5215; }
+.vg-tag--standard { background: var(--vg-tier-standard-bg); color: #1F4D5F; }
+.vg-tag--original { background: var(--vg-tier-original-bg); color: var(--vg-crimson-700); }
+.vg-tag--oem      { background: var(--vg-navy-900); color: #fff; font-family: var(--vg-font-mono); }

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="100" viewBox="0 0 320 100" font-family="Manrope, system-ui, sans-serif">
+  
+  <g transform="translate(0,10)">
+    <rect width="80" height="80" rx="18" fill="#0E1633"></rect>
+    <path d="M18 32 L40 58 L62 32" stroke="#FFFFFF" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round"></path>
+    <circle cx="40" cy="22" r="4.5" fill="#E03A3E"></circle>
+  </g>
+  
+  <text x="100" y="74" font-size="68" font-weight="800" letter-spacing="-3" fill="#0E1633">vingo</text>
+  <circle cx="142" cy="36" r="6.5" fill="#E03A3E"></circle>
+  
+</svg>

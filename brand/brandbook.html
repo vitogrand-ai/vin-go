@@ -1,0 +1,2839 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>vingo — Brand Book</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+/* vingo brandbook — design tokens */
+:root {
+  /* primary */
+  --navy-900: oklch(0.18 0.045 260);
+  --navy-800: oklch(0.24 0.05 260);
+  --navy-700: oklch(0.32 0.05 260);
+  --navy-500: oklch(0.50 0.04 260);
+  --navy-300: oklch(0.72 0.025 260);
+  --navy-100: oklch(0.93 0.01 250);
+
+  /* accent */
+  --crimson-700: oklch(0.50 0.20 25);
+  --crimson-600: oklch(0.60 0.22 25);
+  --crimson-500: oklch(0.66 0.22 25);
+  --crimson-100: oklch(0.92 0.04 25);
+
+  /* neutrals */
+  --paper: oklch(0.985 0.003 250);
+  --paper-2: oklch(0.965 0.004 250);
+  --line: oklch(0.90 0.006 250);
+  --line-soft: oklch(0.94 0.005 250);
+  --ink: oklch(0.20 0.02 260);
+  --ink-soft: oklch(0.45 0.02 260);
+  --ink-muted: oklch(0.62 0.015 260);
+
+  /* signals — price tiers */
+  --tier-budget: oklch(0.78 0.14 85);
+  --tier-budget-bg: oklch(0.95 0.05 85);
+  --tier-standard: oklch(0.62 0.10 200);
+  --tier-standard-bg: oklch(0.94 0.04 200);
+  --tier-original: var(--crimson-600);
+  --tier-original-bg: var(--crimson-100);
+
+  /* status */
+  --ok: oklch(0.62 0.13 155);
+  --warn: oklch(0.75 0.14 75);
+  --err: var(--crimson-600);
+
+  /* type */
+  --f-sans: "Manrope", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* layout */
+  --gutter: clamp(24px, 4vw, 64px);
+  --col: 1240px;
+  --radius: 14px;
+  --radius-sm: 8px;
+
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  font-family: var(--f-sans);
+  font-feature-settings: "ss01", "cv11";
+  background: var(--paper);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.5;
+  font-size: 16px;
+}
+
+a { color: inherit; text-decoration: none; }
+img { max-width: 100%; display: block; }
+
+/* layout helpers */
+.wrap { max-width: var(--col); margin: 0 auto; padding: 0 var(--gutter); }
+.section { padding: 96px 0; border-top: 1px solid var(--line); position: relative; }
+.section:first-of-type { border-top: 0; }
+.section--ink { background: var(--navy-900); color: var(--paper); border-color: var(--navy-800); }
+.section--paper2 { background: var(--paper-2); }
+
+/* section heading */
+.sec-head { display: grid; grid-template-columns: 200px 1fr; gap: 32px; margin-bottom: 56px; align-items: end; }
+.sec-num { font-family: var(--f-mono); font-size: 12px; letter-spacing: 0.1em; color: var(--ink-muted); text-transform: uppercase; }
+.sec-num::before { content: ""; display: block; width: 28px; height: 2px; background: var(--crimson-600); margin-bottom: 14px; }
+.sec-title { font-size: clamp(36px, 4.4vw, 64px); font-weight: 800; letter-spacing: -0.025em; line-height: 1.02; margin: 0; }
+.sec-lead { font-size: 18px; color: var(--ink-soft); max-width: 56ch; margin: 16px 0 0; line-height: 1.55; }
+.section--ink .sec-lead { color: oklch(0.78 0.02 260); }
+.section--ink .sec-num { color: oklch(0.72 0.03 260); }
+
+/* type elements */
+.eyebrow { font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-muted); }
+.kicker { font-family: var(--f-mono); font-size: 12px; color: var(--crimson-600); letter-spacing: 0.08em; text-transform: uppercase; }
+
+h1,h2,h3,h4,h5 { font-family: var(--f-sans); letter-spacing: -0.02em; }
+h3 { font-size: 22px; margin: 0 0 8px; font-weight: 700; }
+h4 { font-size: 14px; margin: 0 0 8px; font-weight: 700; }
+
+p { margin: 0 0 12px; }
+.muted { color: var(--ink-muted); }
+.mono { font-family: var(--f-mono); }
+
+/* card */
+.card { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; }
+.card--flush { padding: 0; overflow: hidden; }
+.card-label { display: flex; justify-content: space-between; padding: 14px 20px; border-top: 1px solid var(--line); font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-muted); }
+
+/* grid utility */
+.grid { display: grid; gap: 24px; }
+.g-2 { grid-template-columns: repeat(2, 1fr); }
+.g-3 { grid-template-columns: repeat(3, 1fr); }
+.g-4 { grid-template-columns: repeat(4, 1fr); }
+.g-6 { grid-template-columns: repeat(6, 1fr); }
+@media (max-width: 900px) { .g-3, .g-4, .g-6 { grid-template-columns: repeat(2, 1fr); } .g-2 { grid-template-columns: 1fr; } .sec-head { grid-template-columns: 1fr; } }
+
+</style>
+<style>
+/* ---------- Cover ---------- */
+.cover { min-height: 100vh; background: var(--cover-bg, var(--navy-900)); color: var(--cover-fg, var(--paper)); position: relative; overflow: hidden; }
+.cover::before {
+  content: ""; position: absolute; inset: 0;
+  background-image: radial-gradient(circle at 1px 1px, oklch(0.40 0.04 260) 1px, transparent 0);
+  background-size: 18px 18px;
+  opacity: var(--pattern-opacity, 0.4);
+  mask: linear-gradient(180deg, black 30%, transparent);
+}
+body.no-pattern { --pattern-opacity: 0; }
+body.cover-light .cover { --cover-bg: var(--paper); --cover-fg: var(--ink); }
+body.cover-light .cover-h1 { color: var(--ink); }
+body.cover-light .cover-sub { color: var(--ink-soft); }
+body.cover-light .cover-top { color: var(--ink-muted); }
+body.cover-light .cover-meta { border-color: var(--line); }
+body.cover-light .cover-meta dt { color: var(--ink-muted); }
+body.cover-light .cover-meta dd { color: var(--ink); }
+body.cover-light .cover-wordmark { -webkit-text-stroke-color: var(--navy-100); }
+.cover-inner { position: relative; padding: 56px var(--gutter) 64px; min-height: 100vh; display: grid; grid-template-rows: auto 1fr auto; }
+.cover-top { display: flex; justify-content: space-between; align-items: center; font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: oklch(0.70 0.03 260); }
+.cover-top a { color: inherit; }
+.cover-main { display: grid; align-content: center; gap: 28px; padding: 64px 0; }
+.cover-tagline { font-family: var(--f-mono); font-size: 13px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--crimson-500); }
+.cover-h1 { font-size: clamp(64px, 9vw, 144px); line-height: 0.92; letter-spacing: -0.04em; font-weight: 800; margin: 0; max-width: 16ch; }
+.cover-h1 em { font-style: normal; color: var(--crimson-500); }
+.cover-sub { font-size: 20px; max-width: 60ch; color: oklch(0.82 0.02 260); }
+.cover-meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; padding-top: 32px; border-top: 1px solid oklch(0.30 0.04 260); }
+.cover-meta dt { font-family: var(--f-mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.62 0.03 260); margin-bottom: 6px; }
+.cover-meta dd { margin: 0; font-size: 14px; color: var(--paper); font-weight: 500; }
+@media (max-width: 760px) { .cover-meta { grid-template-columns: repeat(2, 1fr); } }
+
+@keyframes blink { 0%, 50% { opacity: 1 } 50.01%, 100% { opacity: 0 } }
+
+/* huge wordmark in cover background */
+.cover-wordmark { position: absolute; right: -2vw; bottom: -4vw; font-size: 38vw; font-weight: 800; letter-spacing: -0.06em; line-height: 1; color: transparent; -webkit-text-stroke: 1px oklch(0.32 0.03 260); pointer-events: none; user-select: none; }
+
+/* ---------- Nav (sticky on scroll) ---------- */
+.topnav { position: sticky; top: 0; z-index: 50; background: oklch(0.985 0.003 250 / 0.85); backdrop-filter: blur(14px); border-bottom: 1px solid var(--line); }
+.topnav-inner { display: flex; align-items: center; gap: 32px; padding: 14px var(--gutter); max-width: none; }
+.topnav-logo { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: -0.02em; font-size: 18px; }
+.topnav-links { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
+.topnav-links a { padding: 6px 10px; border-radius: 6px; color: var(--ink-soft); }
+.topnav-links a:hover { background: var(--navy-100); color: var(--ink); }
+@media (max-width: 980px) { .topnav-links { display: none; } }
+</style>
+</head>
+<body>
+
+<!-- ============ COVER ============ -->
+<section class="cover" data-screen-label="00 Cover">
+  <div class="cover-inner">
+    <header class="cover-top">
+      <div>vingo &nbsp;·&nbsp; brand book</div>
+      <div>v 1.0 &nbsp;·&nbsp; may 2026</div>
+    </header>
+
+    <div class="cover-main">
+      <div class="cover-tagline">Auto parts · VIN · Госномер</div>
+      <h1 class="cover-h1">Найдём <em>правильную</em> запчасть с первой попытки.</h1>
+      <p class="cover-sub">vingo — сервис автоматического подбора автозапчастей по VIN-коду и госномеру для&nbsp;СТО, магазинов и&nbsp;частных мастеров. Этот документ описывает визуальную систему бренда: логотип, цвет, типографику, интерфейсы и&nbsp;интонацию.</p>
+      <dl class="cover-meta">
+        <div><dt>Сектор</dt><dd>Automotive · B2B SaaS</dd></div>
+        <div><dt>Платформы</dt><dd>Web · iOS/Android · Telegram-bot</dd></div>
+        <div><dt>Аудитория</dt><dd>СТО, разборки, мастера</dd></div>
+        <div><dt>Локали</dt><dd>RU · EN (план)</dd></div>
+      </dl>
+    </div>
+  </div>
+  <div class="cover-wordmark">vingo</div>
+</section>
+
+<!-- ============ NAV ============ -->
+<nav class="topnav">
+  <div class="topnav-inner">
+    <a class="topnav-logo" href="#top">
+      <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect width="28" height="28" rx="7" fill="var(--navy-900)"/><path d="M7 9 L14 19 L21 9" stroke="white" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="14" cy="6.5" r="1.4" fill="var(--crimson-500)"/></svg>
+      vingo
+    </a>
+    <div class="topnav-links">
+      <a href="#brand">01 Brand</a>
+      <a href="#logo">02 Logo</a>
+      <a href="#color">03 Color</a>
+      <a href="#type">04 Type</a>
+      <a href="#icon">05 Icons</a>
+      <a href="#ui">06 UI</a>
+      <a href="#web">07 Web</a>
+      <a href="#mobile">08 Mobile</a>
+      <a href="#bot">09 Bot</a>
+      <a href="#voice">10 Voice</a>
+      <a href="#examples">11 Examples</a>
+    </div>
+  </div>
+</nav>
+
+<!-- sections loaded below -->
+<div id="sections">
+<!-- ============ 01 BRAND ============ -->
+<section class="section" id="brand" data-screen-label="01 Brand">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-num">01 — Brand</div>
+      <div>
+        <h2 class="sec-title">Бренд, который&nbsp;знает машину&nbsp;точнее, чем&nbsp;её владелец.</h2>
+        <p class="sec-lead">vingo — это инженерная точность в&nbsp;руках мастера. Мы&nbsp;не&nbsp;продаём «магию VIN», мы&nbsp;даём чистые данные: артикул, аналоги, цены, наличие&nbsp;— разложенные на&nbsp;три полки.</p>
+      </div>
+    </div>
+
+    <div class="grid g-3">
+      <div class="card">
+        <div class="eyebrow">Mission</div>
+        <h3 style="margin-top:10px">Убрать догадки из&nbsp;подбора запчасти.</h3>
+        <p class="muted">Один VIN или госномер&nbsp;— и&nbsp;мастер видит точный артикул, рабочие аналоги и&nbsp;цену у&nbsp;конкретного поставщика.</p>
+      </div>
+      <div class="card">
+        <div class="eyebrow">Promise</div>
+        <h3 style="margin-top:10px">«С&nbsp;первого раза»</h3>
+        <p class="muted">Если деталь подъехала и&nbsp;встала&nbsp;— мы&nbsp;сделали свою работу. Если нет&nbsp;— у&nbsp;нас сломан процесс, не у&nbsp;клиента.</p>
+      </div>
+      <div class="card">
+        <div class="eyebrow">Personality</div>
+        <h3 style="margin-top:10px">Технарь, не&nbsp;маркетолог</h3>
+        <p class="muted">Точно, по&nbsp;делу, без жаргона B2B-продаж. Числа, артикулы, моноширинный шрифт там, где это нужно.</p>
+      </div>
+    </div>
+
+    <div class="grid g-4" style="margin-top: 32px;">
+      <div class="card" style="background: var(--navy-900); color: var(--paper); border-color: var(--navy-800);">
+        <div class="eyebrow" style="color: oklch(0.72 0.03 260)">Аудитория · 01</div>
+        <h4 style="color: var(--paper); margin-top: 12px;">СТО и автосервисы</h4>
+        <p style="color: oklch(0.78 0.02 260); font-size: 13px;">Подбор за&nbsp;20 секунд, чтобы не&nbsp;останавливать пост.</p>
+      </div>
+      <div class="card" style="background: var(--paper-2);">
+        <div class="eyebrow">Аудитория · 02</div>
+        <h4 style="margin-top: 12px;">Магазины и&nbsp;разборки</h4>
+        <p class="muted" style="font-size: 13px;">Быстрая верификация артикулов и&nbsp;аналогов под клиента.</p>
+      </div>
+      <div class="card" style="background: var(--paper-2);">
+        <div class="eyebrow">Аудитория · 03</div>
+        <h4 style="margin-top: 12px;">Частные мастера</h4>
+        <p class="muted" style="font-size: 13px;">Telegram-бот в&nbsp;кармане вместо пяти каталогов.</p>
+      </div>
+      <div class="card" style="background: var(--paper-2);">
+        <div class="eyebrow">Аудитория · 04</div>
+        <h4 style="margin-top: 12px;">Автопарки</h4>
+        <p class="muted" style="font-size: 13px;">Подбор и&nbsp;закупка для&nbsp;флота на&nbsp;разных платформах.</p>
+      </div>
+    </div>
+
+    <!-- positioning quadrant -->
+    <div style="margin-top: 56px;">
+      <div class="eyebrow" style="margin-bottom: 16px;">Позиционирование на&nbsp;рынке</div>
+      <div style="position: relative; aspect-ratio: 16/7; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper-2); overflow: hidden;">
+        <!-- axes -->
+        <div style="position:absolute; left:50%; top:0; bottom:0; width:1px; background: var(--line);"></div>
+        <div style="position:absolute; top:50%; left:0; right:0; height:1px; background: var(--line);"></div>
+        <!-- labels -->
+        <div style="position:absolute; left:20px; top:50%; transform:translateY(-50%); font-family:var(--f-mono); font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--ink-muted);">Каталоги ←</div>
+        <div style="position:absolute; right:20px; top:50%; transform:translateY(-50%); font-family:var(--f-mono); font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--ink-muted);">→ AI-ассистенты</div>
+        <div style="position:absolute; left:50%; top:14px; transform:translateX(-50%); font-family:var(--f-mono); font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--ink-muted);">↑ Для&nbsp;профи</div>
+        <div style="position:absolute; left:50%; bottom:14px; transform:translateX(-50%); font-family:var(--f-mono); font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--ink-muted);">Для&nbsp;конечного клиента ↓</div>
+        <!-- dots -->
+        <div style="position:absolute; left:18%; top:60%; width:10px; height:10px; border-radius:50%; background: var(--ink-muted); transform:translate(-50%,-50%);"></div>
+        <div style="position:absolute; left:18%; top:60%; transform:translate(8px,-8px); font-size:12px; color:var(--ink-soft);">Exist · Emex</div>
+
+        <div style="position:absolute; left:32%; top:75%; width:10px; height:10px; border-radius:50%; background: var(--ink-muted); transform:translate(-50%,-50%);"></div>
+        <div style="position:absolute; left:32%; top:75%; transform:translate(8px,-8px); font-size:12px; color:var(--ink-soft);">Carparts.com</div>
+
+        <div style="position:absolute; left:72%; top:42%; width:10px; height:10px; border-radius:50%; background: var(--ink-muted); transform:translate(-50%,-50%);"></div>
+        <div style="position:absolute; left:72%; top:42%; transform:translate(8px,-8px); font-size:12px; color:var(--ink-soft);">tadam.ai</div>
+
+        <!-- vingo dot -->
+        <div style="position:absolute; left:68%; top:25%; width:18px; height:18px; border-radius:50%; background: var(--crimson-600); box-shadow: 0 0 0 6px oklch(0.60 0.22 25 / 0.18); transform:translate(-50%,-50%);"></div>
+        <div style="position:absolute; left:68%; top:25%; transform:translate(14px,-22px); font-weight:700; font-size:14px;">vingo</div>
+        <div style="position:absolute; left:68%; top:25%; transform:translate(14px,-6px); font-size:11px; color: var(--ink-muted); font-family:var(--f-mono);">AI · профи · multi-channel</div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============ 02 LOGO ============ -->
+<section class="section section--paper2" id="logo" data-screen-label="02 Logo">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-num">02 — Logo</div>
+      <div>
+        <h2 class="sec-title">V&nbsp;как&nbsp;вектор, как&nbsp;галочка, как&nbsp;«проверено».</h2>
+        <p class="sec-lead">Знак&nbsp;— шеврон из&nbsp;двух линий, упрощённый «V», который читается как направленный поиск (↘&nbsp;↙) и&nbsp;как зелёная галочка проверки. Точка над&nbsp;буквой&nbsp;«i»&nbsp;— акцент бренда: единственный фрагмент, который красится в&nbsp;crimson.</p>
+      </div>
+    </div>
+
+    <!-- primary lockup -->
+    <div class="card card--flush" style="margin-bottom: 32px;">
+      <div style="background: var(--paper); padding: 96px 24px; display: flex; align-items: center; justify-content: center;">
+        <!-- horizontal lockup -->
+        <div style="display:flex; align-items:center; gap:28px;">
+          <svg width="120" height="120" viewBox="0 0 120 120" aria-label="vingo mark">
+            <rect x="0" y="0" width="120" height="120" rx="26" fill="var(--navy-900)"/>
+            <!-- scan ticks bg -->
+            <g opacity="0.18" stroke="white" stroke-width="1.5" stroke-linecap="round">
+              <line x1="22" y1="30" x2="22" y2="42"/>
+              <line x1="30" y1="30" x2="30" y2="38"/>
+              <line x1="38" y1="30" x2="38" y2="42"/>
+              <line x1="82" y1="30" x2="82" y2="42"/>
+              <line x1="90" y1="30" x2="90" y2="38"/>
+              <line x1="98" y1="30" x2="98" y2="42"/>
+            </g>
+            <!-- V chevron -->
+            <path d="M28 50 L60 88 L92 50" stroke="white" stroke-width="9" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <!-- accent dot -->
+            <circle cx="60" cy="34" r="6" fill="var(--crimson-500)"/>
+          </svg>
+          <div style="font-size: 96px; line-height: 1; font-weight: 800; letter-spacing: -0.05em; position: relative;">
+            v<span style="position:relative">i<span style="position:absolute; width:14px; height:14px; border-radius:50%; background:var(--crimson-600); top:14px; left:50%; transform:translateX(-50%);"></span></span>ngo
+          </div>
+        </div>
+      </div>
+      <div class="card-label"><span>01 — Primary lockup, horizontal</span><span>mark + wordmark</span></div>
+    </div>
+
+    <!-- variations grid -->
+    <div class="grid g-3" style="margin-bottom: 32px;">
+      <div class="card card--flush">
+        <div style="background: var(--paper); padding: 56px 24px; display: flex; align-items: center; justify-content: center;">
+          <svg width="80" height="80" viewBox="0 0 120 120" aria-label="mark">
+            <rect x="0" y="0" width="120" height="120" rx="26" fill="var(--navy-900)"/>
+            <g opacity="0.18" stroke="white" stroke-width="1.5" stroke-linecap="round"><line x1="22" y1="30" x2="22" y2="42"/><line x1="30" y1="30" x2="30" y2="38"/><line x1="38" y1="30" x2="38" y2="42"/><line x1="82" y1="30" x2="82" y2="42"/><line x1="90" y1="30" x2="90" y2="38"/><line x1="98" y1="30" x2="98" y2="42"/></g>
+            <path d="M28 50 L60 88 L92 50" stroke="white" stroke-width="9" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="60" cy="34" r="6" fill="var(--crimson-500)"/>
+          </svg>
+        </div>
+        <div class="card-label"><span>02 — Mark only</span><span>icon · favicon · app</span></div>
+      </div>
+      <div class="card card--flush">
+        <div style="background: var(--paper); padding: 56px 24px; display: flex; align-items: center; justify-content: center;">
+          <div style="font-size: 60px; font-weight: 800; letter-spacing: -0.05em; position: relative;">
+            v<span style="position:relative">i<span style="position:absolute; width:10px; height:10px; border-radius:50%; background:var(--crimson-600); top:8px; left:50%; transform:translateX(-50%);"></span></span>ngo
+          </div>
+        </div>
+        <div class="card-label"><span>03 — Wordmark only</span><span>в&nbsp;продуктовом UI</span></div>
+      </div>
+      <div class="card card--flush">
+        <div style="background: var(--navy-900); padding: 56px 24px; display: flex; align-items: center; justify-content: center;">
+          <div style="font-size: 60px; font-weight: 800; letter-spacing: -0.05em; color: var(--paper); position: relative;">
+            v<span style="position:relative">i<span style="position:absolute; width:10px; height:10px; border-radius:50%; background:var(--crimson-500); top:8px; left:50%; transform:translateX(-50%);"></span></span>ngo
+          </div>
+        </div>
+        <div class="card-label"><span>04 — Inverse</span><span>на&nbsp;тёмном фоне</span></div>
+      </div>
+    </div>
+
+    <!-- monogram exploration -->
+    <div class="grid g-4" style="margin-bottom: 32px;">
+      <div class="card card--flush">
+        <div style="background: var(--crimson-600); padding: 36px; display: flex; align-items: center; justify-content: center;">
+          <svg width="80" height="80" viewBox="0 0 120 120"><rect width="120" height="120" rx="26" fill="white" fill-opacity="0.0"/><path d="M28 38 L60 88 L92 38" stroke="white" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="card-label"><span>05 — Mono on accent</span><span>knock-out</span></div>
+      </div>
+      <div class="card card--flush">
+        <div style="background: var(--paper); padding: 36px; display: flex; align-items: center; justify-content: center;">
+          <svg width="80" height="80" viewBox="0 0 120 120"><path d="M28 38 L60 88 L92 38" stroke="var(--navy-900)" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="card-label"><span>06 — Line glyph</span><span>UI / печать</span></div>
+      </div>
+      <div class="card card--flush">
+        <div style="background: var(--paper); padding: 36px; display: flex; align-items: center; justify-content: center;">
+          <div style="width: 80px; height: 80px; border-radius: 50%; background: var(--navy-900); display:flex; align-items:center; justify-content:center;">
+            <svg width="48" height="48" viewBox="0 0 120 120"><path d="M28 38 L60 88 L92 38" stroke="white" stroke-width="14" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+        </div>
+        <div class="card-label"><span>07 — Avatar / app</span><span>iOS · Telegram</span></div>
+      </div>
+      <div class="card card--flush">
+        <div style="background: var(--paper); padding: 36px; display: flex; align-items: center; justify-content: center; gap:12px;">
+          <svg width="36" height="36" viewBox="0 0 120 120"><rect width="120" height="120" rx="26" fill="var(--navy-900)"/><path d="M28 50 L60 88 L92 50" stroke="white" stroke-width="11" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <div style="font-size: 22px; font-weight: 800; letter-spacing: -0.04em;">vingo</div>
+        </div>
+        <div class="card-label"><span>08 — Compact</span><span>в&nbsp;шапке сайта</span></div>
+      </div>
+    </div>
+
+    <!-- clearspace + min size -->
+    <div class="grid g-2" style="margin-bottom: 32px;">
+      <div class="card card--flush">
+        <div style="background: var(--paper); padding: 48px; display: flex; align-items: center; justify-content: center; position: relative;">
+          <div style="position: relative; padding: 36px; border: 1.5px dashed var(--crimson-500);">
+            <div style="display:flex; align-items:center; gap:20px;">
+              <svg width="72" height="72" viewBox="0 0 120 120"><rect width="120" height="120" rx="26" fill="var(--navy-900)"/><path d="M28 50 L60 88 L92 50" stroke="white" stroke-width="9" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="60" cy="34" r="6" fill="var(--crimson-500)"/></svg>
+              <div style="font-size: 56px; font-weight: 800; letter-spacing: -0.05em;">vingo</div>
+            </div>
+            <span style="position: absolute; top: -10px; left: 12px; background: var(--paper); padding: 0 6px; font-family: var(--f-mono); font-size: 10px; color: var(--crimson-600); letter-spacing: 0.1em;">CLEAR · X = ½ MARK</span>
+          </div>
+        </div>
+        <div class="card-label"><span>09 — Clearspace</span><span>X = ½ высоты знака со всех сторон</span></div>
+      </div>
+      <div class="card card--flush">
+        <div style="background: var(--paper); padding: 48px; display: flex; align-items: center; justify-content: center; gap: 48px; flex-wrap: wrap;">
+          <div style="text-align:center;">
+            <svg width="24" height="24" viewBox="0 0 120 120"><rect width="120" height="120" rx="26" fill="var(--navy-900)"/><path d="M28 50 L60 88 L92 50" stroke="white" stroke-width="14" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <div class="mono" style="font-size: 10px; margin-top: 8px; color: var(--ink-muted);">24 px · favicon min</div>
+          </div>
+          <div style="text-align:center;">
+            <svg width="40" height="40" viewBox="0 0 120 120"><rect width="120" height="120" rx="26" fill="var(--navy-900)"/><path d="M28 50 L60 88 L92 50" stroke="white" stroke-width="11" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="60" cy="34" r="6" fill="var(--crimson-500)"/></svg>
+            <div class="mono" style="font-size: 10px; margin-top: 8px; color: var(--ink-muted);">40 px · UI default</div>
+          </div>
+          <div style="text-align:center;">
+            <svg width="64" height="64" viewBox="0 0 120 120"><rect width="120" height="120" rx="26" fill="var(--navy-900)"/><path d="M28 50 L60 88 L92 50" stroke="white" stroke-width="9" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="60" cy="34" r="6" fill="var(--crimson-500)"/></svg>
+            <div class="mono" style="font-size: 10px; margin-top: 8px; color: var(--ink-muted);">64 px · cover</div>
+          </div>
+        </div>
+        <div class="card-label"><span>10 — Sizes</span><span>min 24 px · масштабируется до&nbsp;ламинации</span></div>
+      </div>
+    </div>
+
+    <!-- don'ts -->
+    <div>
+      <div class="eyebrow" style="margin-bottom: 16px;">Так — нет</div>
+      <div class="grid g-4">
+        <div class="card card--flush">
+          <div style="background: var(--paper); padding: 36px; display: flex; align-items: center; justify-content: center; position: relative;">
+            <svg width="72" height="72" viewBox="0 0 120 120" style="transform: skew(-12deg, 4deg);"><rect width="120" height="120" rx="26" fill="var(--navy-900)"/><path d="M28 50 L60 88 L92 50" stroke="white" stroke-width="9" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="60" cy="34" r="6" fill="var(--crimson-500)"/></svg>
+            <div style="position:absolute; right:14px; top:14px; width:18px; height:18px; border-radius:50%; background: var(--err); color: white; font-size: 12px; display: flex; align-items: center; justify-content: center;">×</div>
+          </div>
+          <div class="card-label"><span>X1 — не&nbsp;скашивать</span><span></span></div>
+        </div>
+        <div class="card card--flush">
+          <div style="background: oklch(0.65 0.20 140); padding: 36px; display: flex; align-items: center; justify-content: center; position: relative;">
+            <svg width="72" height="72" viewBox="0 0 120 120"><rect width="120" height="120" rx="26" fill="var(--navy-900)"/><path d="M28 50 L60 88 L92 50" stroke="white" stroke-width="9" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="60" cy="34" r="6" fill="var(--crimson-500)"/></svg>
+            <div style="position:absolute; right:14px; top:14px; width:18px; height:18px; border-radius:50%; background: var(--err); color: white; font-size: 12px; display: flex; align-items: center; justify-content: center;">×</div>
+          </div>
+          <div class="card-label"><span>X2 — не&nbsp;класть на&nbsp;«цвета не&nbsp;бренда»</span><span></span></div>
+        </div>
+        <div class="card card--flush">
+          <div style="background: var(--paper); padding: 36px; display: flex; align-items: center; justify-content: center; position: relative; gap: 8px;">
+            <svg width="56" height="56" viewBox="0 0 120 120"><rect width="120" height="120" rx="26" fill="var(--navy-900)"/><path d="M28 50 L60 88 L92 50" stroke="white" stroke-width="9" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="60" cy="34" r="6" fill="var(--crimson-500)"/></svg>
+            <div style="font-size: 30px; font-weight: 400; font-style: italic; font-family: 'Times New Roman', serif;">vingo</div>
+            <div style="position:absolute; right:14px; top:14px; width:18px; height:18px; border-radius:50%; background: var(--err); color: white; font-size: 12px; display: flex; align-items: center; justify-content: center;">×</div>
+          </div>
+          <div class="card-label"><span>X3 — не&nbsp;менять шрифт</span><span></span></div>
+        </div>
+        <div class="card card--flush">
+          <div style="background: var(--paper); padding: 36px; display: flex; align-items: center; justify-content: center; position: relative;">
+            <svg width="72" height="72" viewBox="0 0 120 120" style="filter: drop-shadow(0 8px 20px rgba(0,0,0,0.45));"><rect width="120" height="120" rx="26" fill="var(--navy-900)"/><path d="M28 50 L60 88 L92 50" stroke="white" stroke-width="9" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="60" cy="34" r="6" fill="var(--crimson-500)"/></svg>
+            <div style="position:absolute; right:14px; top:14px; width:18px; height:18px; border-radius:50%; background: var(--err); color: white; font-size: 12px; display: flex; align-items: center; justify-content: center;">×</div>
+          </div>
+          <div class="card-label"><span>X4 — без&nbsp;теней и&nbsp;эффектов</span><span></span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============ 03 COLOR ============ -->
+<section class="section" id="color" data-screen-label="03 Color">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-num">03 — Color</div>
+      <div>
+        <h2 class="sec-title">Глубокий navy. Точечный crimson. Бумажный фон.</h2>
+        <p class="sec-lead">Navy несёт массу и&nbsp;иерархию&nbsp;— это «кузов» бренда. Crimson используется как&nbsp;акцент: на&nbsp;CTA, на&nbsp;точке&nbsp;«i», в&nbsp;маркерах оригинальной запчасти. Не&nbsp;используем красный больше, чем&nbsp;5% поверхности экрана.</p>
+      </div>
+    </div>
+
+    <!-- primary palette -->
+    <div class="eyebrow" style="margin-bottom: 16px;">Primary</div>
+    <div class="grid g-2" style="margin-bottom: 48px;">
+      <div class="card card--flush">
+        <div style="background: var(--navy-900); padding: 64px 28px; color: white;">
+          <div class="mono" style="font-size: 11px; opacity: 0.7; letter-spacing: 0.1em;">VINGO / NAVY 900</div>
+          <div style="font-size: 40px; font-weight: 800; letter-spacing: -0.03em; margin-top: 36px;">Главный цвет</div>
+          <div class="mono" style="font-size: 12px; opacity: 0.7; margin-top: 8px;">Фон тёмных секций, текст на&nbsp;светлом, логотип</div>
+        </div>
+        <div class="card-label">
+          <span class="mono" style="text-transform:none;">#0E1633 · oklch(0.18 0.045 260)</span>
+          <span class="mono" style="text-transform:none;">RGB 14 22 51</span>
+        </div>
+      </div>
+      <div class="card card--flush">
+        <div style="background: var(--crimson-600); padding: 64px 28px; color: white;">
+          <div class="mono" style="font-size: 11px; opacity: 0.85; letter-spacing: 0.1em;">SIGNAL / CRIMSON 600</div>
+          <div style="font-size: 40px; font-weight: 800; letter-spacing: -0.03em; margin-top: 36px;">Акцент</div>
+          <div class="mono" style="font-size: 12px; opacity: 0.85; margin-top: 8px;">CTA, маркер «Оригинал», акцент в&nbsp;логотипе</div>
+        </div>
+        <div class="card-label">
+          <span class="mono" style="text-transform:none;">#E03A3E · oklch(0.60 0.22 25)</span>
+          <span class="mono" style="text-transform:none;">RGB 224 58 62</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- navy scale -->
+    <div class="eyebrow" style="margin-bottom: 16px;">Navy scale</div>
+    <div class="grid g-6" style="margin-bottom: 48px; gap: 0; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line);">
+      <div style="background: var(--navy-900); padding: 32px 18px; color: white;"><div class="mono" style="font-size:10px; opacity:0.6;">900</div><div class="mono" style="font-size:11px; margin-top:36px;">#0E1633</div></div>
+      <div style="background: var(--navy-800); padding: 32px 18px; color: white;"><div class="mono" style="font-size:10px; opacity:0.7;">800</div><div class="mono" style="font-size:11px; margin-top:36px;">#1F2A4D</div></div>
+      <div style="background: var(--navy-700); padding: 32px 18px; color: white;"><div class="mono" style="font-size:10px; opacity:0.7;">700</div><div class="mono" style="font-size:11px; margin-top:36px;">#374266</div></div>
+      <div style="background: var(--navy-500); padding: 32px 18px; color: white;"><div class="mono" style="font-size:10px; opacity:0.8;">500</div><div class="mono" style="font-size:11px; margin-top:36px;">#5E6685</div></div>
+      <div style="background: var(--navy-300); padding: 32px 18px; color: var(--navy-900);"><div class="mono" style="font-size:10px; opacity:0.8;">300</div><div class="mono" style="font-size:11px; margin-top:36px;">#A8AEC2</div></div>
+      <div style="background: var(--navy-100); padding: 32px 18px; color: var(--navy-900);"><div class="mono" style="font-size:10px; opacity:0.7;">100</div><div class="mono" style="font-size:11px; margin-top:36px;">#E2E5EE</div></div>
+    </div>
+
+    <!-- crimson scale -->
+    <div class="eyebrow" style="margin-bottom: 16px;">Crimson scale</div>
+    <div class="grid g-4" style="margin-bottom: 48px; gap: 0; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line);">
+      <div style="background: var(--crimson-700); padding: 32px 18px; color: white;"><div class="mono" style="font-size:10px; opacity:0.7;">700</div><div class="mono" style="font-size:11px; margin-top:36px;">#B82A2E</div></div>
+      <div style="background: var(--crimson-600); padding: 32px 18px; color: white;"><div class="mono" style="font-size:10px; opacity:0.85;">600</div><div class="mono" style="font-size:11px; margin-top:36px;">#E03A3E</div></div>
+      <div style="background: var(--crimson-500); padding: 32px 18px; color: white;"><div class="mono" style="font-size:10px; opacity:0.85;">500</div><div class="mono" style="font-size:11px; margin-top:36px;">#F25357</div></div>
+      <div style="background: var(--crimson-100); padding: 32px 18px; color: var(--crimson-700);"><div class="mono" style="font-size:10px; opacity:0.7;">100</div><div class="mono" style="font-size:11px; margin-top:36px;">#FAE0E0</div></div>
+    </div>
+
+    <!-- signal tiers -->
+    <div class="eyebrow" style="margin-bottom: 16px;">Сигнальная палитра — категории цены</div>
+    <p class="muted" style="max-width: 60ch; margin-bottom: 24px;">Это&nbsp;ядро продукта. Каждая категория всегда читается одним цветом во&nbsp;всех каналах: вебе, приложении, чат-боте, рекламе.</p>
+    <div class="grid g-3" style="margin-bottom: 48px;">
+      <div class="card card--flush">
+        <div style="background: var(--tier-budget-bg); padding: 56px 28px; position: relative;">
+          <div style="position: absolute; top:20px; right:20px; width:14px; height:14px; border-radius:50%; background: var(--tier-budget);"></div>
+          <div class="mono" style="font-size: 11px; letter-spacing: 0.1em; color: oklch(0.45 0.10 85);">TIER · BUDGET</div>
+          <div style="font-size: 32px; font-weight: 800; margin-top: 28px; color: var(--navy-900);">Бюджет</div>
+          <div style="font-size: 13px; color: var(--ink-soft); margin-top: 4px;">Аналоги, нонэйм-производители</div>
+        </div>
+        <div class="card-label"><span class="mono" style="text-transform:none;">#E8B544 · oklch(0.78 0.14 85)</span><span></span></div>
+      </div>
+      <div class="card card--flush">
+        <div style="background: var(--tier-standard-bg); padding: 56px 28px; position: relative;">
+          <div style="position: absolute; top:20px; right:20px; width:14px; height:14px; border-radius:50%; background: var(--tier-standard);"></div>
+          <div class="mono" style="font-size: 11px; letter-spacing: 0.1em; color: oklch(0.40 0.08 200);">TIER · STANDARD</div>
+          <div style="font-size: 32px; font-weight: 800; margin-top: 28px; color: var(--navy-900);">Стандарт</div>
+          <div style="font-size: 13px; color: var(--ink-soft); margin-top: 4px;">Топ-aftermarket: Bosch, Sachs, Lemförder</div>
+        </div>
+        <div class="card-label"><span class="mono" style="text-transform:none;">#3F90B0 · oklch(0.62 0.10 200)</span><span></span></div>
+      </div>
+      <div class="card card--flush">
+        <div style="background: var(--tier-original-bg); padding: 56px 28px; position: relative;">
+          <div style="position: absolute; top:20px; right:20px; width:14px; height:14px; border-radius:50%; background: var(--tier-original);"></div>
+          <div class="mono" style="font-size: 11px; letter-spacing: 0.1em; color: var(--crimson-700);">TIER · ORIGINAL</div>
+          <div style="font-size: 32px; font-weight: 800; margin-top: 28px; color: var(--navy-900);">Оригинал</div>
+          <div style="font-size: 13px; color: var(--ink-soft); margin-top: 4px;">OEM-артикул производителя</div>
+        </div>
+        <div class="card-label"><span class="mono" style="text-transform:none;">#E03A3E · oklch(0.60 0.22 25)</span><span></span></div>
+      </div>
+    </div>
+
+    <!-- neutrals + status -->
+    <div class="grid g-2">
+      <div>
+        <div class="eyebrow" style="margin-bottom: 16px;">Нейтральные</div>
+        <div class="grid g-3" style="gap: 0; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line);">
+          <div style="background: var(--paper); padding: 28px 16px; border-right: 1px solid var(--line);"><div class="mono" style="font-size:10px; color:var(--ink-muted);">PAPER</div><div class="mono" style="font-size:11px; margin-top:32px;">#FAFAF7</div></div>
+          <div style="background: var(--paper-2); padding: 28px 16px; border-right: 1px solid var(--line);"><div class="mono" style="font-size:10px; color:var(--ink-muted);">PAPER 2</div><div class="mono" style="font-size:11px; margin-top:32px;">#F2F3EF</div></div>
+          <div style="background: var(--line); padding: 28px 16px;"><div class="mono" style="font-size:10px; color:var(--ink-soft);">LINE</div><div class="mono" style="font-size:11px; margin-top:32px;">#E0E1DC</div></div>
+        </div>
+      </div>
+      <div>
+        <div class="eyebrow" style="margin-bottom: 16px;">Статусы</div>
+        <div class="grid g-3" style="gap: 0; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line);">
+          <div style="background: var(--ok); padding: 28px 16px; color: white;"><div class="mono" style="font-size:10px; opacity:0.85;">OK</div><div class="mono" style="font-size:11px; margin-top:32px;">#3F9B6A</div></div>
+          <div style="background: var(--warn); padding: 28px 16px; color: var(--navy-900);"><div class="mono" style="font-size:10px; opacity:0.8;">WARN</div><div class="mono" style="font-size:11px; margin-top:32px;">#D9A53D</div></div>
+          <div style="background: var(--err); padding: 28px 16px; color: white;"><div class="mono" style="font-size:10px; opacity:0.85;">ERR</div><div class="mono" style="font-size:11px; margin-top:32px;">#E03A3E</div></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============ 04 TYPE ============ -->
+<section class="section section--paper2" id="type" data-screen-label="04 Typography">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-num">04 — Typography</div>
+      <div>
+        <h2 class="sec-title">Один грубоват, второй точен.</h2>
+        <p class="sec-lead">Manrope для&nbsp;всего, что&nbsp;читает человек. JetBrains Mono для&nbsp;всего, что&nbsp;вычисляет машина: VIN-коды, артикулы, цены, метки. Контраст между&nbsp;этими шрифтами&nbsp;— главный визуальный приём бренда.</p>
+      </div>
+    </div>
+
+    <!-- type specimens -->
+    <div class="grid g-2" style="margin-bottom: 56px;">
+      <div class="card card--flush">
+        <div style="background: var(--paper); padding: 48px 32px;">
+          <div class="eyebrow" style="margin-bottom: 20px;">Display · Manrope</div>
+          <div style="font-size: 160px; font-weight: 800; line-height: 0.86; letter-spacing: -0.045em; color: var(--navy-900);">Aa</div>
+          <div style="display: flex; gap: 18px; font-family: var(--f-mono); font-size: 11px; color: var(--ink-muted); margin-top: 20px; flex-wrap: wrap;">
+            <span>300 Light</span><span>400 Regular</span><span>500 Medium</span><span>600 SemiBold</span><span>700 Bold</span><span style="color: var(--crimson-600); font-weight: 600;">800 ExtraBold</span>
+          </div>
+        </div>
+        <div class="card-label"><span>Primary · все интерфейсные тексты, заголовки</span><span class="mono" style="text-transform:none;">Manrope · Google Fonts</span></div>
+      </div>
+      <div class="card card--flush">
+        <div style="background: var(--paper); padding: 48px 32px;">
+          <div class="eyebrow" style="margin-bottom: 20px;">Mono · JetBrains Mono</div>
+          <div style="font-family: var(--f-mono); font-size: 120px; font-weight: 600; line-height: 1; letter-spacing: -0.04em; color: var(--navy-900);">Aa<span style="color: var(--crimson-600);">/</span>1</div>
+          <div style="display: flex; gap: 18px; font-family: var(--f-mono); font-size: 11px; color: var(--ink-muted); margin-top: 20px; flex-wrap: wrap;">
+            <span>400 Regular</span><span style="color: var(--crimson-600); font-weight: 600;">500 Medium</span><span>600 SemiBold</span>
+          </div>
+        </div>
+        <div class="card-label"><span>Technical · VIN, артикулы, цены, метки</span><span class="mono" style="text-transform:none;">JetBrains Mono · Google Fonts</span></div>
+      </div>
+    </div>
+
+    <!-- scale -->
+    <div class="eyebrow" style="margin-bottom: 16px;">Шкала &amp; иерархия</div>
+    <div class="card" style="background: var(--paper); padding: 0;">
+      <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+          <tr style="border-bottom: 1px solid var(--line);">
+            <th style="text-align:left; padding: 14px 24px; font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.08em; color: var(--ink-muted); text-transform: uppercase; font-weight: 500;">Token</th>
+            <th style="text-align:left; padding: 14px 24px; font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.08em; color: var(--ink-muted); text-transform: uppercase; font-weight: 500;">Размер</th>
+            <th style="text-align:left; padding: 14px 24px; font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.08em; color: var(--ink-muted); text-transform: uppercase; font-weight: 500;">Использование</th>
+            <th style="text-align:left; padding: 14px 24px; font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.08em; color: var(--ink-muted); text-transform: uppercase; font-weight: 500;">Пример</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom: 1px solid var(--line-soft);"><td style="padding: 18px 24px; font-family: var(--f-mono); font-size: 12px; color: var(--ink-soft);">display</td><td style="padding: 18px 24px; font-family: var(--f-mono); font-size: 12px; color: var(--ink-soft);">64 / 1.02 / 800</td><td style="padding: 18px 24px; font-size: 13px; color: var(--ink-soft);">Cover hero, секционные заголовки</td><td style="padding: 12px 24px; font-size: 56px; line-height: 1; font-weight: 800; letter-spacing: -0.03em;">VIN.</td></tr>
+          <tr style="border-bottom: 1px solid var(--line-soft);"><td style="padding: 18px 24px; font-family: var(--f-mono); font-size: 12px; color: var(--ink-soft);">title-1</td><td style="padding: 18px 24px; font-family: var(--f-mono); font-size: 12px; color: var(--ink-soft);">36 / 1.1 / 700</td><td style="padding: 18px 24px; font-size: 13px; color: var(--ink-soft);">Названия экранов</td><td style="padding: 14px 24px; font-size: 32px; font-weight: 700; letter-spacing: -0.025em;">Результаты подбора</td></tr>
+          <tr style="border-bottom: 1px solid var(--line-soft);"><td style="padding: 18px 24px; font-family: var(--f-mono); font-size: 12px; color: var(--ink-soft);">title-2</td><td style="padding: 18px 24px; font-family: var(--f-mono); font-size: 12px; color: var(--ink-soft);">22 / 1.2 / 700</td><td style="padding: 18px 24px; font-size: 13px; color: var(--ink-soft);">Заголовок карточки, секции</td><td style="padding: 14px 24px; font-size: 22px; font-weight: 700; letter-spacing: -0.02em;">Тормозной диск передний</td></tr>
+          <tr style="border-bottom: 1px solid var(--line-soft);"><td style="padding: 18px 24px; font-family: var(--f-mono); font-size: 12px; color: var(--ink-soft);">body</td><td style="padding: 18px 24px; font-family: var(--f-mono); font-size: 12px; color: var(--ink-soft);">15 / 1.5 / 400</td><td style="padding: 18px 24px; font-size: 13px; color: var(--ink-soft);">Основной текст интерфейса</td><td style="padding: 14px 24px; font-size: 15px;">VAG 8K0 615 301 M — рекомендуем для&nbsp;Audi A4 B8</td></tr>
+          <tr style="border-bottom: 1px solid var(--line-soft);"><td style="padding: 18px 24px; font-family: var(--f-mono); font-size: 12px; color: var(--ink-soft);">caption</td><td style="padding: 18px 24px; font-family: var(--f-mono); font-size: 12px; color: var(--ink-soft);">13 / 1.4 / 500</td><td style="padding: 18px 24px; font-size: 13px; color: var(--ink-soft);">Подписи, метаданные</td><td style="padding: 14px 24px; font-size: 13px; font-weight: 500; color: var(--ink-soft);">Доставка из&nbsp;Москвы · 2&nbsp;дня</td></tr>
+          <tr><td style="padding: 18px 24px; font-family: var(--f-mono); font-size: 12px; color: var(--ink-soft);">mono</td><td style="padding: 18px 24px; font-family: var(--f-mono); font-size: 12px; color: var(--ink-soft);">14 / 1.4 / 500</td><td style="padding: 18px 24px; font-size: 13px; color: var(--ink-soft);">VIN, артикул, цена, тех. метки</td><td style="padding: 14px 24px; font-family: var(--f-mono); font-size: 14px; font-weight: 500;">WAUZZZ8K9BA123456</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- usage example -->
+    <div style="margin-top: 56px;" class="grid g-2">
+      <div class="card" style="padding: 40px;">
+        <div class="kicker">Принцип</div>
+        <h3 style="font-size: 32px; line-height: 1.1; letter-spacing: -0.025em; margin: 16px 0 24px; max-width: 24ch;">Текст для&nbsp;человека&nbsp;— Manrope. Код для&nbsp;машины&nbsp;— Mono.</h3>
+        <p style="font-size: 15px; max-width: 50ch;">Если читатель должен сравнить, скопировать или&nbsp;продиктовать&nbsp;— используем моно. Это VIN, артикулы, цены, размеры, OEM-коды, серийники.</p>
+        <div style="display: inline-flex; align-items: center; gap: 10px; margin-top: 20px; padding: 10px 14px; background: var(--paper-2); border-radius: 8px; font-family: var(--f-mono); font-size: 14px; font-weight: 500;">VAG·8K0 615 301 M</div>
+      </div>
+      <div class="card" style="background: var(--navy-900); color: white; padding: 40px;">
+        <div class="kicker">В&nbsp;деле</div>
+        <div style="margin-top: 16px;">
+          <div style="font-size: 15px; color: oklch(0.78 0.02 260); margin-bottom: 4px;">Audi A4 B8 · 2008</div>
+          <div style="font-size: 28px; font-weight: 700; letter-spacing: -0.02em;">Тормозной диск передний</div>
+          <div class="mono" style="font-size: 14px; color: var(--crimson-500); margin-top: 6px;">OEM · 8K0 615 301 M</div>
+          <div style="display: flex; gap: 20px; margin-top: 24px; padding-top: 24px; border-top: 1px solid oklch(0.30 0.04 260);">
+            <div>
+              <div class="mono" style="font-size: 10px; opacity: 0.6; letter-spacing: 0.1em;">ОТ</div>
+              <div class="mono" style="font-size: 22px; font-weight: 600; margin-top: 4px;">2&thinsp;480 ₽</div>
+            </div>
+            <div>
+              <div class="mono" style="font-size: 10px; opacity: 0.6; letter-spacing: 0.1em;">ДО</div>
+              <div class="mono" style="font-size: 22px; font-weight: 600; margin-top: 4px;">11&thinsp;200 ₽</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============ 05 ICONS ============ -->
+<section class="section" id="icon" data-screen-label="05 Iconography">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-num">05 — Iconography</div>
+      <div>
+        <h2 class="sec-title">Тонкие линии, прямые углы, скруглённые концы.</h2>
+        <p class="sec-lead">Сетка 24×24. Stroke 1.75&nbsp;px, line cap round, line join round. Цвет&nbsp;— navy 900 по&nbsp;умолчанию, crimson&nbsp;600 для&nbsp;активного состояния. Без&nbsp;двух стилей в&nbsp;одном экране.</p>
+      </div>
+    </div>
+
+    <!-- icon grid -->
+    <div class="card card--flush">
+      <div style="background: var(--paper); padding: 32px;">
+        <div style="display: grid; grid-template-columns: repeat(8, 1fr); gap: 12px;" id="icon-grid">
+          <!-- icons injected by template below -->
+        </div>
+      </div>
+      <div class="card-label">
+        <span>24 иконки · stroke 1.75 · round cap</span>
+        <span class="mono" style="text-transform:none;">vingo · iconset v1</span>
+      </div>
+    </div>
+
+    <!-- icon spec -->
+    <div class="grid g-2" style="margin-top: 32px;">
+      <div class="card">
+        <div class="eyebrow">Спецификация</div>
+        <ul style="margin: 16px 0 0 16px; padding: 0; font-size: 14px; line-height: 1.7; color: var(--ink-soft);">
+          <li>Канвас 24×24, safe-area 2&nbsp;px по&nbsp;краям</li>
+          <li>Stroke 1.75&nbsp;px (default), 2&nbsp;px на&nbsp;размерах&nbsp;≥&nbsp;32&nbsp;px</li>
+          <li>Все концы и&nbsp;соединения&nbsp;— round</li>
+          <li>Заполненный (filled) вариант&nbsp;— только&nbsp;для&nbsp;«active» состояний</li>
+          <li>Не&nbsp;использовать иконки вместо текста CTA</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="eyebrow">Категории в&nbsp;продукте</div>
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-top: 16px;">
+          <div style="display: flex; align-items: center; gap: 12px;"><span class="ico ico-engine"></span><span style="font-size: 13px;">Двигатель</span></div>
+          <div style="display: flex; align-items: center; gap: 12px;"><span class="ico ico-brake"></span><span style="font-size: 13px;">Тормоза</span></div>
+          <div style="display: flex; align-items: center; gap: 12px;"><span class="ico ico-electric"></span><span style="font-size: 13px;">Электрика</span></div>
+          <div style="display: flex; align-items: center; gap: 12px;"><span class="ico ico-body"></span><span style="font-size: 13px;">Кузов</span></div>
+          <div style="display: flex; align-items: center; gap: 12px;"><span class="ico ico-suspension"></span><span style="font-size: 13px;">Подвеска</span></div>
+          <div style="display: flex; align-items: center; gap: 12px;"><span class="ico ico-tires"></span><span style="font-size: 13px;">Колёса</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<template id="icon-template">
+  <!-- 24 named icons rendered by script — see icons.js below -->
+</template>
+
+<style>
+.icon-cell { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px 8px; border: 1px solid var(--line-soft); border-radius: 10px; background: var(--paper); }
+.icon-cell svg { color: var(--navy-900); }
+.icon-cell:nth-child(1) svg, .icon-cell:nth-child(9) svg, .icon-cell:nth-child(17) svg { color: var(--crimson-600); }
+.icon-cell:hover svg { color: var(--crimson-600); }
+.icon-cell span { font-family: var(--f-mono); font-size: 10px; color: var(--ink-muted); letter-spacing: 0.06em; }
+.ico { display: inline-flex; width: 24px; height: 24px; align-items: center; justify-content: center; color: var(--navy-900); }
+</style>
+
+<script>
+(function () {
+  const ICONS = [
+    ['vin',       '<rect x="3" y="7" width="18" height="10" rx="2"/><path d="M6 10v4M9 10v4M12 10v4M15 10v4M18 10v4"/>'],
+    ['scan',      '<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M3 17v2a2 2 0 0 0 2 2h2"/><path d="M17 21h2a2 2 0 0 0 2-2v-2"/><line x1="3" y1="12" x2="21" y2="12"/>'],
+    ['plate',     '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10v4M10 10v4M14 10v4M18 10v4"/>'],
+    ['search',    '<circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16" y2="16"/>'],
+    ['filter',    '<path d="M3 5h18l-7 9v6l-4-2v-4z"/>'],
+    ['cart',      '<circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/><path d="M2 3h2l3 13h12l2-8H6"/>'],
+    ['truck',     '<path d="M1 16V6h14v10"/><path d="M15 9h4l3 3v4h-7"/><circle cx="6" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>'],
+    ['check',     '<circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/>'],
+    ['engine',    '<rect x="3" y="9" width="14" height="9" rx="1"/><path d="M9 9V6h4v3"/><path d="M17 11h3v5h-3"/><path d="M3 13h-2"/>'],
+    ['brake',     '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 4v3M12 17v3M4 12h3M17 12h3"/>'],
+    ['electric',  '<path d="M13 3L4 14h6l-1 7 9-11h-6z"/>'],
+    ['body',      '<path d="M3 14l2-5h14l2 5v4h-3v-2H6v2H3z"/><circle cx="7" cy="16" r="1.5"/><circle cx="17" cy="16" r="1.5"/>'],
+    ['suspension','<line x1="12" y1="3" x2="12" y2="21"/><path d="M9 6l3-3 3 3M9 18l3 3 3-3"/><path d="M14 8c-3 1-3 7 0 8M10 8c3 1 3 7 0 8" stroke-dasharray="2 2"/>'],
+    ['tires',     '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="3" x2="12" y2="9"/><line x1="12" y1="15" x2="12" y2="21"/><line x1="3" y1="12" x2="9" y2="12"/><line x1="15" y1="12" x2="21" y2="12"/>'],
+    ['oil',       '<path d="M12 3c4 5 6 8 6 11a6 6 0 0 1-12 0c0-3 2-6 6-11z"/>'],
+    ['cooling',   '<line x1="12" y1="3" x2="12" y2="21"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="6" y1="6" x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/>'],
+    ['cog',       '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>'],
+    ['catalog',   '<path d="M4 4h7v16H4z"/><path d="M11 4h9v16h-9z"/><line x1="7" y1="8" x2="7" y2="16"/>'],
+    ['compare',   '<path d="M9 3v18M9 6l-4 4M9 18l-4-4"/><path d="M15 3v18M15 18l4-4M15 6l4 4"/>'],
+    ['user',      '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>'],
+    ['bot',       '<rect x="4" y="7" width="16" height="13" rx="3"/><circle cx="9" cy="13" r="1.2"/><circle cx="15" cy="13" r="1.2"/><line x1="12" y1="3" x2="12" y2="7"/><path d="M9 17h6"/>'],
+    ['warning',   '<path d="M12 3l10 18H2z"/><line x1="12" y1="10" x2="12" y2="14"/><circle cx="12" cy="17" r="0.8" fill="currentColor" stroke="none"/>'],
+    ['tag',       '<path d="M3 12V3h9l9 9-9 9z"/><circle cx="8" cy="8" r="1.5"/>'],
+    ['copy',      '<rect x="8" y="8" width="13" height="13" rx="2"/><path d="M3 16V5a2 2 0 0 1 2-2h11"/>']
+  ];
+  const grid = document.getElementById('icon-grid');
+  if (!grid) return;
+  for (const [name, paths] of ICONS) {
+    const cell = document.createElement('div');
+    cell.className = 'icon-cell';
+    cell.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">${paths}</svg><span>${name}</span>`;
+    grid.appendChild(cell);
+  }
+
+  // also fill the small category icons in the right card
+  document.querySelectorAll('.ico').forEach(el => {
+    const m = [...el.classList].find(c => c.startsWith('ico-'));
+    if (!m) return;
+    const name = m.slice(4);
+    const item = ICONS.find(i => i[0] === name);
+    if (item) el.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">${item[1]}</svg>`;
+  });
+})();
+</script>
+
+<!-- ============ 06 UI ============ -->
+<section class="section section--paper2" id="ui" data-screen-label="06 UI Components">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-num">06 — UI Components</div>
+      <div>
+        <h2 class="sec-title">Кнопка, поле, карточка, тег. Дальше&nbsp;— композиция.</h2>
+        <p class="sec-lead">Все компоненты строятся вокруг четырёх примитивов. Размер по&nbsp;умолчанию&nbsp;— 44&nbsp;px (комфортный hit-target). Радиус&nbsp;— 10&nbsp;px на&nbsp;контролах, 14&nbsp;px на&nbsp;карточках.</p>
+      </div>
+    </div>
+
+    <!-- Buttons -->
+    <div class="eyebrow" style="margin-bottom: 16px;">Кнопки</div>
+    <div class="card card--flush" style="margin-bottom: 32px;">
+      <div style="background: var(--paper); padding: 36px;">
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 24px;">
+          <button class="vbtn vbtn--primary">Подобрать запчасть</button>
+          <button class="vbtn vbtn--secondary">Сравнить аналоги</button>
+          <button class="vbtn vbtn--ghost">Отменить</button>
+          <button class="vbtn vbtn--ink">Открыть в&nbsp;каталоге</button>
+        </div>
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 24px;">
+          <button class="vbtn vbtn--primary vbtn--sm">Маленькая</button>
+          <button class="vbtn vbtn--primary">Стандарт</button>
+          <button class="vbtn vbtn--primary vbtn--lg">Большая</button>
+          <button class="vbtn vbtn--primary" disabled>Disabled</button>
+        </div>
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+          <button class="vbtn vbtn--primary"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16" y2="16"/></svg>Найти</button>
+          <button class="vbtn vbtn--icon" aria-label="settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 9v6l-4-2v-4z"/></svg></button>
+        </div>
+      </div>
+      <div class="card-label"><span>Buttons — primary · secondary · ghost · ink · icon</span><span class="mono" style="text-transform:none;">44px default · 10px radius</span></div>
+    </div>
+
+    <!-- Inputs -->
+    <div class="eyebrow" style="margin-bottom: 16px;">Поля ввода</div>
+    <div class="grid g-2" style="margin-bottom: 32px;">
+      <div class="card card--flush">
+        <div style="background: var(--paper); padding: 28px;">
+          <div class="vfield">
+            <label>VIN-код</label>
+            <div class="vinput">
+              <span class="vinput-prefix"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="10" rx="2"/><path d="M6 10v4M9 10v4M12 10v4M15 10v4M18 10v4"/></svg></span>
+              <input type="text" value="WAUZZZ8K9BA123456" />
+              <span class="vinput-suffix"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M3 16V5a2 2 0 0 1 2-2h11"/></svg></span>
+            </div>
+            <div class="vhint">17 символов · кириллица недопустима</div>
+          </div>
+          <div class="vfield" style="margin-top: 20px;">
+            <label>Госномер</label>
+            <div class="vinput vinput--plate">
+              <input type="text" value="А 123 ВС 77" />
+            </div>
+          </div>
+        </div>
+        <div class="card-label"><span>Inputs · text + prefix/suffix</span><span></span></div>
+      </div>
+      <div class="card card--flush">
+        <div style="background: var(--paper); padding: 28px;">
+          <div class="vfield">
+            <label>Категория</label>
+            <div class="vinput">
+              <select><option>Тормозная система</option><option>Двигатель</option><option>Подвеска</option></select>
+              <span class="vinput-suffix"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+            </div>
+          </div>
+          <div class="vfield" style="margin-top: 20px;">
+            <label>Сортировка</label>
+            <div class="vseg">
+              <button class="active">Цена</button>
+              <button>Срок</button>
+              <button>Рейтинг</button>
+            </div>
+          </div>
+          <div class="vfield" style="margin-top: 20px;">
+            <label style="display: flex; align-items: center; gap: 10px;"><input type="checkbox" checked class="vcheck"/> Показать только в&nbsp;наличии</label>
+          </div>
+        </div>
+        <div class="card-label"><span>Select · segmented · checkbox</span><span></span></div>
+      </div>
+    </div>
+
+    <!-- Tags / Tiers -->
+    <div class="eyebrow" style="margin-bottom: 16px;">Метки и&nbsp;статусы</div>
+    <div class="card card--flush" style="margin-bottom: 32px;">
+      <div style="background: var(--paper); padding: 32px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
+        <span class="vtag vtag--budget">Бюджет</span>
+        <span class="vtag vtag--standard">Стандарт</span>
+        <span class="vtag vtag--original">Оригинал</span>
+        <span class="vtag vtag--oem"><span class="vdot"></span>OEM · подтверждено</span>
+        <span class="vtag vtag--stock"><span class="vdot vdot--ok"></span>В&nbsp;наличии · 12&nbsp;шт</span>
+        <span class="vtag vtag--warn"><span class="vdot vdot--warn"></span>Под&nbsp;заказ · 4–6&nbsp;дней</span>
+        <span class="vtag vtag--out"><span class="vdot vdot--err"></span>Нет в&nbsp;наличии</span>
+        <span class="vtag vtag--neutral">VAG · 8K0&nbsp;615&nbsp;301&nbsp;M</span>
+      </div>
+      <div class="card-label"><span>Tags · 3 категории цены + статусы</span><span></span></div>
+    </div>
+
+    <!-- Part Card (key product element) -->
+    <div class="eyebrow" style="margin-bottom: 16px;">Карточка запчасти — ключевой компонент продукта</div>
+    <div class="grid g-3" style="margin-bottom: 32px;">
+      <!-- budget -->
+      <div class="vcard">
+        <div class="vcard-tier vcard-tier--budget"><span class="vdot" style="background:var(--tier-budget)"></span>Бюджет</div>
+        <div class="vcard-img"><svg viewBox="0 0 100 100" width="100%" height="100%"><defs><pattern id="p1" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="var(--line)" stroke-width="2"/></pattern></defs><rect width="100" height="100" fill="url(#p1)"/></svg></div>
+        <h4 style="font-size: 16px; margin: 16px 0 4px;">Диск тормозной перед.</h4>
+        <div class="mono" style="font-size: 12px; color: var(--ink-muted);">PATRON · PBD4153</div>
+        <div style="display: flex; align-items: baseline; gap: 6px; margin-top: 12px;">
+          <span class="mono" style="font-size: 22px; font-weight: 600;">2&thinsp;480</span><span class="mono" style="font-size: 12px; color: var(--ink-muted);">₽</span>
+        </div>
+        <div style="font-size: 12px; color: var(--ink-soft); margin-top: 4px;">2&nbsp;дня · 4 продавца</div>
+      </div>
+      <!-- standard -->
+      <div class="vcard">
+        <div class="vcard-tier vcard-tier--standard"><span class="vdot" style="background:var(--tier-standard)"></span>Стандарт</div>
+        <div class="vcard-img"><svg viewBox="0 0 100 100" width="100%" height="100%"><defs><pattern id="p2" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="var(--line)" stroke-width="2"/></pattern></defs><rect width="100" height="100" fill="url(#p2)"/></svg></div>
+        <h4 style="font-size: 16px; margin: 16px 0 4px;">Диск тормозной перед.</h4>
+        <div class="mono" style="font-size: 12px; color: var(--ink-muted);">BREMBO · 09.9772.11</div>
+        <div style="display: flex; align-items: baseline; gap: 6px; margin-top: 12px;">
+          <span class="mono" style="font-size: 22px; font-weight: 600;">5&thinsp;940</span><span class="mono" style="font-size: 12px; color: var(--ink-muted);">₽</span>
+        </div>
+        <div style="font-size: 12px; color: var(--ink-soft); margin-top: 4px;">1 день · 12 продавцов</div>
+      </div>
+      <!-- original -->
+      <div class="vcard vcard--featured">
+        <div class="vcard-tier vcard-tier--original"><span class="vdot" style="background:var(--tier-original)"></span>Оригинал · OEM</div>
+        <div class="vcard-img"><svg viewBox="0 0 100 100" width="100%" height="100%"><defs><pattern id="p3" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="var(--line)" stroke-width="2"/></pattern></defs><rect width="100" height="100" fill="url(#p3)"/></svg></div>
+        <h4 style="font-size: 16px; margin: 16px 0 4px;">Диск тормозной перед.</h4>
+        <div class="mono" style="font-size: 12px; color: var(--ink-muted);">VAG · 8K0&nbsp;615&nbsp;301&nbsp;M</div>
+        <div style="display: flex; align-items: baseline; gap: 6px; margin-top: 12px;">
+          <span class="mono" style="font-size: 22px; font-weight: 600; color: var(--crimson-600);">11&thinsp;200</span><span class="mono" style="font-size: 12px; color: var(--ink-muted);">₽</span>
+        </div>
+        <div style="font-size: 12px; color: var(--ink-soft); margin-top: 4px;">3 дня · ориг. дилер</div>
+      </div>
+    </div>
+
+    <!-- VIN block -->
+    <div class="eyebrow" style="margin-bottom: 16px;">VIN-блок · спец-компонент</div>
+    <div class="card" style="background: var(--navy-900); color: white; padding: 28px;">
+      <div style="display: flex; flex-wrap: wrap; gap: 32px; align-items: center; justify-content: space-between;">
+        <div>
+          <div class="mono" style="font-size: 10px; letter-spacing: 0.14em; color: oklch(0.65 0.03 260); text-transform: uppercase; margin-bottom: 6px;">VIN · 17 символов</div>
+          <div class="mono" style="font-size: 32px; font-weight: 600; letter-spacing: 0.04em;">
+            <span style="color: oklch(0.78 0.02 260)">WAU</span><span style="color: white">ZZZ8K9</span><span style="color: var(--crimson-500)">BA</span><span style="color: white">123456</span>
+          </div>
+          <div style="display: flex; gap: 20px; margin-top: 14px;">
+            <div><div class="mono" style="font-size: 10px; color: oklch(0.65 0.03 260);">WMI</div><div style="font-size: 13px; margin-top: 2px;">Audi · DE</div></div>
+            <div><div class="mono" style="font-size: 10px; color: oklch(0.65 0.03 260);">VDS</div><div style="font-size: 13px; margin-top: 2px;">A4 B8 · 2.0 TFSI</div></div>
+            <div><div class="mono" style="font-size: 10px; color: oklch(0.65 0.03 260);">VIS · год</div><div style="font-size: 13px; margin-top: 2px;">2008 · Ingolstadt</div></div>
+          </div>
+        </div>
+        <button class="vbtn vbtn--primary">Подобрать запчасти →</button>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<style>
+/* Buttons */
+.vbtn { display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 20px; border-radius: 10px; font-family: var(--f-sans); font-size: 14px; font-weight: 600; letter-spacing: -0.005em; border: 1px solid transparent; cursor: pointer; transition: 0.15s; line-height: 1; background: transparent; }
+.vbtn--primary { background: var(--crimson-600); color: white; }
+.vbtn--primary:hover { background: var(--crimson-700); }
+.vbtn--secondary { background: var(--paper); color: var(--navy-900); border-color: var(--navy-900); }
+.vbtn--secondary:hover { background: var(--navy-100); }
+.vbtn--ghost { background: transparent; color: var(--ink-soft); }
+.vbtn--ghost:hover { background: var(--paper-2); color: var(--ink); }
+.vbtn--ink { background: var(--navy-900); color: white; }
+.vbtn--ink:hover { background: var(--navy-800); }
+.vbtn--sm { height: 36px; padding: 0 14px; font-size: 13px; border-radius: 8px; }
+.vbtn--lg { height: 52px; padding: 0 26px; font-size: 16px; border-radius: 12px; }
+.vbtn--icon { width: 44px; padding: 0; justify-content: center; border-color: var(--line); color: var(--ink); }
+.vbtn--icon:hover { border-color: var(--navy-900); }
+.vbtn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Fields */
+.vfield label { display: block; font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.08em; color: var(--ink-muted); text-transform: uppercase; margin-bottom: 8px; }
+.vinput { display: flex; align-items: center; height: 48px; border: 1px solid var(--line); border-radius: 10px; padding: 0 14px; background: var(--paper); gap: 10px; }
+.vinput:focus-within { border-color: var(--navy-900); }
+.vinput input, .vinput select { flex: 1; border: 0; outline: 0; background: transparent; font-family: var(--f-mono); font-size: 16px; font-weight: 500; letter-spacing: 0.03em; color: var(--ink); width: 100%; }
+.vinput-prefix, .vinput-suffix { display: flex; color: var(--ink-muted); }
+.vinput--plate { background: white; border: 2px solid var(--navy-900); }
+.vinput--plate input { font-weight: 600; font-size: 18px; letter-spacing: 0.1em; }
+.vhint { font-size: 12px; color: var(--ink-muted); margin-top: 6px; }
+.vseg { display: inline-flex; padding: 4px; background: var(--paper-2); border-radius: 10px; gap: 2px; border: 1px solid var(--line); }
+.vseg button { height: 36px; padding: 0 16px; border: 0; background: transparent; color: var(--ink-soft); font-size: 13px; font-weight: 600; border-radius: 7px; cursor: pointer; }
+.vseg button.active { background: var(--paper); color: var(--navy-900); box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+.vcheck { width: 18px; height: 18px; accent-color: var(--crimson-600); }
+
+/* Tags */
+.vtag { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 6px; font-size: 12px; font-weight: 600; font-family: var(--f-sans); letter-spacing: -0.005em; }
+.vtag--budget { background: var(--tier-budget-bg); color: oklch(0.42 0.10 85); }
+.vtag--standard { background: var(--tier-standard-bg); color: oklch(0.40 0.08 200); }
+.vtag--original { background: var(--tier-original-bg); color: var(--crimson-700); }
+.vtag--oem { background: var(--navy-900); color: white; font-family: var(--f-mono); letter-spacing: 0.04em; }
+.vtag--stock, .vtag--warn, .vtag--out, .vtag--neutral { background: var(--paper-2); color: var(--ink-soft); border: 1px solid var(--line); }
+.vtag--neutral { font-family: var(--f-mono); letter-spacing: 0.04em; }
+.vdot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-muted); }
+.vdot--ok { background: var(--ok); }
+.vdot--warn { background: var(--warn); }
+.vdot--err { background: var(--err); }
+
+/* Part card */
+.vcard { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; position: relative; }
+.vcard--featured { border-color: var(--crimson-600); box-shadow: 0 0 0 3px var(--crimson-100); }
+.vcard-tier { display: inline-flex; align-items: center; gap: 6px; font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 14px; font-weight: 500; }
+.vcard-img { aspect-ratio: 4/3; border-radius: 10px; background: var(--paper-2); overflow: hidden; }
+</style>
+
+<!-- ============ 07 WEB ============ -->
+<section class="section" id="web" data-screen-label="07 Web">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-num">07 — Web</div>
+      <div>
+        <h2 class="sec-title">Сайт. Не&nbsp;хром, не&nbsp;иллюстрация&nbsp;— а&nbsp;поиск.</h2>
+        <p class="sec-lead">Первый экран&nbsp;— это VIN-поле. Всё остальное&nbsp;— контекст. Каталог категорий&nbsp;— ниже линии сгиба, для&nbsp;тех, кто&nbsp;ещё не&nbsp;знает, что&nbsp;именно искать.</p>
+      </div>
+    </div>
+
+    <!-- Landing mock -->
+    <div class="card card--flush" style="margin-bottom: 40px;">
+      <!-- browser chrome -->
+      <div style="background: var(--paper-2); padding: 10px 14px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--line);">
+        <div style="display: flex; gap: 6px;"><span style="width:10px; height:10px; border-radius:50%; background: oklch(0.85 0.10 25);"></span><span style="width:10px; height:10px; border-radius:50%; background: oklch(0.85 0.10 85);"></span><span style="width:10px; height:10px; border-radius:50%; background: oklch(0.78 0.13 145);"></span></div>
+        <div style="flex:1; background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 5px 12px; font-family: var(--f-mono); font-size: 11px; color: var(--ink-muted);">vingo.ru</div>
+      </div>
+
+      <!-- header -->
+      <div style="padding: 18px 32px; display: flex; align-items: center; gap: 32px; background: white; border-bottom: 1px solid var(--line);">
+        <div style="display:flex; align-items:center; gap:10px; font-size:18px; font-weight:800; letter-spacing:-0.02em; position:relative;">
+          <svg width="26" height="26" viewBox="0 0 120 120"><rect width="120" height="120" rx="26" fill="var(--navy-900)"/><path d="M28 50 L60 88 L92 50" stroke="white" stroke-width="11" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="60" cy="34" r="7" fill="var(--crimson-500)"/></svg>
+          vingo
+        </div>
+        <div style="display: flex; gap: 22px; font-size: 13px; font-weight: 500;">
+          <a style="color: var(--navy-900); font-weight:600;">Подбор</a>
+          <a style="color: var(--ink-soft);">Каталог</a>
+          <a style="color: var(--ink-soft);">Для&nbsp;СТО</a>
+          <a style="color: var(--ink-soft);">Для&nbsp;магазинов</a>
+          <a style="color: var(--ink-soft);">API</a>
+        </div>
+        <div style="margin-left: auto; display: flex; gap: 10px; align-items: center;">
+          <span style="font-family: var(--f-mono); font-size: 11px; color: var(--ink-muted);">RU · ₽</span>
+          <button class="vbtn vbtn--ghost vbtn--sm">Войти</button>
+          <button class="vbtn vbtn--primary vbtn--sm">Регистрация</button>
+        </div>
+      </div>
+
+      <!-- hero -->
+      <div style="background: linear-gradient(180deg, var(--paper) 0%, var(--paper-2) 100%); padding: 72px 56px 80px; position: relative; overflow: hidden;">
+        <!-- bg pattern -->
+        <div style="position: absolute; inset: 0; background-image: radial-gradient(circle at 1px 1px, var(--navy-100) 1px, transparent 0); background-size: 22px 22px; opacity: 0.6; pointer-events: none;"></div>
+
+        <div style="position: relative; display: grid; grid-template-columns: 1.1fr 1fr; gap: 56px; align-items: center;">
+          <!-- left -->
+          <div>
+            <div style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; background: var(--paper); border: 1px solid var(--line); border-radius: 100px; font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.08em; color: var(--ink-soft); text-transform: uppercase; margin-bottom: 24px;">
+              <span style="width:6px; height:6px; border-radius:50%; background: var(--ok);"></span> 380&thinsp;000 моделей · 17 каталогов
+            </div>
+            <h1 style="font-size: 64px; line-height: 1.0; letter-spacing: -0.035em; font-weight: 800; margin: 0 0 20px; color: var(--navy-900); max-width: 14ch;">Запчасть, которая&nbsp;<em style="font-style:normal; color: var(--crimson-600);">встанет</em>.</h1>
+            <p style="font-size: 17px; color: var(--ink-soft); max-width: 42ch; line-height: 1.5; margin: 0 0 32px;">Введите VIN или&nbsp;госномер&nbsp;— vingo подберёт OEM-артикул, рабочие аналоги и&nbsp;цены у&nbsp;поставщиков.</p>
+
+            <!-- search card -->
+            <div style="background: white; border: 1px solid var(--line); border-radius: 16px; padding: 8px; box-shadow: 0 24px 48px -24px oklch(0.20 0.05 260 / 0.18); max-width: 540px;">
+              <div style="display: flex; gap: 4px; padding: 0 8px 0 0;">
+                <button style="flex:1; height: 40px; border: 0; background: var(--navy-900); color: white; border-radius: 10px; font-weight: 600; font-size: 13px; cursor: pointer;">VIN</button>
+                <button style="flex:1; height: 40px; border: 0; background: transparent; color: var(--ink-soft); border-radius: 10px; font-weight: 600; font-size: 13px; cursor: pointer;">Госномер</button>
+                <button style="flex:1; height: 40px; border: 0; background: transparent; color: var(--ink-soft); border-radius: 10px; font-weight: 600; font-size: 13px; cursor: pointer;">Марка/модель</button>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px; padding: 12px 8px 8px;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--ink-muted)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="margin-left: 6px;"><rect x="3" y="7" width="18" height="10" rx="2"/><path d="M6 10v4M9 10v4M12 10v4M15 10v4M18 10v4"/></svg>
+                <input type="text" placeholder="WAUZZZ8K9BA123456" value="WAUZZZ8K9BA123456" style="flex:1; border:0; outline:0; font-family: var(--f-mono); font-size: 18px; font-weight: 500; letter-spacing: 0.04em; color: var(--ink); background: transparent;"/>
+                <button class="vbtn vbtn--primary">Подобрать →</button>
+              </div>
+            </div>
+
+            <!-- recent -->
+            <div style="margin-top: 24px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+              <span style="font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.08em; color: var(--ink-muted); text-transform: uppercase;">Недавние:</span>
+              <span class="vtag vtag--neutral">Audi A4 B8 · 2008</span>
+              <span class="vtag vtag--neutral">Toyota Camry XV40</span>
+              <span class="vtag vtag--neutral">VW Tiguan I</span>
+            </div>
+          </div>
+
+          <!-- right: car silhouette + part callouts -->
+          <div style="position: relative; aspect-ratio: 1.1/1;">
+            <!-- car placeholder -->
+            <svg viewBox="0 0 420 380" style="width: 100%; height: 100%;">
+              <defs>
+                <pattern id="webp1" patternUnits="userSpaceOnUse" width="10" height="10" patternTransform="rotate(45)">
+                  <line x1="0" y1="0" x2="0" y2="10" stroke="var(--navy-100)" stroke-width="3"/>
+                </pattern>
+              </defs>
+              <!-- background circle -->
+              <circle cx="220" cy="190" r="170" fill="var(--paper)" stroke="var(--line)" stroke-width="1.5" stroke-dasharray="3 5"/>
+              <!-- car (simplified top-down silhouette) -->
+              <g transform="translate(110, 90)">
+                <rect x="20" y="0" width="180" height="200" rx="40" fill="var(--navy-900)"/>
+                <rect x="40" y="20" width="140" height="60" rx="16" fill="oklch(0.30 0.05 260)"/>
+                <rect x="40" y="120" width="140" height="60" rx="16" fill="oklch(0.30 0.05 260)"/>
+                <!-- wheels -->
+                <rect x="-2" y="34" width="22" height="40" rx="6" fill="var(--navy-900)"/>
+                <rect x="-2" y="124" width="22" height="40" rx="6" fill="var(--navy-900)"/>
+                <rect x="200" y="34" width="22" height="40" rx="6" fill="var(--navy-900)"/>
+                <rect x="200" y="124" width="22" height="40" rx="6" fill="var(--navy-900)"/>
+              </g>
+              <!-- placeholder text -->
+              <text x="220" y="345" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="var(--ink-muted)" letter-spacing="2">SILHOUETTE · AUDI A4 B8</text>
+            </svg>
+            <!-- callouts -->
+            <div style="position: absolute; top: 12%; left: -8%; background: white; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; box-shadow: 0 8px 24px -10px rgba(0,0,0,0.15); font-size: 12px;">
+              <div class="mono" style="font-size: 10px; color: var(--ink-muted); letter-spacing: 0.06em;">ТОРМОЗА · ПЕРЕД</div>
+              <div style="font-weight: 600;">Диск тормозной</div>
+              <div class="mono" style="color: var(--crimson-600); font-size: 11px;">8K0 615 301 M</div>
+            </div>
+            <div style="position: absolute; top: 38%; right: -2%; background: white; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; box-shadow: 0 8px 24px -10px rgba(0,0,0,0.15); font-size: 12px;">
+              <div class="mono" style="font-size: 10px; color: var(--ink-muted); letter-spacing: 0.06em;">ДВИГАТЕЛЬ</div>
+              <div style="font-weight: 600;">Свеча зажигания</div>
+              <div class="mono" style="color: var(--crimson-600); font-size: 11px;">101 905 626 A</div>
+            </div>
+            <div style="position: absolute; bottom: 8%; left: 0%; background: white; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; box-shadow: 0 8px 24px -10px rgba(0,0,0,0.15); font-size: 12px;">
+              <div class="mono" style="font-size: 10px; color: var(--ink-muted); letter-spacing: 0.06em;">ПОДВЕСКА</div>
+              <div style="font-weight: 600;">Шаровая опора</div>
+              <div class="mono" style="color: var(--crimson-600); font-size: 11px;">8K0 407 689 G</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- mini stats strip -->
+      <div style="background: var(--navy-900); color: white; padding: 28px 56px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 32px;">
+        <div><div class="mono" style="font-size: 28px; font-weight: 600;">380 К</div><div style="font-size: 12px; opacity: 0.65; margin-top: 2px;">моделей в&nbsp;каталоге</div></div>
+        <div><div class="mono" style="font-size: 28px; font-weight: 600;">17</div><div style="font-size: 12px; opacity: 0.65; margin-top: 2px;">источников OEM-данных</div></div>
+        <div><div class="mono" style="font-size: 28px; font-weight: 600;">~18&thinsp;сек</div><div style="font-size: 12px; opacity: 0.65; margin-top: 2px;">от&nbsp;VIN до&nbsp;цены</div></div>
+        <div><div class="mono" style="font-size: 28px; font-weight: 600;">94%</div><div style="font-size: 12px; opacity: 0.65; margin-top: 2px;">подъезжают с&nbsp;первого раза</div></div>
+      </div>
+
+      <div class="card-label" style="background: var(--paper-2);"><span>01 — Landing · первый экран сайта vingo.ru</span><span class="mono" style="text-transform:none;">desktop · 1440</span></div>
+    </div>
+
+    <!-- Results page mock -->
+    <div class="card card--flush">
+      <!-- mini header -->
+      <div style="padding: 14px 28px; display: flex; align-items: center; gap: 20px; background: white; border-bottom: 1px solid var(--line);">
+        <div style="display:flex; align-items:center; gap:8px; font-size:15px; font-weight:800;">
+          <svg width="20" height="20" viewBox="0 0 120 120"><rect width="120" height="120" rx="26" fill="var(--navy-900)"/><path d="M28 50 L60 88 L92 50" stroke="white" stroke-width="11" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="60" cy="34" r="7" fill="var(--crimson-500)"/></svg>
+          vingo
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 6px 12px; background: var(--paper-2); border-radius: 8px; flex: 1; max-width: 540px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--ink-muted)" stroke-width="1.75"><rect x="3" y="7" width="18" height="10" rx="2"/><path d="M6 10v4M9 10v4M12 10v4M15 10v4M18 10v4"/></svg>
+          <span class="mono" style="font-size: 13px; font-weight: 500;">WAUZZZ8K9BA123456</span>
+          <span style="margin-left: auto; font-size: 11px; color: var(--ink-soft);">Audi A4 B8 · 2.0 TFSI · 2008</span>
+        </div>
+        <div style="margin-left: auto; display: flex; gap: 8px;">
+          <span class="vtag vtag--neutral"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/><path d="M2 3h2l3 13h12l2-8H6"/></svg> 0</span>
+        </div>
+      </div>
+
+      <!-- two-column results -->
+      <div style="display: grid; grid-template-columns: 240px 1fr; min-height: 600px;">
+        <!-- sidebar categories -->
+        <aside style="border-right: 1px solid var(--line); background: var(--paper-2); padding: 20px;">
+          <div class="eyebrow" style="margin-bottom: 14px;">Категории</div>
+          <div style="display: flex; flex-direction: column; gap: 2px;">
+            <button style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 0; background: var(--navy-900); color: white; border-radius: 8px; font-size: 13px; font-weight: 600; text-align: left; cursor: pointer;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>Тормоза <span style="margin-left: auto; font-family: var(--f-mono); font-size: 11px; opacity: 0.7;">14</span></button>
+            <button style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 0; background: transparent; color: var(--ink); border-radius: 8px; font-size: 13px; text-align: left; cursor: pointer;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="9" width="14" height="9" rx="1"/></svg>Двигатель <span style="margin-left: auto; font-family: var(--f-mono); font-size: 11px; color: var(--ink-muted);">68</span></button>
+            <button style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 0; background: transparent; color: var(--ink); border-radius: 8px; font-size: 13px; text-align: left; cursor: pointer;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="3" x2="12" y2="21"/><path d="M9 6l3-3 3 3M9 18l3 3 3-3"/></svg>Подвеска <span style="margin-left: auto; font-family: var(--f-mono); font-size: 11px; color: var(--ink-muted);">42</span></button>
+            <button style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 0; background: transparent; color: var(--ink); border-radius: 8px; font-size: 13px; text-align: left; cursor: pointer;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3L4 14h6l-1 7 9-11h-6z"/></svg>Электрика <span style="margin-left: auto; font-family: var(--f-mono); font-size: 11px; color: var(--ink-muted);">128</span></button>
+            <button style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 0; background: transparent; color: var(--ink); border-radius: 8px; font-size: 13px; text-align: left; cursor: pointer;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 14l2-5h14l2 5v4h-3v-2H6v2H3z"/></svg>Кузов <span style="margin-left: auto; font-family: var(--f-mono); font-size: 11px; color: var(--ink-muted);">204</span></button>
+          </div>
+
+          <div class="eyebrow" style="margin: 28px 0 14px;">Фильтр</div>
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 13px;"><input type="checkbox" checked class="vcheck"/>Только в&nbsp;наличии</label>
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 13px;"><input type="checkbox" class="vcheck"/>Доставка ≤&nbsp;2&nbsp;дней</label>
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 13px;"><input type="checkbox" checked class="vcheck"/>Гарантия от&nbsp;6&nbsp;мес.</label>
+          </div>
+        </aside>
+
+        <!-- main results -->
+        <main style="padding: 24px 32px;">
+          <div style="display: flex; align-items: baseline; gap: 16px; margin-bottom: 8px;">
+            <h2 style="font-size: 28px; font-weight: 800; letter-spacing: -0.025em; margin: 0;">Диск тормозной передний</h2>
+            <span class="mono" style="font-size: 12px; color: var(--ink-muted);">14 предложений</span>
+          </div>
+          <div style="font-size: 13px; color: var(--ink-soft); margin-bottom: 24px;">OEM: <span class="mono" style="color: var(--ink);">8K0 615 301 M</span> · ⌀&thinsp;320×30 · вентилируемый</div>
+
+          <!-- tier rows -->
+          <div style="display: flex; flex-direction: column; gap: 16px;">
+            <!-- ORIGINAL row -->
+            <div>
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;"><span class="vtag vtag--original">Оригинал · 1</span><span class="mono" style="font-size: 11px; color: var(--ink-muted);">от&nbsp;11 200 ₽</span></div>
+              <div class="vresult-row vresult-row--featured">
+                <div class="vresult-img"></div>
+                <div style="flex: 1;">
+                  <div style="font-weight: 700; font-size: 15px;">VAG · Оригинальный диск тормозной</div>
+                  <div class="mono" style="font-size: 12px; color: var(--ink-muted); margin-top: 2px;">8K0 615 301 M · подтверждённый OEM для&nbsp;вашего VIN</div>
+                </div>
+                <div style="text-align: right;">
+                  <div class="mono" style="font-size: 22px; font-weight: 600; color: var(--crimson-600);">11&thinsp;200 ₽</div>
+                  <div style="font-size: 12px; color: var(--ink-soft); margin-top: 2px;">3 дня · дилер ауди</div>
+                </div>
+                <button class="vbtn vbtn--primary vbtn--sm">В&nbsp;корзину</button>
+              </div>
+            </div>
+
+            <!-- STANDARD row -->
+            <div>
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;"><span class="vtag vtag--standard">Стандарт · 6</span><span class="mono" style="font-size: 11px; color: var(--ink-muted);">от&nbsp;5 940 ₽</span></div>
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <div class="vresult-row">
+                  <div class="vresult-img"></div>
+                  <div style="flex: 1;">
+                    <div style="font-weight: 600; font-size: 14px;">BREMBO · 09.9772.11</div>
+                    <div class="mono" style="font-size: 12px; color: var(--ink-muted); margin-top: 2px;">Италия · OEM-поставщик Audi · ⌀&thinsp;320×30</div>
+                  </div>
+                  <div style="text-align: right;"><div class="mono" style="font-size: 18px; font-weight: 600;">5&thinsp;940 ₽</div><div style="font-size: 12px; color: var(--ink-soft); margin-top: 2px;">1 день · 12 продавцов</div></div>
+                  <button class="vbtn vbtn--secondary vbtn--sm">В&nbsp;корзину</button>
+                </div>
+                <div class="vresult-row">
+                  <div class="vresult-img"></div>
+                  <div style="flex: 1;">
+                    <div style="font-weight: 600; font-size: 14px;">ATE · 24.0130-0185.1</div>
+                    <div class="mono" style="font-size: 12px; color: var(--ink-muted); margin-top: 2px;">Германия · OEM Audi · ⌀&thinsp;320×30</div>
+                  </div>
+                  <div style="text-align: right;"><div class="mono" style="font-size: 18px; font-weight: 600;">6&thinsp;420 ₽</div><div style="font-size: 12px; color: var(--ink-soft); margin-top: 2px;">2 дня · 8 продавцов</div></div>
+                  <button class="vbtn vbtn--secondary vbtn--sm">В&nbsp;корзину</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- BUDGET row -->
+            <div>
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;"><span class="vtag vtag--budget">Бюджет · 7</span><span class="mono" style="font-size: 11px; color: var(--ink-muted);">от&nbsp;2 480 ₽</span></div>
+              <div class="vresult-row">
+                <div class="vresult-img"></div>
+                <div style="flex: 1;">
+                  <div style="font-weight: 600; font-size: 14px;">PATRON · PBD4153</div>
+                  <div class="mono" style="font-size: 12px; color: var(--ink-muted); margin-top: 2px;">Россия · бюджетный аналог · подтверждённый кросс</div>
+                </div>
+                <div style="text-align: right;"><div class="mono" style="font-size: 18px; font-weight: 600;">2&thinsp;480 ₽</div><div style="font-size: 12px; color: var(--ink-soft); margin-top: 2px;">2 дня · 4 продавца</div></div>
+                <button class="vbtn vbtn--secondary vbtn--sm">В&nbsp;корзину</button>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+
+      <div class="card-label"><span>02 — Results · трёхуровневая выдача</span><span class="mono" style="text-transform:none;">budget · standard · original</span></div>
+    </div>
+
+  </div>
+</section>
+
+<style>
+.vresult-row { display: flex; align-items: center; gap: 16px; padding: 14px; background: white; border: 1px solid var(--line); border-radius: 10px; }
+.vresult-row--featured { border-color: var(--crimson-600); background: var(--crimson-100); }
+.vresult-img { width: 60px; height: 48px; border-radius: 6px; background-image: linear-gradient(45deg, var(--line) 25%, transparent 25%, transparent 75%, var(--line) 75%), linear-gradient(45deg, var(--line) 25%, transparent 25%, transparent 75%, var(--line) 75%); background-size: 8px 8px; background-position: 0 0, 4px 4px; flex-shrink: 0; }
+</style>
+
+<!-- ============ 08 MOBILE ============ -->
+<section class="section section--ink" id="mobile" data-screen-label="08 Mobile">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-num">08 — Mobile App</div>
+      <div>
+        <h2 class="sec-title" style="color: var(--paper);">Тот&nbsp;же продукт, в&nbsp;кармане у&nbsp;мастера.</h2>
+        <p class="sec-lead">Три ключевых экрана iOS-приложения. Та&nbsp;же визуальная система: navy-фон или&nbsp;бумажный, crimson на&nbsp;CTA, моноширинный для&nbsp;кодов. Single-handed reach: всё критичное&nbsp;— в&nbsp;нижней трети.</p>
+      </div>
+    </div>
+
+    <div id="mobile-mount" style="display: flex; gap: 32px; flex-wrap: wrap; justify-content: center; padding: 24px 0;"></div>
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; margin-top: 32px; max-width: 1200px; margin-left: auto; margin-right: auto;">
+      <div><div class="mono" style="font-size: 11px; color: oklch(0.65 0.03 260); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 6px;">01 — Поиск</div><div style="font-size: 14px; color: oklch(0.85 0.02 260); line-height: 1.5;">Стартовый экран. VIN, госномер, скан камерой. Недавние машины внизу.</div></div>
+      <div><div class="mono" style="font-size: 11px; color: oklch(0.65 0.03 260); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 6px;">02 — Результаты</div><div style="font-size: 14px; color: oklch(0.85 0.02 260); line-height: 1.5;">Категории + три полки цены. Свайп по&nbsp;карточке&nbsp;— в&nbsp;корзину.</div></div>
+      <div><div class="mono" style="font-size: 11px; color: oklch(0.65 0.03 260); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 6px;">03 — Карточка</div><div style="font-size: 14px; color: oklch(0.85 0.02 260); line-height: 1.5;">Все аналоги для&nbsp;одной детали, развёрнутые с&nbsp;ценой и&nbsp;сроком.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 09 BOT ============ -->
+<section class="section" id="bot" data-screen-label="09 Chatbot">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-num">09 — Chat-bot</div>
+      <div>
+        <h2 class="sec-title">Telegram: тот&nbsp;же мозг, без&nbsp;UI.</h2>
+        <p class="sec-lead">Чат-бот&nbsp;— главный канал MVP: ноль установки, мгновенная коммуникация. Сценарий жёсткий: VIN → автомобиль → деталь → три полки цены → ссылка на&nbsp;оплату. Никаких лонгридов и&nbsp;emoji-карнавала. Карточка цены&nbsp;— это inline-кнопка, не&nbsp;ASCII-таблица.</p>
+      </div>
+    </div>
+
+    <div class="grid g-2">
+      <!-- chat -->
+      <div class="card card--flush" style="background: oklch(0.92 0.02 250); padding: 32px;">
+        <div style="max-width: 380px; margin: 0 auto; background: oklch(0.94 0.01 250); border-radius: 16px; overflow: hidden; box-shadow: 0 20px 40px -16px rgba(0,0,0,0.18);">
+          <!-- chat header -->
+          <div style="background: oklch(0.98 0.005 250); padding: 14px 16px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid oklch(0.88 0.008 250);">
+            <div style="width: 40px; height: 40px; border-radius: 50%; background: var(--navy-900); display: flex; align-items: center; justify-content: center;">
+              <svg width="24" height="24" viewBox="0 0 120 120"><path d="M28 50 L60 88 L92 50" stroke="white" stroke-width="11" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="60" cy="34" r="7" fill="var(--crimson-500)"/></svg>
+            </div>
+            <div>
+              <div style="font-weight: 600; font-size: 14px;">vingo_bot</div>
+              <div style="font-size: 12px; color: var(--ink-muted);">подбор запчастей · онлайн</div>
+            </div>
+            <div style="margin-left: auto; font-family: var(--f-mono); font-size: 11px; color: var(--ink-muted);">14:32</div>
+          </div>
+          <!-- messages -->
+          <div style="padding: 18px 14px; display: flex; flex-direction: column; gap: 12px; min-height: 540px;">
+            <!-- user -->
+            <div style="align-self: flex-end; max-width: 78%; background: oklch(0.78 0.10 200); color: white; border-radius: 14px 14px 4px 14px; padding: 8px 12px; font-size: 14px; font-family: var(--f-mono);">
+              WAUZZZ8K9BA123456
+            </div>
+            <!-- bot -->
+            <div style="align-self: flex-start; max-width: 86%; background: white; border-radius: 14px 14px 14px 4px; padding: 12px 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.04);">
+              <div style="font-size: 14px; line-height: 1.45;"><b>Audi A4 B8 · 2008</b><br/>2.0 TFSI · 211 л.с. · Ingolstadt</div>
+              <div style="font-family: var(--f-mono); font-size: 12px; color: var(--ink-muted); margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--line-soft);">Что&nbsp;нужно подобрать?</div>
+              <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px;">
+                <button class="bot-chip">Тормоза</button>
+                <button class="bot-chip">Двигатель</button>
+                <button class="bot-chip">Подвеска</button>
+                <button class="bot-chip">+ ещё</button>
+              </div>
+            </div>
+            <!-- user -->
+            <div style="align-self: flex-end; max-width: 78%; background: oklch(0.78 0.10 200); color: white; border-radius: 14px 14px 4px 14px; padding: 8px 12px; font-size: 14px;">
+              Диск тормозной передний
+            </div>
+            <!-- bot result card -->
+            <div style="align-self: flex-start; max-width: 92%; background: white; border-radius: 14px 14px 14px 4px; padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.04);">
+              <div style="font-family: var(--f-mono); font-size: 10px; color: var(--crimson-600); letter-spacing: 0.1em;">OEM · 8K0 615 301 M</div>
+              <div style="font-weight: 700; font-size: 15px; margin-top: 4px;">Диск тормозной передний</div>
+              <div style="font-family: var(--f-mono); font-size: 11px; color: var(--ink-muted); margin-top: 2px;">⌀ 320 × 30 · вентилируемый</div>
+
+              <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 12px;">
+                <button class="bot-tier bot-tier--budget"><span class="vdot" style="background:var(--tier-budget)"></span>Бюджет · от&nbsp;2&thinsp;480 ₽ →</button>
+                <button class="bot-tier bot-tier--standard"><span class="vdot" style="background:var(--tier-standard)"></span>Стандарт · от&nbsp;5&thinsp;940 ₽ →</button>
+                <button class="bot-tier bot-tier--original"><span class="vdot" style="background:var(--tier-original)"></span>Оригинал · 11&thinsp;200 ₽ →</button>
+              </div>
+            </div>
+            <!-- bot small follow-up -->
+            <div style="align-self: flex-start; max-width: 78%; background: white; border-radius: 14px 14px 14px 4px; padding: 10px 12px; font-size: 13px; color: var(--ink-soft); box-shadow: 0 1px 2px rgba(0,0,0,0.04);">
+              Хотите сразу собрать комплект (диски&nbsp;+&nbsp;колодки&nbsp;+&nbsp;датчик)?
+              <div style="display: flex; gap: 6px; margin-top: 8px;"><button class="bot-chip">Да, собрать</button><button class="bot-chip">Пропустить</button></div>
+            </div>
+          </div>
+          <!-- input -->
+          <div style="background: oklch(0.98 0.005 250); padding: 10px 14px; display: flex; align-items: center; gap: 10px; border-top: 1px solid oklch(0.88 0.008 250);">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--ink-muted)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="7" x2="12" y2="17"/><line x1="7" y1="12" x2="17" y2="12"/></svg>
+            <div style="flex: 1; font-size: 13px; color: var(--ink-muted);">Сообщение</div>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--ink-muted)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20"/></svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- scenario -->
+      <div>
+        <div class="eyebrow" style="margin-bottom: 16px;">Сценарий диалога</div>
+        <div style="display: flex; flex-direction: column; gap: 0;">
+          <div class="bot-step"><span class="bot-step-num">01</span><div><b>VIN или госномер</b><div class="muted" style="font-size:13px; margin-top: 2px;">Бот определяет машину за&nbsp;1–2 секунды.</div></div></div>
+          <div class="bot-step"><span class="bot-step-num">02</span><div><b>Подтверждение машины</b><div class="muted" style="font-size:13px; margin-top: 2px;">Год · модификация · ДВС. Если несовпадение&nbsp;— уточняющий выбор.</div></div></div>
+          <div class="bot-step"><span class="bot-step-num">03</span><div><b>Запрос детали</b><div class="muted" style="font-size:13px; margin-top: 2px;">Текстом или&nbsp;через категории. Принимает синонимы и&nbsp;OEM-коды.</div></div></div>
+          <div class="bot-step"><span class="bot-step-num">04</span><div><b>Три полки цены</b><div class="muted" style="font-size:13px; margin-top: 2px;">Бюджет · Стандарт · Оригинал. По&nbsp;клику&nbsp;— список предложений.</div></div></div>
+          <div class="bot-step"><span class="bot-step-num">05</span><div><b>Корзина и&nbsp;оплата</b><div class="muted" style="font-size:13px; margin-top: 2px;">Web-app внутри Telegram. Без&nbsp;ухода на&nbsp;внешний сайт.</div></div></div>
+          <div class="bot-step"><span class="bot-step-num">06</span><div><b>Сохранение машины</b><div class="muted" style="font-size:13px; margin-top: 2px;">«Мой гараж»: вернуться к&nbsp;этой машине одним тапом.</div></div></div>
+        </div>
+
+        <div class="eyebrow" style="margin: 32px 0 16px;">Правила бота</div>
+        <ul style="margin: 0 0 0 16px; padding: 0; font-size: 14px; line-height: 1.7; color: var(--ink-soft);">
+          <li>Не&nbsp;больше двух абзацев в&nbsp;одном сообщении</li>
+          <li>VIN, артикулы, цены&nbsp;— всегда моноширинным</li>
+          <li>Каждое сообщение заканчивается действием (кнопка или&nbsp;вопрос)</li>
+          <li>Никаких 😀🚗💯&nbsp;— продукт серьёзный</li>
+          <li>Один inline-keyboard на&nbsp;карточку, без&nbsp;двух уровней</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<style>
+.bot-chip { background: oklch(0.96 0.01 250); border: 1px solid var(--line); border-radius: 16px; padding: 5px 11px; font-size: 12px; font-weight: 500; cursor: pointer; color: var(--navy-900); font-family: var(--f-sans); }
+.bot-tier { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: oklch(0.97 0.005 250); font-size: 13px; font-weight: 600; cursor: pointer; font-family: var(--f-sans); color: var(--navy-900); justify-content: flex-start; }
+.bot-tier--original { border-color: var(--crimson-600); background: var(--crimson-100); color: var(--crimson-700); }
+.bot-step { display: grid; grid-template-columns: 48px 1fr; gap: 16px; padding: 16px 0; border-top: 1px solid var(--line); align-items: start; }
+.bot-step:last-child { border-bottom: 1px solid var(--line); }
+.bot-step-num { font-family: var(--f-mono); font-size: 12px; color: var(--crimson-600); letter-spacing: 0.1em; padding-top: 3px; }
+</style>
+
+<!-- ============ 10 VOICE ============ -->
+<section class="section section--paper2" id="voice" data-screen-label="10 Tone of voice">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-num">10 — Tone of voice</div>
+      <div>
+        <h2 class="sec-title">Говорим как&nbsp;коллега, не&nbsp;как&nbsp;кол-центр.</h2>
+        <p class="sec-lead">vingo пишет в&nbsp;тоне «знающий механик»: коротко, точно, по&nbsp;делу. Не&nbsp;льстим, не&nbsp;кричим, не&nbsp;объясняем очевидное. Если можно сократить&nbsp;— сокращаем. Если нельзя&nbsp;— объясняем числами.</p>
+      </div>
+    </div>
+
+    <!-- 4 principles -->
+    <div class="grid g-4" style="margin-bottom: 56px;">
+      <div class="card">
+        <div class="kicker">01</div>
+        <h3 style="font-size: 22px; margin: 12px 0 8px;">Конкретно</h3>
+        <p class="muted" style="font-size: 14px;">«2 480&nbsp;₽, 2 дня доставки, 4 продавца» вместо «доступная цена и&nbsp;быстрая доставка».</p>
+      </div>
+      <div class="card">
+        <div class="kicker">02</div>
+        <h3 style="font-size: 22px; margin: 12px 0 8px;">Точно</h3>
+        <p class="muted" style="font-size: 14px;">OEM-артикул всегда полностью. Если не&nbsp;уверены&nbsp;— пишем «возможный аналог», не&nbsp;«идеально подойдёт».</p>
+      </div>
+      <div class="card">
+        <div class="kicker">03</div>
+        <h3 style="font-size: 22px; margin: 12px 0 8px;">Без&nbsp;воды</h3>
+        <p class="muted" style="font-size: 14px;">Никаких «специально для&nbsp;вас», «лучший в&nbsp;своём классе», «революционный сервис».</p>
+      </div>
+      <div class="card">
+        <div class="kicker">04</div>
+        <h3 style="font-size: 22px; margin: 12px 0 8px;">На&nbsp;равных</h3>
+        <p class="muted" style="font-size: 14px;">Аудитория знает машины. Не&nbsp;учим, не&nbsp;давим маркетингом. «Подъедет с&nbsp;первого раза» вместо «инновационный AI-подбор».</p>
+      </div>
+    </div>
+
+    <!-- do/don't pairs -->
+    <div class="eyebrow" style="margin-bottom: 16px;">Так — да / Так — нет</div>
+    <div class="grid g-2" style="gap: 0; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden;">
+      <!-- header -->
+      <div style="background: var(--paper); padding: 14px 24px; font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.1em; color: var(--ok); text-transform: uppercase; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); font-weight: 600;">✓ vingo</div>
+      <div style="background: var(--paper); padding: 14px 24px; font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.1em; color: var(--err); text-transform: uppercase; border-bottom: 1px solid var(--line); font-weight: 600;">✗ не&nbsp;vingo</div>
+
+      <div style="background: var(--paper); padding: 24px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);"><div style="font-size: 17px; font-weight: 600; line-height: 1.3;">Audi&nbsp;A4 B8&nbsp;· 2008. Что&nbsp;ищете?</div></div>
+      <div style="background: var(--paper); padding: 24px; border-bottom: 1px solid var(--line);"><div style="font-size: 17px; line-height: 1.3; color: var(--ink-muted);">Здравствуйте! Мы&nbsp;успешно определили вашу машину! Это шикарная Audi&nbsp;A4 B8 2008&nbsp;года&nbsp;🚗 Чем&nbsp;мы&nbsp;можем вам помочь сегодня? 😊</div></div>
+
+      <div style="background: var(--paper); padding: 24px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);"><div style="font-size: 17px; font-weight: 600; line-height: 1.3;">Оригинал — 11&thinsp;200&nbsp;₽, 3 дня. Аналог Brembo — 5&thinsp;940&nbsp;₽, 1 день.</div></div>
+      <div style="background: var(--paper); padding: 24px; border-bottom: 1px solid var(--line);"><div style="font-size: 17px; line-height: 1.3; color: var(--ink-muted);">У&nbsp;нас есть очень хорошее предложение по&nbsp;вашей запчасти, мы&nbsp;нашли для&nbsp;вас несколько вариантов в&nbsp;разных ценовых категориях…</div></div>
+
+      <div style="background: var(--paper); padding: 24px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);"><div style="font-size: 17px; font-weight: 600; line-height: 1.3;">VIN не&nbsp;распознан. Проверьте&nbsp;— 17 символов, без&nbsp;«О» и&nbsp;«I».</div></div>
+      <div style="background: var(--paper); padding: 24px; border-bottom: 1px solid var(--line);"><div style="font-size: 17px; line-height: 1.3; color: var(--ink-muted);">Упс! Что-то пошло не&nbsp;так. Попробуйте ещё раз или&nbsp;свяжитесь с&nbsp;поддержкой.</div></div>
+
+      <div style="background: var(--paper); padding: 24px; border-right: 1px solid var(--line);"><div style="font-size: 17px; font-weight: 600; line-height: 1.3;">Подъедет с&nbsp;первого раза. Если нет&nbsp;— меняем без&nbsp;вопросов.</div></div>
+      <div style="background: var(--paper); padding: 24px;"><div style="font-size: 17px; line-height: 1.3; color: var(--ink-muted);">Революционный AI-подбор автозапчастей нового поколения с&nbsp;премиум-гарантией качества!</div></div>
+    </div>
+
+    <!-- glossary -->
+    <div style="margin-top: 56px;">
+      <div class="eyebrow" style="margin-bottom: 16px;">Микро-словарь</div>
+      <div class="grid g-3">
+        <div class="card" style="padding: 24px;"><div class="mono" style="font-size: 12px; color: var(--ink-muted); letter-spacing: 0.08em;">ВМЕСТО</div><div style="font-size: 16px; text-decoration: line-through; color: var(--ink-muted); margin: 4px 0;">«Подходит»</div><div class="mono" style="font-size: 12px; color: var(--crimson-600); letter-spacing: 0.08em;">ГОВОРИМ</div><div style="font-size: 18px; font-weight: 700; color: var(--navy-900);">Подъедет</div></div>
+        <div class="card" style="padding: 24px;"><div class="mono" style="font-size: 12px; color: var(--ink-muted); letter-spacing: 0.08em;">ВМЕСТО</div><div style="font-size: 16px; text-decoration: line-through; color: var(--ink-muted); margin: 4px 0;">«Аналог»</div><div class="mono" style="font-size: 12px; color: var(--crimson-600); letter-spacing: 0.08em;">ГОВОРИМ</div><div style="font-size: 18px; font-weight: 700; color: var(--navy-900);">Кросс</div></div>
+        <div class="card" style="padding: 24px;"><div class="mono" style="font-size: 12px; color: var(--ink-muted); letter-spacing: 0.08em;">ВМЕСТО</div><div style="font-size: 16px; text-decoration: line-through; color: var(--ink-muted); margin: 4px 0;">«Оформить заказ»</div><div class="mono" style="font-size: 12px; color: var(--crimson-600); letter-spacing: 0.08em;">ГОВОРИМ</div><div style="font-size: 18px; font-weight: 700; color: var(--navy-900);">Забрать</div></div>
+        <div class="card" style="padding: 24px;"><div class="mono" style="font-size: 12px; color: var(--ink-muted); letter-spacing: 0.08em;">ВМЕСТО</div><div style="font-size: 16px; text-decoration: line-through; color: var(--ink-muted); margin: 4px 0;">«Не&nbsp;найдено»</div><div class="mono" style="font-size: 12px; color: var(--crimson-600); letter-spacing: 0.08em;">ГОВОРИМ</div><div style="font-size: 18px; font-weight: 700; color: var(--navy-900);">Пока пусто</div></div>
+        <div class="card" style="padding: 24px;"><div class="mono" style="font-size: 12px; color: var(--ink-muted); letter-spacing: 0.08em;">ВМЕСТО</div><div style="font-size: 16px; text-decoration: line-through; color: var(--ink-muted); margin: 4px 0;">«Клиент»</div><div class="mono" style="font-size: 12px; color: var(--crimson-600); letter-spacing: 0.08em;">ГОВОРИМ</div><div style="font-size: 18px; font-weight: 700; color: var(--navy-900);">Мастер</div></div>
+        <div class="card" style="padding: 24px;"><div class="mono" style="font-size: 12px; color: var(--ink-muted); letter-spacing: 0.08em;">ВМЕСТО</div><div style="font-size: 16px; text-decoration: line-through; color: var(--ink-muted); margin: 4px 0;">«Цена от»</div><div class="mono" style="font-size: 12px; color: var(--crimson-600); letter-spacing: 0.08em;">ГОВОРИМ</div><div style="font-size: 18px; font-weight: 700; color: var(--navy-900);">От&nbsp;<span class="mono">N</span>&nbsp;₽</div></div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============ 11 EXAMPLES ============ -->
+<section class="section" id="examples" data-screen-label="11 Examples">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-num">11 — Examples</div>
+      <div>
+        <h2 class="sec-title">Как&nbsp;это всё живёт в&nbsp;мире.</h2>
+        <p class="sec-lead">Несколько примеров применения системы: рекламный баннер, пост, e-mail, наклейка на&nbsp;коробке. Принцип один: navy-масса + crimson-точка + моноширинная цифра. Если в&nbsp;макете нет цифры или&nbsp;кода&nbsp;— значит, мы&nbsp;не&nbsp;про&nbsp;то.</p>
+      </div>
+    </div>
+
+    <!-- big hero banner ad -->
+    <div class="card card--flush" style="margin-bottom: 32px;">
+      <div style="background: var(--navy-900); color: var(--paper); padding: 72px 56px; position: relative; overflow: hidden; min-height: 320px;">
+        <div style="position: absolute; inset: 0; background-image: radial-gradient(circle at 1px 1px, oklch(0.40 0.04 260) 1px, transparent 0); background-size: 18px 18px; opacity: 0.4; mask: linear-gradient(180deg, black 30%, transparent);"></div>
+        <div style="position: relative; display: grid; grid-template-columns: 1.4fr 1fr; gap: 48px; align-items: center;">
+          <div>
+            <div class="mono" style="font-size: 12px; color: var(--crimson-500); letter-spacing: 0.16em;">VIN → ЦЕНА · ЗА&nbsp;18 СЕКУНД</div>
+            <div style="font-size: 72px; font-weight: 800; line-height: 0.95; letter-spacing: -0.04em; margin-top: 16px;">Машина<br/>как <em style="font-style: normal; color: var(--crimson-500);">паспорт.</em></div>
+            <div style="font-size: 18px; color: oklch(0.78 0.02 260); margin-top: 20px; max-width: 40ch;">17 знаков VIN&nbsp;— и&nbsp;любая запчасть найдена. С&nbsp;ценой, аналогами и&nbsp;сроком.</div>
+            <button class="vbtn vbtn--primary vbtn--lg" style="margin-top: 28px;">Попробовать → vingo.ru</button>
+          </div>
+          <div style="text-align: right; font-family: var(--f-mono); font-size: 11px; color: oklch(0.65 0.03 260); letter-spacing: 0.1em;">
+            <div style="font-family: var(--f-mono); font-size: 84px; color: var(--paper); letter-spacing: 0.04em; font-weight: 600; line-height: 1;">17</div>
+            <div style="margin-top: 4px;">SYMBOLS · 0&nbsp;O · 0&nbsp;I · 0&nbsp;Q</div>
+          </div>
+        </div>
+      </div>
+      <div class="card-label"><span>01 — Hero ad · 1920×600</span><span>web banner · билборд</span></div>
+    </div>
+
+    <div class="grid g-3" style="margin-bottom: 32px;">
+      <!-- Social post -->
+      <div class="card card--flush">
+        <div style="aspect-ratio: 1/1; background: var(--paper-2); padding: 32px; display: flex; flex-direction: column;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <svg width="22" height="22" viewBox="0 0 120 120"><rect width="120" height="120" rx="26" fill="var(--navy-900)"/><path d="M28 50 L60 88 L92 50" stroke="white" stroke-width="11" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="60" cy="34" r="7" fill="var(--crimson-500)"/></svg>
+            <div style="font-weight: 800; letter-spacing: -0.02em;">vingo</div>
+          </div>
+          <div style="margin-top: auto;">
+            <div class="mono" style="font-size: 11px; color: var(--crimson-600); letter-spacing: 0.1em;">КЕЙС #047</div>
+            <div style="font-size: 32px; font-weight: 800; line-height: 1.05; letter-spacing: -0.025em; margin-top: 10px;">Подобрали ступичный подшипник за&nbsp;<span style="color: var(--crimson-600);">22&nbsp;с</span></div>
+            <div style="font-family: var(--f-mono); font-size: 12px; color: var(--ink-muted); margin-top: 14px;">VW Tiguan I · 2.0&nbsp;TDI · 2010<br/>OEM · 5N0&nbsp;498&nbsp;625&nbsp;A</div>
+          </div>
+        </div>
+        <div class="card-label"><span>02 — Social · 1080×1080</span><span>Telegram · VK</span></div>
+      </div>
+
+      <!-- Email -->
+      <div class="card card--flush">
+        <div style="background: var(--paper); padding: 0;">
+          <div style="background: var(--navy-900); color: white; padding: 24px;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
+              <svg width="20" height="20" viewBox="0 0 120 120"><rect width="120" height="120" rx="26" fill="white" fill-opacity="0.1"/><path d="M28 50 L60 88 L92 50" stroke="white" stroke-width="11" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="60" cy="34" r="7" fill="var(--crimson-500)"/></svg>
+              <div style="font-weight: 800; letter-spacing: -0.02em; font-size: 14px;">vingo</div>
+              <div class="mono" style="font-size: 10px; opacity: 0.6; margin-left: auto; letter-spacing: 0.08em;">ORDER · #28104</div>
+            </div>
+            <div style="font-size: 22px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15;">Запчасть выехала.</div>
+            <div style="font-size: 13px; opacity: 0.8; margin-top: 6px;">Доставка в&nbsp;Москву · 3 окт, до&nbsp;19:00</div>
+          </div>
+          <div style="padding: 18px 24px;">
+            <div style="font-size: 13px; color: var(--ink-soft); line-height: 1.5;">Иван, привет. Диск тормозной&nbsp;BREMBO выехал из&nbsp;Москвы в&nbsp;ваш сервис. Трек&nbsp;— по&nbsp;кнопке ниже.</div>
+            <button class="vbtn vbtn--ink vbtn--sm" style="margin-top: 14px;">Отследить</button>
+            <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; font-size: 12px;">
+              <span class="mono" style="color: var(--ink-muted);">BREMBO 09.9772.11</span>
+              <span class="mono" style="font-weight: 600;">5&thinsp;940 ₽</span>
+            </div>
+          </div>
+        </div>
+        <div class="card-label"><span>03 — E-mail header</span><span>транзакционные письма</span></div>
+      </div>
+
+      <!-- Sticker on box -->
+      <div class="card card--flush">
+        <div style="aspect-ratio: 1/1; background: oklch(0.82 0.02 65); padding: 32px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;">
+          <!-- cardboard texture -->
+          <div style="position:absolute; inset:0; background-image: repeating-linear-gradient(0deg, transparent 0px, transparent 8px, oklch(0.75 0.04 65) 8px, oklch(0.75 0.04 65) 9px); opacity: 0.4;"></div>
+          <div style="position: relative; background: var(--paper); border: 2px solid var(--navy-900); border-radius: 8px; padding: 18px 22px; transform: rotate(-3deg); box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+              <svg width="20" height="20" viewBox="0 0 120 120"><rect width="120" height="120" rx="26" fill="var(--navy-900)"/><path d="M28 50 L60 88 L92 50" stroke="white" stroke-width="11" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="60" cy="34" r="7" fill="var(--crimson-500)"/></svg>
+              <div style="font-weight: 800; letter-spacing: -0.02em; font-size: 14px;">vingo</div>
+            </div>
+            <div class="mono" style="font-size: 9px; letter-spacing: 0.1em; color: var(--ink-muted);">CHECKED FOR</div>
+            <div class="mono" style="font-size: 15px; font-weight: 600; letter-spacing: 0.04em;">WAUZZZ8K9BA123456</div>
+            <div style="height: 1px; background: var(--line); margin: 8px 0;"></div>
+            <div class="mono" style="font-size: 9px; letter-spacing: 0.1em; color: var(--ink-muted);">PART</div>
+            <div class="mono" style="font-size: 13px; font-weight: 600; letter-spacing: 0.04em;">8K0 615 301 M</div>
+            <div style="display: flex; align-items: center; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line);">
+              <span style="width:8px; height:8px; border-radius:50%; background: var(--ok);"></span>
+              <span style="font-size: 11px; font-weight: 600;">OEM verified · 03.10.2025</span>
+            </div>
+          </div>
+        </div>
+        <div class="card-label"><span>04 — Sticker</span><span>наклейка на&nbsp;коробке</span></div>
+      </div>
+    </div>
+
+    <!-- Telegram preview card + Receipt -->
+    <div class="grid g-2" style="margin-bottom: 80px;">
+      <div class="card card--flush">
+        <div style="background: var(--crimson-600); color: white; padding: 56px 40px; position: relative; overflow: hidden;">
+          <div style="position:absolute; top: -40px; right: -40px; opacity: 0.15;">
+            <svg width="280" height="280" viewBox="0 0 120 120"><path d="M28 50 L60 88 L92 50" stroke="white" stroke-width="14" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div class="mono" style="font-size: 12px; letter-spacing: 0.16em; opacity: 0.85;">TELEGRAM BOT</div>
+          <div style="font-size: 48px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.0; margin-top: 16px;">@vingo_bot</div>
+          <div style="font-size: 16px; opacity: 0.9; max-width: 36ch; margin-top: 14px;">VIN → 3 цены за&nbsp;18 секунд. Прямо в&nbsp;Telegram, без&nbsp;регистрации.</div>
+          <div style="display: inline-flex; align-items: center; gap: 10px; margin-top: 28px; padding: 8px 14px; background: white; color: var(--navy-900); border-radius: 100px; font-weight: 700; font-size: 14px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg> t.me/vingo_bot
+          </div>
+        </div>
+        <div class="card-label"><span>05 — Bot promo</span><span>VK · Telegram канал</span></div>
+      </div>
+
+      <div class="card card--flush">
+        <div style="background: var(--paper); padding: 40px; min-height: 100%;">
+          <div class="kicker">Принт-приём</div>
+          <h3 style="font-size: 32px; font-weight: 800; letter-spacing: -0.025em; margin: 12px 0 24px; line-height: 1.1;">Чек, который<br/>выдаёт мастер.</h3>
+          <div style="font-family: var(--f-mono); font-size: 13px; line-height: 1.85; color: var(--ink-soft);">
+            <div style="display:flex; justify-content:space-between;"><span style="color:var(--ink-muted);">VIN</span><span style="color: var(--ink); font-weight: 500;">WAUZZZ8K9BA123456</span></div>
+            <div style="display:flex; justify-content:space-between;"><span style="color:var(--ink-muted);">CAR</span><span style="color: var(--ink); font-weight: 500;">Audi A4 B8 · 2008</span></div>
+            <div style="display:flex; justify-content:space-between;"><span style="color:var(--ink-muted);">PART</span><span style="color: var(--ink); font-weight: 500;">8K0 615 301 M</span></div>
+            <div style="display:flex; justify-content:space-between; padding: 8px 0; border-top: 1px dashed var(--line); border-bottom: 1px dashed var(--line); margin: 8px 0;"><span style="color:var(--ink-muted);">BREMBO 09.9772.11</span><span style="color: var(--ink); font-weight: 600;">5 940 ₽</span></div>
+            <div style="display:flex; justify-content:space-between; font-size: 16px;"><span style="color: var(--navy-900); font-weight: 600;">TOTAL</span><span style="color: var(--crimson-600); font-weight: 600;">5 940 ₽</span></div>
+            <div style="margin-top: 18px; color: var(--ink-muted); font-size: 11px;">vingo · order #28104 · 03.10.2025</div>
+          </div>
+        </div>
+        <div class="card-label"><span>06 — Quote / receipt</span><span>e-mail · печать</span></div>
+      </div>
+    </div>
+
+    <!-- footer -->
+    <footer style="border-top: 1px solid var(--line); padding-top: 32px; display: flex; justify-content: space-between; align-items: end; flex-wrap: wrap; gap: 24px;">
+      <div>
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+          <svg width="32" height="32" viewBox="0 0 120 120"><rect width="120" height="120" rx="26" fill="var(--navy-900)"/><path d="M28 50 L60 88 L92 50" stroke="white" stroke-width="11" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="60" cy="34" r="7" fill="var(--crimson-500)"/></svg>
+          <div style="font-size: 24px; font-weight: 800; letter-spacing: -0.025em;">vingo</div>
+        </div>
+        <div class="mono" style="font-size: 11px; color: var(--ink-muted); letter-spacing: 0.06em;">brand book v 1.0 · may 2026</div>
+      </div>
+      <div style="font-family: var(--f-mono); font-size: 11px; color: var(--ink-muted); letter-spacing: 0.08em; text-align: right;">
+        <div>Конец документа.</div>
+        <div style="margin-top: 4px;">Вопросы → design@vingo.ru</div>
+      </div>
+    </footer>
+
+  </div>
+</section>
+
+
+</div>
+
+<!-- tweaks mount -->
+<div id="tweaks-root"></div>
+
+<script>
+window.TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "accent": "#E03A3E",
+  "coverDark": false,
+  "showPattern": false
+}/*EDITMODE-END*/;
+</script>
+
+<!-- script libs (loaded only when needed) -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<!-- include sections via fetch+inject so we can keep files small -->
+<script>
+  window.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => window.dispatchEvent(new CustomEvent('sections-loaded')), 100);
+  });
+</script>
+
+<script type="text/babel">
+
+// iOS.jsx — Simplified iOS 26 (Liquid Glass) device frame
+// Based on the iOS 26 UI Kit + Figma status bar spec. No assets, no deps.
+// Exports: IOSDevice, IOSStatusBar, IOSNavBar, IOSGlassPill, IOSList, IOSListRow, IOSKeyboard
+
+// ─────────────────────────────────────────────────────────────
+// Status bar
+// ─────────────────────────────────────────────────────────────
+function IOSStatusBar({ dark = false, time = '9:41' }) {
+  const c = dark ? '#fff' : '#000';
+  return (
+    <div style={{
+      display: 'flex', gap: 154, alignItems: 'center', justifyContent: 'center',
+      padding: '21px 24px 19px', boxSizing: 'border-box',
+      position: 'relative', zIndex: 20, width: '100%',
+    }}>
+      <div style={{ flex: 1, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', paddingTop: 1.5 }}>
+        <span style={{
+          fontFamily: '-apple-system, "SF Pro", system-ui', fontWeight: 590,
+          fontSize: 17, lineHeight: '22px', color: c,
+        }}>{time}</span>
+      </div>
+      <div style={{ flex: 1, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, paddingTop: 1, paddingRight: 1 }}>
+        <svg width="19" height="12" viewBox="0 0 19 12">
+          <rect x="0" y="7.5" width="3.2" height="4.5" rx="0.7" fill={c}/>
+          <rect x="4.8" y="5" width="3.2" height="7" rx="0.7" fill={c}/>
+          <rect x="9.6" y="2.5" width="3.2" height="9.5" rx="0.7" fill={c}/>
+          <rect x="14.4" y="0" width="3.2" height="12" rx="0.7" fill={c}/>
+        </svg>
+        <svg width="17" height="12" viewBox="0 0 17 12">
+          <path d="M8.5 3.2C10.8 3.2 12.9 4.1 14.4 5.6L15.5 4.5C13.7 2.7 11.2 1.5 8.5 1.5C5.8 1.5 3.3 2.7 1.5 4.5L2.6 5.6C4.1 4.1 6.2 3.2 8.5 3.2Z" fill={c}/>
+          <path d="M8.5 6.8C9.9 6.8 11.1 7.3 12 8.2L13.1 7.1C11.8 5.9 10.2 5.1 8.5 5.1C6.8 5.1 5.2 5.9 3.9 7.1L5 8.2C5.9 7.3 7.1 6.8 8.5 6.8Z" fill={c}/>
+          <circle cx="8.5" cy="10.5" r="1.5" fill={c}/>
+        </svg>
+        <svg width="27" height="13" viewBox="0 0 27 13">
+          <rect x="0.5" y="0.5" width="23" height="12" rx="3.5" stroke={c} strokeOpacity="0.35" fill="none"/>
+          <rect x="2" y="2" width="20" height="9" rx="2" fill={c}/>
+          <path d="M25 4.5V8.5C25.8 8.2 26.5 7.2 26.5 6.5C26.5 5.8 25.8 4.8 25 4.5Z" fill={c} fillOpacity="0.4"/>
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Liquid glass pill — blur + tint + shine
+// ─────────────────────────────────────────────────────────────
+function IOSGlassPill({ children, dark = false, style = {} }) {
+  return (
+    <div style={{
+      height: 44, minWidth: 44, borderRadius: 9999,
+      position: 'relative', overflow: 'hidden',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      boxShadow: dark
+        ? '0 2px 6px rgba(0,0,0,0.35), 0 6px 16px rgba(0,0,0,0.2)'
+        : '0 1px 3px rgba(0,0,0,0.07), 0 3px 10px rgba(0,0,0,0.06)',
+      ...style,
+    }}>
+      {/* blur + tint */}
+      <div style={{
+        position: 'absolute', inset: 0, borderRadius: 9999,
+        backdropFilter: 'blur(12px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(12px) saturate(180%)',
+        background: dark ? 'rgba(120,120,128,0.28)' : 'rgba(255,255,255,0.5)',
+      }} />
+      {/* shine */}
+      <div style={{
+        position: 'absolute', inset: 0, borderRadius: 9999,
+        boxShadow: dark
+          ? 'inset 1.5px 1.5px 1px rgba(255,255,255,0.15), inset -1px -1px 1px rgba(255,255,255,0.08)'
+          : 'inset 1.5px 1.5px 1px rgba(255,255,255,0.7), inset -1px -1px 1px rgba(255,255,255,0.4)',
+        border: dark ? '0.5px solid rgba(255,255,255,0.15)' : '0.5px solid rgba(0,0,0,0.06)',
+      }} />
+      <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', padding: '0 4px' }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Navigation bar — glass pills + large title
+// ─────────────────────────────────────────────────────────────
+function IOSNavBar({ title = 'Title', dark = false, trailingIcon = true }) {
+  const muted = dark ? 'rgba(255,255,255,0.6)' : '#404040';
+  const text = dark ? '#fff' : '#000';
+  const pillIcon = (content) => (
+    <IOSGlassPill dark={dark}>
+      <div style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {content}
+      </div>
+    </IOSGlassPill>
+  );
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 10,
+      paddingTop: 62, paddingBottom: 10, position: 'relative', zIndex: 5,
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '0 16px',
+      }}>
+        {/* back chevron */}
+        {pillIcon(
+          <svg width="12" height="20" viewBox="0 0 12 20" fill="none" style={{ marginLeft: -1 }}>
+            <path d="M10 2L2 10l8 8" stroke={muted} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        )}
+        {/* trailing ellipsis */}
+        {trailingIcon && pillIcon(
+          <svg width="22" height="6" viewBox="0 0 22 6">
+            <circle cx="3" cy="3" r="2.5" fill={muted}/>
+            <circle cx="11" cy="3" r="2.5" fill={muted}/>
+            <circle cx="19" cy="3" r="2.5" fill={muted}/>
+          </svg>
+        )}
+      </div>
+      {/* large title */}
+      <div style={{
+        padding: '0 16px',
+        fontFamily: '-apple-system, system-ui',
+        fontSize: 34, fontWeight: 700, lineHeight: '41px',
+        color: text, letterSpacing: 0.4,
+      }}>{title}</div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Grouped list (inset card, r:26) + row (52px)
+// ─────────────────────────────────────────────────────────────
+function IOSListRow({ title, detail, icon, chevron = true, isLast = false, dark = false }) {
+  const text = dark ? '#fff' : '#000';
+  const sec = dark ? 'rgba(235,235,245,0.6)' : 'rgba(60,60,67,0.6)';
+  const ter = dark ? 'rgba(235,235,245,0.3)' : 'rgba(60,60,67,0.3)';
+  const sep = dark ? 'rgba(84,84,88,0.65)' : 'rgba(60,60,67,0.12)';
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', minHeight: 52,
+      padding: '0 16px', position: 'relative',
+      fontFamily: '-apple-system, system-ui', fontSize: 17,
+      letterSpacing: -0.43,
+    }}>
+      {icon && (
+        <div style={{
+          width: 30, height: 30, borderRadius: 7, background: icon,
+          marginRight: 12, flexShrink: 0,
+        }} />
+      )}
+      <div style={{ flex: 1, color: text }}>{title}</div>
+      {detail && <span style={{ color: sec, marginRight: 6 }}>{detail}</span>}
+      {chevron && (
+        <svg width="8" height="14" viewBox="0 0 8 14" style={{ flexShrink: 0 }}>
+          <path d="M1 1l6 6-6 6" stroke={ter} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      )}
+      {!isLast && (
+        <div style={{
+          position: 'absolute', bottom: 0, right: 0,
+          left: icon ? 58 : 16, height: 0.5, background: sep,
+        }} />
+      )}
+    </div>
+  );
+}
+
+function IOSList({ header, children, dark = false }) {
+  const hc = dark ? 'rgba(235,235,245,0.6)' : 'rgba(60,60,67,0.6)';
+  const bg = dark ? '#1C1C1E' : '#fff';
+  return (
+    <div>
+      {header && (
+        <div style={{
+          fontFamily: '-apple-system, system-ui', fontSize: 13,
+          color: hc, textTransform: 'uppercase',
+          padding: '8px 36px 6px', letterSpacing: -0.08,
+        }}>{header}</div>
+      )}
+      <div style={{
+        background: bg, borderRadius: 26,
+        margin: '0 16px', overflow: 'hidden',
+      }}>{children}</div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Device frame
+// ─────────────────────────────────────────────────────────────
+function IOSDevice({
+  children, width = 402, height = 874, dark = false,
+  title, keyboard = false,
+}) {
+  return (
+    <div style={{
+      width, height, borderRadius: 48, overflow: 'hidden',
+      position: 'relative', background: dark ? '#000' : '#F2F2F7',
+      boxShadow: '0 40px 80px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.12)',
+      fontFamily: '-apple-system, system-ui, sans-serif',
+      WebkitFontSmoothing: 'antialiased',
+    }}>
+      {/* dynamic island */}
+      <div style={{
+        position: 'absolute', top: 11, left: '50%', transform: 'translateX(-50%)',
+        width: 126, height: 37, borderRadius: 24, background: '#000', zIndex: 50,
+      }} />
+      {/* status bar (absolute) */}
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}>
+        <IOSStatusBar dark={dark} />
+      </div>
+      {/* nav + content */}
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+        {title !== undefined && <IOSNavBar title={title} dark={dark} />}
+        <div style={{ flex: 1, overflow: 'auto' }}>{children}</div>
+        {keyboard && <IOSKeyboard dark={dark} />}
+      </div>
+      {/* home indicator — always on top */}
+      <div style={{
+        position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 60,
+        height: 34, display: 'flex', justifyContent: 'center', alignItems: 'flex-end',
+        paddingBottom: 8, pointerEvents: 'none',
+      }}>
+        <div style={{
+          width: 139, height: 5, borderRadius: 100,
+          background: dark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.25)',
+        }} />
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Keyboard — iOS 26 liquid glass
+// ─────────────────────────────────────────────────────────────
+function IOSKeyboard({ dark = false }) {
+  const glyph = dark ? 'rgba(255,255,255,0.7)' : '#595959';
+  const sugg = dark ? 'rgba(255,255,255,0.6)' : '#333';
+  const keyBg = dark ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.85)';
+
+  // special-key icons
+  const icons = {
+    shift: <svg width="19" height="17" viewBox="0 0 19 17"><path d="M9.5 1L1 9.5h4.5V16h8V9.5H18L9.5 1z" fill={glyph}/></svg>,
+    del: <svg width="23" height="17" viewBox="0 0 23 17"><path d="M7 1h13a2 2 0 012 2v11a2 2 0 01-2 2H7l-6-7.5L7 1z" fill="none" stroke={glyph} strokeWidth="1.6" strokeLinejoin="round"/><path d="M10 5l7 7M17 5l-7 7" stroke={glyph} strokeWidth="1.6" strokeLinecap="round"/></svg>,
+    ret: <svg width="20" height="14" viewBox="0 0 20 14"><path d="M18 1v6H4m0 0l4-4M4 7l4 4" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  };
+
+  const key = (content, { w, flex, ret, fs = 25, k } = {}) => (
+    <div key={k} style={{
+      height: 42, borderRadius: 8.5,
+      flex: flex ? 1 : undefined, width: w, minWidth: 0,
+      background: ret ? '#08f' : keyBg,
+      boxShadow: '0 1px 0 rgba(0,0,0,0.075)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontFamily: '-apple-system, "SF Compact", system-ui',
+      fontSize: fs, fontWeight: 458, color: ret ? '#fff' : glyph,
+    }}>{content}</div>
+  );
+
+  const row = (keys, pad = 0) => (
+    <div style={{ display: 'flex', gap: 6.5, justifyContent: 'center', padding: `0 ${pad}px` }}>
+      {keys.map(l => key(l, { flex: true, k: l }))}
+    </div>
+  );
+
+  return (
+    <div style={{
+      position: 'relative', zIndex: 15, borderRadius: 27, overflow: 'hidden',
+      padding: '11px 0 2px',
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      boxShadow: dark
+        ? '0 -2px 20px rgba(0,0,0,0.09)'
+        : '0 -1px 6px rgba(0,0,0,0.018), 0 -3px 20px rgba(0,0,0,0.012)',
+    }}>
+      {/* liquid glass bg — same recipe as nav pills */}
+      <div style={{
+        position: 'absolute', inset: 0, borderRadius: 27,
+        backdropFilter: 'blur(12px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(12px) saturate(180%)',
+        background: dark ? 'rgba(120,120,128,0.14)' : 'rgba(255,255,255,0.25)',
+      }} />
+      <div style={{
+        position: 'absolute', inset: 0, borderRadius: 27,
+        boxShadow: dark
+          ? 'inset 1.5px 1.5px 1px rgba(255,255,255,0.15)'
+          : 'inset 1.5px 1.5px 1px rgba(255,255,255,0.7), inset -1px -1px 1px rgba(255,255,255,0.4)',
+        border: dark ? '0.5px solid rgba(255,255,255,0.15)' : '0.5px solid rgba(0,0,0,0.06)',
+        pointerEvents: 'none',
+      }} />
+
+      {/* autocorrect bar */}
+      <div style={{
+        display: 'flex', gap: 20, alignItems: 'center',
+        padding: '8px 22px 13px', width: '100%', boxSizing: 'border-box',
+        position: 'relative',
+      }}>
+        {['"The"', 'the', 'to'].map((w, i) => (
+          <React.Fragment key={i}>
+            {i > 0 && <div style={{ width: 1, height: 25, background: '#ccc', opacity: 0.3 }} />}
+            <div style={{
+              flex: 1, textAlign: 'center',
+              fontFamily: '-apple-system, system-ui', fontSize: 17,
+              color: sugg, letterSpacing: -0.43, lineHeight: '22px',
+            }}>{w}</div>
+          </React.Fragment>
+        ))}
+      </div>
+
+      {/* key layout */}
+      <div style={{
+        display: 'flex', flexDirection: 'column', gap: 13,
+        padding: '0 6.5px', width: '100%', boxSizing: 'border-box',
+        position: 'relative',
+      }}>
+        {row(['q','w','e','r','t','y','u','i','o','p'])}
+        {row(['a','s','d','f','g','h','j','k','l'], 20)}
+        <div style={{ display: 'flex', gap: 14.25, alignItems: 'center' }}>
+          {key(icons.shift, { w: 45, k: 'shift' })}
+          <div style={{ display: 'flex', gap: 6.5, flex: 1 }}>
+            {['z','x','c','v','b','n','m'].map(l => key(l, { flex: true, k: l }))}
+          </div>
+          {key(icons.del, { w: 45, k: 'del' })}
+        </div>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {key('ABC', { w: 92.25, fs: 18, k: 'abc' })}
+          {key('', { flex: true, k: 'space' })}
+          {key(icons.ret, { w: 92.25, ret: true, k: 'ret' })}
+        </div>
+      </div>
+
+      {/* bottom spacer (emoji+mic area, icons omitted) */}
+      <div style={{ height: 56, width: '100%', position: 'relative' }} />
+    </div>
+  );
+}
+
+Object.assign(window, {
+  IOSDevice, IOSStatusBar, IOSNavBar, IOSGlassPill, IOSList, IOSListRow, IOSKeyboard,
+});
+
+</script>
+<script type="text/babel">
+
+// tweaks-panel.jsx
+// Reusable Tweaks shell + form-control helpers.
+//
+// Owns the host protocol (listens for __activate_edit_mode / __deactivate_edit_mode,
+// posts __edit_mode_available / __edit_mode_set_keys / __edit_mode_dismissed) so
+// individual prototypes don't re-roll it. Ships a consistent set of controls so you
+// don't hand-draw <input type="range">, segmented radios, steppers, etc.
+//
+// Usage (in an HTML file that loads React + Babel):
+//
+//   const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+//     "primaryColor": "#D97757",
+//     "palette": ["#D97757", "#29261b", "#f6f4ef"],
+//     "fontSize": 16,
+//     "density": "regular",
+//     "dark": false
+//   }/*EDITMODE-END*/;
+//
+//   function App() {
+//     const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+//     return (
+//       <div style={{ fontSize: t.fontSize, color: t.primaryColor }}>
+//         Hello
+//         <TweaksPanel>
+//           <TweakSection label="Typography" />
+//           <TweakSlider label="Font size" value={t.fontSize} min={10} max={32} unit="px"
+//                        onChange={(v) => setTweak('fontSize', v)} />
+//           <TweakRadio  label="Density" value={t.density}
+//                        options={['compact', 'regular', 'comfy']}
+//                        onChange={(v) => setTweak('density', v)} />
+//           <TweakSection label="Theme" />
+//           <TweakColor  label="Primary" value={t.primaryColor}
+//                        options={['#D97757', '#2A6FDB', '#1F8A5B', '#7A5AE0']}
+//                        onChange={(v) => setTweak('primaryColor', v)} />
+//           <TweakColor  label="Palette" value={t.palette}
+//                        options={[['#D97757', '#29261b', '#f6f4ef'],
+//                                  ['#475569', '#0f172a', '#f1f5f9']]}
+//                        onChange={(v) => setTweak('palette', v)} />
+//           <TweakToggle label="Dark mode" value={t.dark}
+//                        onChange={(v) => setTweak('dark', v)} />
+//         </TweaksPanel>
+//       </div>
+//     );
+//   }
+//
+// ─────────────────────────────────────────────────────────────────────────────
+
+const __TWEAKS_STYLE = `
+  .twk-panel{position:fixed;right:16px;bottom:16px;z-index:2147483646;width:280px;
+    max-height:calc(100vh - 32px);display:flex;flex-direction:column;
+    transform:scale(var(--dc-inv-zoom,1));transform-origin:bottom right;
+    background:rgba(250,249,247,.78);color:#29261b;
+    -webkit-backdrop-filter:blur(24px) saturate(160%);backdrop-filter:blur(24px) saturate(160%);
+    border:.5px solid rgba(255,255,255,.6);border-radius:14px;
+    box-shadow:0 1px 0 rgba(255,255,255,.5) inset,0 12px 40px rgba(0,0,0,.18);
+    font:11.5px/1.4 ui-sans-serif,system-ui,-apple-system,sans-serif;overflow:hidden}
+  .twk-hd{display:flex;align-items:center;justify-content:space-between;
+    padding:10px 8px 10px 14px;cursor:move;user-select:none}
+  .twk-hd b{font-size:12px;font-weight:600;letter-spacing:.01em}
+  .twk-x{appearance:none;border:0;background:transparent;color:rgba(41,38,27,.55);
+    width:22px;height:22px;border-radius:6px;cursor:default;font-size:13px;line-height:1}
+  .twk-x:hover{background:rgba(0,0,0,.06);color:#29261b}
+  .twk-body{padding:2px 14px 14px;display:flex;flex-direction:column;gap:10px;
+    overflow-y:auto;overflow-x:hidden;min-height:0;
+    scrollbar-width:thin;scrollbar-color:rgba(0,0,0,.15) transparent}
+  .twk-body::-webkit-scrollbar{width:8px}
+  .twk-body::-webkit-scrollbar-track{background:transparent;margin:2px}
+  .twk-body::-webkit-scrollbar-thumb{background:rgba(0,0,0,.15);border-radius:4px;
+    border:2px solid transparent;background-clip:content-box}
+  .twk-body::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,.25);
+    border:2px solid transparent;background-clip:content-box}
+  .twk-row{display:flex;flex-direction:column;gap:5px}
+  .twk-row-h{flex-direction:row;align-items:center;justify-content:space-between;gap:10px}
+  .twk-lbl{display:flex;justify-content:space-between;align-items:baseline;
+    color:rgba(41,38,27,.72)}
+  .twk-lbl>span:first-child{font-weight:500}
+  .twk-val{color:rgba(41,38,27,.5);font-variant-numeric:tabular-nums}
+
+  .twk-sect{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+    color:rgba(41,38,27,.45);padding:10px 0 0}
+  .twk-sect:first-child{padding-top:0}
+
+  .twk-field{appearance:none;box-sizing:border-box;width:100%;min-width:0;height:26px;padding:0 8px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:7px;
+    background:rgba(255,255,255,.6);color:inherit;font:inherit;outline:none}
+  .twk-field:focus{border-color:rgba(0,0,0,.25);background:rgba(255,255,255,.85)}
+  select.twk-field{padding-right:22px;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='rgba(0,0,0,.5)' d='M0 0h10L5 6z'/></svg>");
+    background-repeat:no-repeat;background-position:right 8px center}
+
+  .twk-slider{appearance:none;-webkit-appearance:none;width:100%;height:4px;margin:6px 0;
+    border-radius:999px;background:rgba(0,0,0,.12);outline:none}
+  .twk-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+    width:14px;height:14px;border-radius:50%;background:#fff;
+    border:.5px solid rgba(0,0,0,.12);box-shadow:0 1px 3px rgba(0,0,0,.2);cursor:default}
+  .twk-slider::-moz-range-thumb{width:14px;height:14px;border-radius:50%;
+    background:#fff;border:.5px solid rgba(0,0,0,.12);box-shadow:0 1px 3px rgba(0,0,0,.2);cursor:default}
+
+  .twk-seg{position:relative;display:flex;padding:2px;border-radius:8px;
+    background:rgba(0,0,0,.06);user-select:none}
+  .twk-seg-thumb{position:absolute;top:2px;bottom:2px;border-radius:6px;
+    background:rgba(255,255,255,.9);box-shadow:0 1px 2px rgba(0,0,0,.12);
+    transition:left .15s cubic-bezier(.3,.7,.4,1),width .15s}
+  .twk-seg.dragging .twk-seg-thumb{transition:none}
+  .twk-seg button{appearance:none;position:relative;z-index:1;flex:1;border:0;
+    background:transparent;color:inherit;font:inherit;font-weight:500;min-height:22px;
+    border-radius:6px;cursor:default;padding:4px 6px;line-height:1.2;
+    overflow-wrap:anywhere}
+
+  .twk-toggle{position:relative;width:32px;height:18px;border:0;border-radius:999px;
+    background:rgba(0,0,0,.15);transition:background .15s;cursor:default;padding:0}
+  .twk-toggle[data-on="1"]{background:#34c759}
+  .twk-toggle i{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;
+    background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s}
+  .twk-toggle[data-on="1"] i{transform:translateX(14px)}
+
+  .twk-num{display:flex;align-items:center;box-sizing:border-box;min-width:0;height:26px;padding:0 0 0 8px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:7px;background:rgba(255,255,255,.6)}
+  .twk-num-lbl{font-weight:500;color:rgba(41,38,27,.6);cursor:ew-resize;
+    user-select:none;padding-right:8px}
+  .twk-num input{flex:1;min-width:0;height:100%;border:0;background:transparent;
+    font:inherit;font-variant-numeric:tabular-nums;text-align:right;padding:0 8px 0 0;
+    outline:none;color:inherit;-moz-appearance:textfield}
+  .twk-num input::-webkit-inner-spin-button,.twk-num input::-webkit-outer-spin-button{
+    -webkit-appearance:none;margin:0}
+  .twk-num-unit{padding-right:8px;color:rgba(41,38,27,.45)}
+
+  .twk-btn{appearance:none;height:26px;padding:0 12px;border:0;border-radius:7px;
+    background:rgba(0,0,0,.78);color:#fff;font:inherit;font-weight:500;cursor:default}
+  .twk-btn:hover{background:rgba(0,0,0,.88)}
+  .twk-btn.secondary{background:rgba(0,0,0,.06);color:inherit}
+  .twk-btn.secondary:hover{background:rgba(0,0,0,.1)}
+
+  .twk-swatch{appearance:none;-webkit-appearance:none;width:56px;height:22px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:6px;padding:0;cursor:default;
+    background:transparent;flex-shrink:0}
+  .twk-swatch::-webkit-color-swatch-wrapper{padding:0}
+  .twk-swatch::-webkit-color-swatch{border:0;border-radius:5.5px}
+  .twk-swatch::-moz-color-swatch{border:0;border-radius:5.5px}
+
+  .twk-chips{display:flex;gap:6px}
+  .twk-chip{position:relative;appearance:none;flex:1;min-width:0;height:46px;
+    padding:0;border:0;border-radius:6px;overflow:hidden;cursor:default;
+    box-shadow:0 0 0 .5px rgba(0,0,0,.12),0 1px 2px rgba(0,0,0,.06);
+    transition:transform .12s cubic-bezier(.3,.7,.4,1),box-shadow .12s}
+  .twk-chip:hover{transform:translateY(-1px);
+    box-shadow:0 0 0 .5px rgba(0,0,0,.18),0 4px 10px rgba(0,0,0,.12)}
+  .twk-chip[data-on="1"]{box-shadow:0 0 0 1.5px rgba(0,0,0,.85),
+    0 2px 6px rgba(0,0,0,.15)}
+  .twk-chip>span{position:absolute;top:0;bottom:0;right:0;width:34%;
+    display:flex;flex-direction:column;box-shadow:-1px 0 0 rgba(0,0,0,.1)}
+  .twk-chip>span>i{flex:1;box-shadow:0 -1px 0 rgba(0,0,0,.1)}
+  .twk-chip>span>i:first-child{box-shadow:none}
+  .twk-chip svg{position:absolute;top:6px;left:6px;width:13px;height:13px;
+    filter:drop-shadow(0 1px 1px rgba(0,0,0,.3))}
+`;
+
+// ── useTweaks ───────────────────────────────────────────────────────────────
+// Single source of truth for tweak values. setTweak persists via the host
+// (__edit_mode_set_keys → host rewrites the EDITMODE block on disk).
+function useTweaks(defaults) {
+  const [values, setValues] = React.useState(defaults);
+  // Accepts either setTweak('key', value) or setTweak({ key: value, ... }) so a
+  // useState-style call doesn't write a "[object Object]" key into the persisted
+  // JSON block.
+  const setTweak = React.useCallback((keyOrEdits, val) => {
+    const edits = typeof keyOrEdits === 'object' && keyOrEdits !== null
+      ? keyOrEdits : { [keyOrEdits]: val };
+    setValues((prev) => ({ ...prev, ...edits }));
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits }, '*');
+    // Same-window signal so in-page listeners (deck-stage rail thumbnails)
+    // can react — the parent message only reaches the host, not peers.
+    window.dispatchEvent(new CustomEvent('tweakchange', { detail: edits }));
+  }, []);
+  return [values, setTweak];
+}
+
+// ── TweaksPanel ─────────────────────────────────────────────────────────────
+// Floating shell. Registers the protocol listener BEFORE announcing
+// availability — if the announce ran first, the host's activate could land
+// before our handler exists and the toolbar toggle would silently no-op.
+// The close button posts __edit_mode_dismissed so the host's toolbar toggle
+// flips off in lockstep; the host echoes __deactivate_edit_mode back which
+// is what actually hides the panel.
+function TweaksPanel({ title = 'Tweaks', noDeckControls = false, children }) {
+  const [open, setOpen] = React.useState(false);
+  const dragRef = React.useRef(null);
+  // Auto-inject a rail toggle when a <deck-stage> is on the page. The
+  // toggle drives the deck's per-viewer _railVisible via window message;
+  // state is mirrored from the same localStorage key the deck reads so
+  // the control reflects reality across reloads. The mechanism is the
+  // message — authors who want custom placement can post it directly
+  // and pass noDeckControls to suppress this one.
+  const hasDeckStage = React.useMemo(
+    () => typeof document !== 'undefined' && !!document.querySelector('deck-stage'),
+    [],
+  );
+  // deck-stage enables its rail in connectedCallback, but this panel can
+  // mount before that element has upgraded. The initial read catches the
+  // common case; the listener covers mounting first. (Older deck-stage.js
+  // copies still wait for the host's __omelette_rail_enabled postMessage —
+  // same listener handles those.)
+  const [railEnabled, setRailEnabled] = React.useState(
+    () => hasDeckStage && !!document.querySelector('deck-stage')?._railEnabled,
+  );
+  React.useEffect(() => {
+    if (!hasDeckStage || railEnabled) return undefined;
+    const onMsg = (e) => {
+      if (e.data && e.data.type === '__omelette_rail_enabled') setRailEnabled(true);
+    };
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, [hasDeckStage, railEnabled]);
+  const [railVisible, setRailVisible] = React.useState(() => {
+    try { return localStorage.getItem('deck-stage.railVisible') !== '0'; } catch (e) { return true; }
+  });
+  const toggleRail = (on) => {
+    setRailVisible(on);
+    window.postMessage({ type: '__deck_rail_visible', on }, '*');
+  };
+  const offsetRef = React.useRef({ x: 16, y: 16 });
+  const PAD = 16;
+
+  const clampToViewport = React.useCallback(() => {
+    const panel = dragRef.current;
+    if (!panel) return;
+    const w = panel.offsetWidth, h = panel.offsetHeight;
+    const maxRight = Math.max(PAD, window.innerWidth - w - PAD);
+    const maxBottom = Math.max(PAD, window.innerHeight - h - PAD);
+    offsetRef.current = {
+      x: Math.min(maxRight, Math.max(PAD, offsetRef.current.x)),
+      y: Math.min(maxBottom, Math.max(PAD, offsetRef.current.y)),
+    };
+    panel.style.right = offsetRef.current.x + 'px';
+    panel.style.bottom = offsetRef.current.y + 'px';
+  }, []);
+
+  React.useEffect(() => {
+    if (!open) return;
+    clampToViewport();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', clampToViewport);
+      return () => window.removeEventListener('resize', clampToViewport);
+    }
+    const ro = new ResizeObserver(clampToViewport);
+    ro.observe(document.documentElement);
+    return () => ro.disconnect();
+  }, [open, clampToViewport]);
+
+  React.useEffect(() => {
+    const onMsg = (e) => {
+      const t = e?.data?.type;
+      if (t === '__activate_edit_mode') setOpen(true);
+      else if (t === '__deactivate_edit_mode') setOpen(false);
+    };
+    window.addEventListener('message', onMsg);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  const dismiss = () => {
+    setOpen(false);
+    window.parent.postMessage({ type: '__edit_mode_dismissed' }, '*');
+  };
+
+  const onDragStart = (e) => {
+    const panel = dragRef.current;
+    if (!panel) return;
+    const r = panel.getBoundingClientRect();
+    const sx = e.clientX, sy = e.clientY;
+    const startRight = window.innerWidth - r.right;
+    const startBottom = window.innerHeight - r.bottom;
+    const move = (ev) => {
+      offsetRef.current = {
+        x: startRight - (ev.clientX - sx),
+        y: startBottom - (ev.clientY - sy),
+      };
+      clampToViewport();
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  };
+
+  if (!open) return null;
+  return (
+    <>
+      <style>{__TWEAKS_STYLE}</style>
+      <div ref={dragRef} className="twk-panel" data-noncommentable=""
+           style={{ right: offsetRef.current.x, bottom: offsetRef.current.y }}>
+        <div className="twk-hd" onMouseDown={onDragStart}>
+          <b>{title}</b>
+          <button className="twk-x" aria-label="Close tweaks"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={dismiss}>✕</button>
+        </div>
+        <div className="twk-body">
+          {children}
+          {hasDeckStage && railEnabled && !noDeckControls && (
+            <TweakSection label="Deck">
+              <TweakToggle label="Thumbnail rail" value={railVisible} onChange={toggleRail} />
+            </TweakSection>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── Layout helpers ──────────────────────────────────────────────────────────
+
+function TweakSection({ label, children }) {
+  return (
+    <>
+      <div className="twk-sect">{label}</div>
+      {children}
+    </>
+  );
+}
+
+function TweakRow({ label, value, children, inline = false }) {
+  return (
+    <div className={inline ? 'twk-row twk-row-h' : 'twk-row'}>
+      <div className="twk-lbl">
+        <span>{label}</span>
+        {value != null && <span className="twk-val">{value}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// ── Controls ────────────────────────────────────────────────────────────────
+
+function TweakSlider({ label, value, min = 0, max = 100, step = 1, unit = '', onChange }) {
+  return (
+    <TweakRow label={label} value={`${value}${unit}`}>
+      <input type="range" className="twk-slider" min={min} max={max} step={step}
+             value={value} onChange={(e) => onChange(Number(e.target.value))} />
+    </TweakRow>
+  );
+}
+
+function TweakToggle({ label, value, onChange }) {
+  return (
+    <div className="twk-row twk-row-h">
+      <div className="twk-lbl"><span>{label}</span></div>
+      <button type="button" className="twk-toggle" data-on={value ? '1' : '0'}
+              role="switch" aria-checked={!!value}
+              onClick={() => onChange(!value)}><i /></button>
+    </div>
+  );
+}
+
+function TweakRadio({ label, value, options, onChange }) {
+  const trackRef = React.useRef(null);
+  const [dragging, setDragging] = React.useState(false);
+  // The active value is read by pointer-move handlers attached for the lifetime
+  // of a drag — ref it so a stale closure doesn't fire onChange for every move.
+  const valueRef = React.useRef(value);
+  valueRef.current = value;
+
+  // Segments wrap mid-word once per-segment width runs out. The track is
+  // ~248px (280 panel − 28 body pad − 4 seg pad), each button loses 12px
+  // to its own padding, and 11.5px system-ui averages ~6.3px/char — so 2
+  // options fit ~16 chars each, 3 fit ~10. Past that (or >3 options), fall
+  // back to a dropdown rather than wrap.
+  const labelLen = (o) => String(typeof o === 'object' ? o.label : o).length;
+  const maxLen = options.reduce((m, o) => Math.max(m, labelLen(o)), 0);
+  const fitsAsSegments = maxLen <= ({ 2: 16, 3: 10 }[options.length] ?? 0);
+  if (!fitsAsSegments) {
+    // <select> emits strings — map back to the original option value so the
+    // fallback stays type-preserving (numbers, booleans) like the segment path.
+    const resolve = (s) => {
+      const m = options.find((o) => String(typeof o === 'object' ? o.value : o) === s);
+      return m === undefined ? s : typeof m === 'object' ? m.value : m;
+    };
+    return <TweakSelect label={label} value={value} options={options}
+                        onChange={(s) => onChange(resolve(s))} />;
+  }
+  const opts = options.map((o) => (typeof o === 'object' ? o : { value: o, label: o }));
+  const idx = Math.max(0, opts.findIndex((o) => o.value === value));
+  const n = opts.length;
+
+  const segAt = (clientX) => {
+    const r = trackRef.current.getBoundingClientRect();
+    const inner = r.width - 4;
+    const i = Math.floor(((clientX - r.left - 2) / inner) * n);
+    return opts[Math.max(0, Math.min(n - 1, i))].value;
+  };
+
+  const onPointerDown = (e) => {
+    setDragging(true);
+    const v0 = segAt(e.clientX);
+    if (v0 !== valueRef.current) onChange(v0);
+    const move = (ev) => {
+      if (!trackRef.current) return;
+      const v = segAt(ev.clientX);
+      if (v !== valueRef.current) onChange(v);
+    };
+    const up = () => {
+      setDragging(false);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  return (
+    <TweakRow label={label}>
+      <div ref={trackRef} role="radiogroup" onPointerDown={onPointerDown}
+           className={dragging ? 'twk-seg dragging' : 'twk-seg'}>
+        <div className="twk-seg-thumb"
+             style={{ left: `calc(2px + ${idx} * (100% - 4px) / ${n})`,
+                      width: `calc((100% - 4px) / ${n})` }} />
+        {opts.map((o) => (
+          <button key={o.value} type="button" role="radio" aria-checked={o.value === value}>
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </TweakRow>
+  );
+}
+
+function TweakSelect({ label, value, options, onChange }) {
+  return (
+    <TweakRow label={label}>
+      <select className="twk-field" value={value} onChange={(e) => onChange(e.target.value)}>
+        {options.map((o) => {
+          const v = typeof o === 'object' ? o.value : o;
+          const l = typeof o === 'object' ? o.label : o;
+          return <option key={v} value={v}>{l}</option>;
+        })}
+      </select>
+    </TweakRow>
+  );
+}
+
+function TweakText({ label, value, placeholder, onChange }) {
+  return (
+    <TweakRow label={label}>
+      <input className="twk-field" type="text" value={value} placeholder={placeholder}
+             onChange={(e) => onChange(e.target.value)} />
+    </TweakRow>
+  );
+}
+
+function TweakNumber({ label, value, min, max, step = 1, unit = '', onChange }) {
+  const clamp = (n) => {
+    if (min != null && n < min) return min;
+    if (max != null && n > max) return max;
+    return n;
+  };
+  const startRef = React.useRef({ x: 0, val: 0 });
+  const onScrubStart = (e) => {
+    e.preventDefault();
+    startRef.current = { x: e.clientX, val: value };
+    const decimals = (String(step).split('.')[1] || '').length;
+    const move = (ev) => {
+      const dx = ev.clientX - startRef.current.x;
+      const raw = startRef.current.val + dx * step;
+      const snapped = Math.round(raw / step) * step;
+      onChange(clamp(Number(snapped.toFixed(decimals))));
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  return (
+    <div className="twk-num">
+      <span className="twk-num-lbl" onPointerDown={onScrubStart}>{label}</span>
+      <input type="number" value={value} min={min} max={max} step={step}
+             onChange={(e) => onChange(clamp(Number(e.target.value)))} />
+      {unit && <span className="twk-num-unit">{unit}</span>}
+    </div>
+  );
+}
+
+// Relative-luminance contrast pick — checkmarks drawn over a swatch need to
+// read on both #111 and #fafafa without per-option configuration. Hex input
+// only (#rgb / #rrggbb); named or rgb()/hsl() colors fall through to "light".
+function __twkIsLight(hex) {
+  const h = String(hex).replace('#', '');
+  const x = h.length === 3 ? h.replace(/./g, (c) => c + c) : h.padEnd(6, '0');
+  const n = parseInt(x.slice(0, 6), 16);
+  if (Number.isNaN(n)) return true;
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return r * 299 + g * 587 + b * 114 > 148000;
+}
+
+const __TwkCheck = ({ light }) => (
+  <svg viewBox="0 0 14 14" aria-hidden="true">
+    <path d="M3 7.2 5.8 10 11 4.2" fill="none" strokeWidth="2.2"
+          strokeLinecap="round" strokeLinejoin="round"
+          stroke={light ? 'rgba(0,0,0,.78)' : '#fff'} />
+  </svg>
+);
+
+// TweakColor — curated color/palette picker. Each option is either a single
+// hex string or an array of 1-5 hex strings; the card adapts — a lone color
+// renders solid, a palette renders colors[0] as the hero (left ~2/3) with the
+// rest stacked in a sharp column on the right. onChange emits the
+// option in the shape it was passed (string stays string, array stays array).
+// Without options it falls back to the native color input for back-compat.
+function TweakColor({ label, value, options, onChange }) {
+  if (!options || !options.length) {
+    return (
+      <div className="twk-row twk-row-h">
+        <div className="twk-lbl"><span>{label}</span></div>
+        <input type="color" className="twk-swatch" value={value}
+               onChange={(e) => onChange(e.target.value)} />
+      </div>
+    );
+  }
+  // Native <input type=color> emits lowercase hex per the HTML spec, so
+  // compare case-insensitively. String() guards JSON.stringify(undefined),
+  // which returns the primitive undefined (no .toLowerCase).
+  const key = (o) => String(JSON.stringify(o)).toLowerCase();
+  const cur = key(value);
+  return (
+    <TweakRow label={label}>
+      <div className="twk-chips" role="radiogroup">
+        {options.map((o, i) => {
+          const colors = Array.isArray(o) ? o : [o];
+          const [hero, ...rest] = colors;
+          const sup = rest.slice(0, 4);
+          const on = key(o) === cur;
+          return (
+            <button key={i} type="button" className="twk-chip" role="radio"
+                    aria-checked={on} data-on={on ? '1' : '0'}
+                    aria-label={colors.join(', ')} title={colors.join(' · ')}
+                    style={{ background: hero }}
+                    onClick={() => onChange(o)}>
+              {sup.length > 0 && (
+                <span>
+                  {sup.map((c, j) => <i key={j} style={{ background: c }} />)}
+                </span>
+              )}
+              {on && <__TwkCheck light={__twkIsLight(hero)} />}
+            </button>
+          );
+        })}
+      </div>
+    </TweakRow>
+  );
+}
+
+function TweakButton({ label, onClick, secondary = false }) {
+  return (
+    <button type="button" className={secondary ? 'twk-btn secondary' : 'twk-btn'}
+            onClick={onClick}>{label}</button>
+  );
+}
+
+Object.assign(window, {
+  useTweaks, TweaksPanel, TweakSection, TweakRow,
+  TweakSlider, TweakToggle, TweakRadio, TweakSelect,
+  TweakText, TweakNumber, TweakColor, TweakButton,
+});
+
+</script>
+<script type="text/babel">
+// screens/mobile.jsx — three phone screens for the mobile section
+(function () {
+  const { useEffect, useState } = React;
+
+  // ─── shared bits ────────────────────────────────────────────
+  const NAVY = 'oklch(0.18 0.045 260)';
+  const NAVY_700 = 'oklch(0.32 0.05 260)';
+  const CRIMSON = 'oklch(0.60 0.22 25)';
+  const CRIMSON_BG = 'oklch(0.92 0.04 25)';
+  const PAPER = 'oklch(0.985 0.003 250)';
+  const PAPER_2 = 'oklch(0.965 0.004 250)';
+  const LINE = 'oklch(0.90 0.006 250)';
+  const INK = 'oklch(0.20 0.02 260)';
+  const INK_SOFT = 'oklch(0.45 0.02 260)';
+  const INK_MUTED = 'oklch(0.62 0.015 260)';
+  const TIER_BUDGET = 'oklch(0.78 0.14 85)';
+  const TIER_STANDARD = 'oklch(0.62 0.10 200)';
+
+  const MONO = 'JetBrains Mono, ui-monospace, monospace';
+  const SANS = 'Manrope, system-ui, sans-serif';
+
+  const Logo = ({ size = 22 }) => (
+    <svg width={size} height={size} viewBox="0 0 120 120">
+      <rect width="120" height="120" rx="26" fill={NAVY}/>
+      <path d="M28 50 L60 88 L92 50" stroke="white" strokeWidth="11" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+      <circle cx="60" cy="34" r="7" fill={CRIMSON}/>
+    </svg>
+  );
+
+  const Eyebrow = ({ children, color = INK_MUTED }) => (
+    <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color, fontWeight: 500 }}>{children}</div>
+  );
+
+  // ─── screen 1: search ───────────────────────────────────────
+  function SearchScreen() {
+    return (
+      <div style={{ background: PAPER, height: '100%', padding: '54px 20px 28px', fontFamily: SANS, color: INK, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
+          <Logo size={26} />
+          <div style={{ width: 36, height: 36, borderRadius: '50%', background: PAPER_2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={INK} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+          </div>
+        </div>
+        <Eyebrow>Подбор по&nbsp;коду</Eyebrow>
+        <h1 style={{ fontSize: 34, fontWeight: 800, letterSpacing: '-0.03em', lineHeight: 1.05, margin: '6px 0 24px', maxWidth: '11ch' }}>
+          Чья ты,<br/>машина?
+        </h1>
+
+        {/* tabs */}
+        <div style={{ display: 'flex', background: PAPER_2, borderRadius: 12, padding: 4, marginBottom: 14 }}>
+          <button style={{ flex: 1, height: 36, border: 0, borderRadius: 9, background: NAVY, color: 'white', fontWeight: 700, fontSize: 13, fontFamily: SANS }}>VIN</button>
+          <button style={{ flex: 1, height: 36, border: 0, borderRadius: 9, background: 'transparent', color: INK_SOFT, fontWeight: 600, fontSize: 13, fontFamily: SANS }}>Госномер</button>
+        </div>
+
+        <div style={{ background: 'white', border: '1px solid ' + LINE, borderRadius: 14, padding: '14px 16px', marginBottom: 14 }}>
+          <Eyebrow>VIN-код · 17 знаков</Eyebrow>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
+            <span style={{ fontFamily: MONO, fontSize: 17, fontWeight: 500, letterSpacing: '0.04em' }}>WAUZZZ8K9BA</span>
+            <span style={{ display: 'inline-block', width: 2, height: 20, background: CRIMSON, animation: 'blink 1s steps(2) infinite' }}></span>
+          </div>
+        </div>
+
+        <button style={{ height: 54, background: CRIMSON, color: 'white', fontWeight: 700, fontSize: 16, border: 0, borderRadius: 14, fontFamily: SANS }}>Подобрать запчасти</button>
+        <div style={{ textAlign: 'center', marginTop: 14, fontSize: 13, color: INK_SOFT }}>или <span style={{ color: NAVY, fontWeight: 600 }}>отсканировать камерой</span></div>
+
+        {/* recent */}
+        <div style={{ marginTop: 'auto' }}>
+          <Eyebrow>Недавние машины</Eyebrow>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+            {[
+              ['Audi A4 B8 · 2008', 'WAUZZZ8K9BA123456'],
+              ['Toyota Camry XV40', 'JT2BG22K0X0123456'],
+            ].map(([name, vin]) => (
+              <div key={vin} style={{ background: 'white', border: '1px solid ' + LINE, borderRadius: 12, padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>{name}</div>
+                  <div style={{ fontFamily: MONO, fontSize: 11, color: INK_MUTED, marginTop: 2 }}>{vin}</div>
+                </div>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={INK_MUTED} strokeWidth="1.75" strokeLinecap="round"><polyline points="9 6 15 12 9 18"/></svg>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── screen 2: results categories ──────────────────────────
+  function ResultsScreen() {
+    return (
+      <div style={{ background: PAPER, height: '100%', fontFamily: SANS, color: INK, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '54px 20px 16px', background: NAVY, color: 'white' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+            <div style={{ fontSize: 13, opacity: 0.7 }}>Назад</div>
+          </div>
+          <Eyebrow color="oklch(0.7 0.03 260)">VIN · {`WAUZZZ8K9BA123456`}</Eyebrow>
+          <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em', marginTop: 6 }}>Audi A4 B8 · 2008</div>
+          <div style={{ fontSize: 13, opacity: 0.7, marginTop: 2 }}>2.0 TFSI · 211 л.с. · Ingolstadt</div>
+        </div>
+        <div style={{ padding: '20px 20px 100px', flex: 1, overflow: 'auto' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 14 }}>
+            <div style={{ fontSize: 17, fontWeight: 700 }}>Тормозная система</div>
+            <div style={{ fontFamily: MONO, fontSize: 11, color: INK_MUTED }}>14 шт</div>
+          </div>
+
+          {/* part */}
+          <div style={{ background: 'white', border: '1px solid ' + LINE, borderRadius: 14, padding: 14, marginBottom: 12 }}>
+            <Eyebrow>OEM · 8K0 615 301 M</Eyebrow>
+            <div style={{ fontWeight: 700, fontSize: 15, marginTop: 4 }}>Диск тормозной перед.</div>
+            {/* tier row */}
+            <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+              <div style={{ flex: 1, background: 'oklch(0.95 0.05 85)', borderRadius: 10, padding: 10 }}>
+                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: TIER_BUDGET }}/><span style={{ fontFamily: MONO, fontSize: 9, color: 'oklch(0.42 0.10 85)', letterSpacing: '0.08em' }}>БЮДЖЕТ</span></div>
+                <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 600, marginTop: 6 }}>2&thinsp;480 ₽</div>
+              </div>
+              <div style={{ flex: 1, background: 'oklch(0.94 0.04 200)', borderRadius: 10, padding: 10 }}>
+                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: TIER_STANDARD }}/><span style={{ fontFamily: MONO, fontSize: 9, color: 'oklch(0.40 0.08 200)', letterSpacing: '0.08em' }}>СТАНД.</span></div>
+                <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 600, marginTop: 6 }}>5&thinsp;940 ₽</div>
+              </div>
+              <div style={{ flex: 1, background: CRIMSON_BG, borderRadius: 10, padding: 10 }}>
+                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: CRIMSON }}/><span style={{ fontFamily: MONO, fontSize: 9, color: 'oklch(0.50 0.20 25)', letterSpacing: '0.08em' }}>ОРИГ.</span></div>
+                <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 600, marginTop: 6, color: CRIMSON }}>11&thinsp;200 ₽</div>
+              </div>
+            </div>
+          </div>
+
+          {/* simpler parts */}
+          {[
+            ['Колодки тормозные перед.', '8K0 698 151 D', '1 280', '3 200', '4 800'],
+            ['Датчик износа колодок', '8K0 907 637 A', '420', '780', '1 940'],
+            ['Жидкость тормозная DOT4', '—', '320', '680', '—'],
+          ].map(([name, oem, b, s, o]) => (
+            <div key={name} style={{ background: 'white', border: '1px solid ' + LINE, borderRadius: 14, padding: 14, marginBottom: 10 }}>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>{name}</div>
+              <div style={{ fontFamily: MONO, fontSize: 11, color: INK_MUTED, marginTop: 2 }}>OEM · {oem}</div>
+              <div style={{ display: 'flex', gap: 12, marginTop: 8, fontFamily: MONO, fontSize: 12 }}>
+                <span style={{ color: 'oklch(0.42 0.10 85)' }}>{b} ₽</span>
+                <span style={{ color: 'oklch(0.40 0.08 200)' }}>{s} ₽</span>
+                <span style={{ color: CRIMSON }}>{o === '—' ? '—' : o + ' ₽'}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        {/* bottom bar */}
+        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '14px 20px 34px', background: 'white', borderTop: '1px solid ' + LINE, display: 'flex', gap: 10 }}>
+          <button style={{ flex: 1, height: 50, background: PAPER_2, border: 0, borderRadius: 12, fontWeight: 600, fontFamily: SANS, fontSize: 14 }}>Фильтр</button>
+          <button style={{ flex: 2, height: 50, background: NAVY, color: 'white', border: 0, borderRadius: 12, fontWeight: 700, fontFamily: SANS, fontSize: 14 }}>В&nbsp;корзину · 3</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── screen 3: part detail with offers ─────────────────────
+  function DetailScreen() {
+    return (
+      <div style={{ background: PAPER, height: '100%', fontFamily: SANS, color: INK, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '54px 20px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={INK} strokeWidth="2" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+            <div style={{ fontSize: 13, color: INK_SOFT }}>Тормоза</div>
+          </div>
+          {/* image */}
+          <div style={{ height: 160, borderRadius: 16, background: PAPER_2, overflow: 'hidden', position: 'relative' }}>
+            <svg width="100%" height="100%" viewBox="0 0 200 160" preserveAspectRatio="xMidYMid slice">
+              <defs><pattern id="dot" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="8" stroke={LINE} strokeWidth="2"/></pattern></defs>
+              <rect width="200" height="160" fill="url(#dot)"/>
+              <circle cx="100" cy="80" r="50" fill="none" stroke={NAVY_700} strokeWidth="6"/>
+              <circle cx="100" cy="80" r="22" fill="none" stroke={NAVY_700} strokeWidth="4"/>
+              <circle cx="100" cy="80" r="5" fill={NAVY_700}/>
+            </svg>
+            <div style={{ position: 'absolute', top: 10, left: 12, fontFamily: MONO, fontSize: 9, color: INK_MUTED, letterSpacing: '0.1em' }}>BRAKE DISC · PLACEHOLDER</div>
+          </div>
+          <Eyebrow color={CRIMSON}>OEM · 8K0 615 301 M</Eyebrow>
+          <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em', marginTop: 6, lineHeight: 1.1 }}>Диск тормозной<br/>передний</div>
+          <div style={{ fontFamily: MONO, fontSize: 12, color: INK_MUTED, marginTop: 4 }}>⌀ 320 × 30 · вентилируемый</div>
+        </div>
+
+        <div style={{ padding: '0 20px 100px', flex: 1, overflow: 'auto' }}>
+          <Eyebrow>14 предложений</Eyebrow>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+            {[
+              ['VAG · оригинал', '8K0 615 301 M', '11 200', '3 д.', 'orig'],
+              ['BREMBO', '09.9772.11', '5 940', '1 д.', 'std'],
+              ['ATE', '24.0130-0185.1', '6 420', '2 д.', 'std'],
+              ['ZIMMERMANN', '100.3304.20', '4 980', '3 д.', 'std'],
+              ['PATRON', 'PBD4153', '2 480', '2 д.', 'bud'],
+            ].map(([brand, art, price, ddl, tier]) => (
+              <div key={art} style={{ background: 'white', border: '1px solid ' + (tier === 'orig' ? CRIMSON : LINE), borderRadius: 12, padding: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: tier === 'orig' ? CRIMSON : tier === 'std' ? TIER_STANDARD : TIER_BUDGET }}></span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>{brand}</div>
+                  <div style={{ fontFamily: MONO, fontSize: 11, color: INK_MUTED, marginTop: 2 }}>{art} · {ddl}</div>
+                </div>
+                <div style={{ fontFamily: MONO, fontWeight: 600, fontSize: 14, color: tier === 'orig' ? CRIMSON : INK }}>{price} ₽</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '14px 20px 34px', background: 'white', borderTop: '1px solid ' + LINE, display: 'flex', gap: 10 }}>
+          <button style={{ width: 50, height: 50, background: PAPER_2, border: 0, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={INK} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v4M3 15v4a2 2 0 0 0 2 2h2M21 15v4a2 2 0 0 1-2 2h-2M9 12h6"/></svg>
+          </button>
+          <button style={{ flex: 1, height: 50, background: CRIMSON, color: 'white', border: 0, borderRadius: 12, fontWeight: 700, fontFamily: SANS, fontSize: 14 }}>В&nbsp;корзину · 5 940 ₽</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── mount when sections loaded ─────────────────────────────
+  let _mounted = false;
+  function mount() {
+    if (_mounted) return;
+    const el = document.getElementById('mobile-mount');
+    if (!el) return;
+    const { IOSDevice } = window;
+    if (!IOSDevice) { setTimeout(mount, 100); return; }
+    _mounted = true;
+    const root = ReactDOM.createRoot(el);
+    root.render(
+      <>
+        <IOSDevice width={300} height={650}><SearchScreen /></IOSDevice>
+        <IOSDevice width={300} height={650}><ResultsScreen /></IOSDevice>
+        <IOSDevice width={300} height={650}><DetailScreen /></IOSDevice>
+      </>
+    );
+  }
+  window.addEventListener('sections-loaded', () => setTimeout(mount, 50));
+  // also re-try in case sections-loaded fired before this script
+  setTimeout(mount, 800);
+})();
+
+</script>
+<script type="text/babel">
+// screens/tweaks-app.jsx — small Tweaks panel for the brandbook
+(function () {
+  const { useEffect } = React;
+
+  function applyTweaks(t) {
+    const root = document.documentElement;
+    // accent: parse hex to oklch-ish — we just set CSS var
+    root.style.setProperty('--crimson-600', t.accent);
+    // also tint scale based on accent
+    // (keep static for 700/500/100 to avoid color math; user can refine)
+    if (t.coverDark) {
+      document.body.classList.remove('cover-light');
+    } else {
+      document.body.classList.add('cover-light');
+    }
+    document.body.classList.toggle('no-pattern', !t.showPattern);
+  }
+
+  function App() {
+    const { useTweaks, TweaksPanel, TweakSection, TweakColor, TweakToggle } = window;
+    if (!useTweaks) return null;
+    const [t, setTweak] = useTweaks(window.TWEAK_DEFAULTS);
+    useEffect(() => { applyTweaks(t); }, [t]);
+    return (
+      <TweaksPanel title="Tweaks · vingo">
+        <TweakSection label="Акцентный цвет" />
+        <TweakColor
+          label="Accent"
+          value={t.accent}
+          options={['#E03A3E', '#E07A2B', '#1F8A5B', '#2A6FDB', '#7A5AE0']}
+          onChange={(v) => setTweak('accent', v)}
+        />
+        <TweakSection label="Обложка" />
+        <TweakToggle
+          label="Тёмная обложка"
+          value={t.coverDark}
+          onChange={(v) => setTweak('coverDark', v)}
+        />
+        <TweakToggle
+          label="Точечный паттерн"
+          value={t.showPattern}
+          onChange={(v) => setTweak('showPattern', v)}
+        />
+      </TweaksPanel>
+    );
+  }
+
+  let _mounted = false;
+  function mount() {
+    if (_mounted) return;
+    if (!window.useTweaks || !window.TweaksPanel) { setTimeout(mount, 100); return; }
+    const el = document.getElementById('tweaks-root');
+    if (!el) return;
+    _mounted = true;
+    const root = ReactDOM.createRoot(el);
+    root.render(<App />);
+    // also apply defaults immediately
+    applyTweaks(window.TWEAK_DEFAULTS);
+  }
+  setTimeout(mount, 200);
+})();
+
+</script>
+
+</body>
+</html>

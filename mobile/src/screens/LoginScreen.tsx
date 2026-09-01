@@ -45,7 +45,7 @@ export function LoginScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.container}
       >
-        <Text style={styles.brand}>VIN GO</Text>
+        <Text style={styles.brand}>VINGO</Text>
         <Text style={styles.subtitle}>Подбор автозапчастей по VIN</Text>
 
         <View style={styles.card}>

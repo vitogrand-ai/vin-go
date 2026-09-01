@@ -28,7 +28,11 @@ export function RootLayout() {
       <header className="border-b bg-background/95 backdrop-blur print:hidden">
         <div className="mx-auto flex min-h-16 w-full max-w-6xl flex-wrap items-center gap-3 px-5 py-3">
           <Typography asChild variant="h6">
-            <Link to="/">VIN GO</Link>
+            <Link to="/" className="inline-flex items-center gap-2">
+              {/* Знак бренда декоративный: рядом стоит то же слово текстом. */}
+              <img src="/logo-mark.svg" alt="" width={28} height={28} className="rounded-lg" />
+              VINGO
+            </Link>
           </Typography>
           <nav className="ml-auto flex flex-wrap items-center gap-2" aria-label="Primary">
             <Typography asChild variant="control" tone="muted">
@@ -129,7 +133,7 @@ export function HomePage() {
     )
   }
 
-  // Гость: краткий оффер VIN GO + форма входа.
+  // Гость: краткий оффер VINGO + форма входа.
   return (
     <section className="mx-auto grid w-full max-w-6xl gap-10 px-5 py-12 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-start">
       <div className="grid gap-6">

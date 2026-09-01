@@ -16,14 +16,14 @@ const ogImage = Astro.site ? new URL('/favicon.svg', Astro.site).href : '/favico
 const org = {
   '@context': 'https://schema.org',
   '@type': 'Organization',
-  name: 'VIN GO',
+  name: 'VINGO',
   description,
   ...(Astro.site ? { url: Astro.site.href } : {}),
 }
 const website = {
   '@context': 'https://schema.org',
   '@type': 'WebSite',
-  name: 'VIN GO',
+  name: 'VINGO',
   ...(Astro.site ? { url: Astro.site.href } : {}),
 }
 ---
@@ -42,7 +42,7 @@ const website = {
     <link rel="canonical" href={canonical} />
 
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="VIN GO" />
+    <meta property="og:site_name" content="VINGO" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
@@ -69,7 +69,7 @@ const website = {
 
 <style is:global>
   :root {
-    /* Бренд VIN GO: графит + тёплый янтарь (не дефолтная палитра). */
+    /* Бренд VINGO: графит + тёплый янтарь (не дефолтная палитра). */
     --ink: #0f1419;
     --ink-soft: #1b242f;
     --paper: #f7f5f1;
