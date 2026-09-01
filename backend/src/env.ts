@@ -85,6 +85,18 @@ const envSchema = z.object({
   // Базовый URL API acat (по умолчанию ACAT_DEFAULT_BASE_URL). Переопределять
   // при смене хоста/версии по документации провайдера.
   ACAT_BASE_URL: optionalUrlSchema,
+  // Каталог PartsAPI.ru — REST поверх TecDoc 2025Q4 + CrossBase (~428 млн кроссов).
+  // Боевая интеграция, перенесена из Python-прототипа: VIN → carId → дерево
+  // товарных групп на русском → применимые артикулы с брендами.
+  // ⚠️ Требует российского IP: с зарубежных адресов API висит до таймаута.
+  PARTSAPI_KEY: optionalStringSchema,
+  // Базовый URL (по умолчанию PARTSAPI_DEFAULT_BASE_URL).
+  PARTSAPI_BASE_URL: optionalUrlSchema,
+  // Демо-тариф PartsAPI выдаёт отдельный ключ на каждый метод. Заданы — идут
+  // вместо общего PARTSAPI_KEY для своего метода; на платном тарифе не нужны.
+  PARTSAPI_KEY_VINDECODE: optionalStringSchema,
+  PARTSAPI_KEY_GETSEARCHTREE: optionalStringSchema,
+  PARTSAPI_KEY_GETARTICLES: optionalStringSchema,
   // Каталог PartsIndex (parts-index.ru) — второй OEM-источник, свежие китайцы.
   // Ключ включает адаптер; с acat вместе агрегируются через FallbackCatalogProvider.
   PARTSINDEX_API_KEY: optionalStringSchema,
@@ -137,6 +149,13 @@ const envSchema = z.object({
   // Модель перевода (по умолчанию DEFAULT_TRANSLATION_MODEL — claude-sonnet-5).
   // claude-opus-5 — точнее на редком жаргоне, claude-haiku-4-5 — дешевле и быстрее.
   TRANSLATION_MODEL: optionalStringSchema,
+  // Распознавание VIN с фотографии шильдика (Claude Vision, тот же ANTHROPIC_API_KEY).
+  // Мастер под капотом фотографирует табличку вместо ввода 17 символов вслепую.
+  // Пусто — берётся VIN_OCR_DEFAULT_MODEL; без ANTHROPIC_API_KEY фото не разбираются.
+  VIN_OCR_MODEL: optionalStringSchema,
+  // Голосовые в боте: расшифровка через OpenAI Whisper (у Anthropic нет аудио-API).
+  // Пусто — бот вежливо просит написать текстом, остальные функции не страдают.
+  OPENAI_API_KEY: optionalStringSchema,
   // Telegram-бот. Пусто — бот не запускается (entrypoint завершится с подсказкой).
   TELEGRAM_BOT_TOKEN: optionalStringSchema,
   // Имя бота (без @) для deep-link привязки t.me/<bot>?start=<code>.

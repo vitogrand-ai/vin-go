@@ -12,6 +12,7 @@ import { FallbackCatalogProvider, type NamedCatalogProvider } from './fallback-c
 import { MergingSupplierProvider, type NamedSupplierProvider } from './merging-supplier'
 import { MockCatalogProvider, MockPlateProvider, MockSupplierProvider } from './mock-providers'
 import { CachingSupplierProvider, type OfferResolver } from './offer-cache'
+import { PARTSAPI_DEFAULT_BASE_URL, PartsApiCatalogProvider } from './partsapi-provider'
 import { PARTSCATALOGS_DEFAULT_BASE_URL, PartsCatalogsCatalogProvider } from './partscatalogs-provider'
 import { PARTSINDEX_DEFAULT_BASE_URL, PartsIndexCatalogProvider } from './partsindex-provider'
 import type { CatalogProvider, PlateProvider, SupplierProvider } from './providers'
@@ -34,6 +35,7 @@ export type CatalogProviders = {
  * меняются, потому что все они работают через интерфейсы провайдеров.
  *
  * Каталог: агрегация источников по ключам — acat (`ACAT_API_KEY`, широкий primary)
+ *   + PartsAPI/TecDoc (`PARTSAPI_KEY`, боевой, ~428М кроссов, нужен РФ-IP)
  *   + PartsIndex (`PARTSINDEX_API_KEY`, свежие китайцы) + parts-catalogs
  *   (`PARTSCATALOGS_API_KEY`, мировой OEM с русской локализацией) + 17vin
  *   (`VIN17_USER`+`VIN17_PASSWORD`, китайский EPC, $0.15/VIN) + epcdata
@@ -123,6 +125,24 @@ function createCatalogProvider(env: AppEnv): CatalogProvider {
       provider: new AcatCatalogProvider({
         apiKey: env.ACAT_API_KEY,
         baseUrl: env.ACAT_BASE_URL ?? ACAT_DEFAULT_BASE_URL,
+      }),
+    })
+  }
+
+  // PartsAPI/TecDoc — самый широкий источник применимости (2025Q4) и уже
+  // оплачен. Ставим сразу после acat: он отвечает медленнее, но покрытие по
+  // европейским и японским машинам шире, чем у остальных источников.
+  if (env.PARTSAPI_KEY) {
+    sources.push({
+      name: 'partsapi',
+      provider: new PartsApiCatalogProvider({
+        apiKey: env.PARTSAPI_KEY,
+        baseUrl: env.PARTSAPI_BASE_URL ?? PARTSAPI_DEFAULT_BASE_URL,
+        methodKeys: {
+          VINdecode: env.PARTSAPI_KEY_VINDECODE,
+          getSearchTree: env.PARTSAPI_KEY_GETSEARCHTREE,
+          getArticles: env.PARTSAPI_KEY_GETARTICLES,
+        },
       }),
     })
   }
