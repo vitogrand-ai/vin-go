@@ -154,6 +154,12 @@ export const searchPartsRequestSchema = z.object({
 export const searchPartsResponseSchema = z.object({
   vehicle: vehicleSchema,
   parts: z.array(partSchema),
+  /**
+   * Запрос, по которому реально нашлось, — когда он отличается от введённого.
+   * Мастер пишет «гранатка», каталог знает «ШРУС»: без подсказки выдача
+   * выглядит случайной. Отсутствует, если искали ровно так, как ввели.
+   */
+  resolvedQuery: z.string().optional(),
 })
 
 export const offersRequestSchema = z.object({
