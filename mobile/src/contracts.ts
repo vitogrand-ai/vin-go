@@ -95,6 +95,8 @@ export const partSchema = z.object({
   name: z.string(),
   category: z.string(),
   brand: z.string().nullable(),
+  /** URL схемы узла (иллюстрация каталога), если провайдер её отдаёт. */
+  imageUrl: z.string().nullable().optional(),
 })
 
 export const offerSchema = z.object({

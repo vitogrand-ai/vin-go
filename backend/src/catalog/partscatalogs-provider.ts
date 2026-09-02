@@ -96,18 +96,26 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
     }
 
     // Шаг 1: текст запроса → sid названий деталей (русский работает напрямую).
-    const suggested = await this.request(
-      `/catalogs/${encodeURIComponent(ref.catalogId)}/groups-suggest?${new URLSearchParams({ q })}`,
-    )
-    const sids = (asArray(suggested) ?? [])
-      .map((item) => str(item, ['sid', 'id']))
-      .filter((sid): sid is string => sid !== null)
-      .slice(0, MAX_PART_NAMES)
+    // Подсказка знает названия деталей («Колодки тормозные»), а мастер шлёт
+    // уточнённую фразу («Колодки тормозные передние») — на пустом ответе
+    // пробуем укороченные варианты, отбрасывая слова с конца.
+    let sids: string[] = []
+    for (const attempt of shortenQuery(q)) {
+      const suggested = await this.request(
+        `/catalogs/${encodeURIComponent(ref.catalogId)}/groups-suggest?${new URLSearchParams({ q: attempt })}`,
+      )
+      sids = (asArray(suggested) ?? [])
+        .map((item) => str(item, ['sid', 'id']))
+        .filter((sid): sid is string => sid !== null)
+        .slice(0, MAX_PART_NAMES)
+      if (sids.length > 0) break
+    }
     if (sids.length === 0) return []
     const sidSet = new Set(sids)
 
-    // Шаг 2: sid → схемы узлов, где такая деталь встречается (groupId + название).
-    const groups = new Map<string, string>() // groupId → название схемы (категория)
+    // Шаг 2: sid → схемы узлов, где такая деталь встречается
+    // (groupId + название + картинка схемы).
+    const groups = new Map<string, { category: string; imageUrl: string | null }>()
     for (const sid of sids) {
       if (groups.size >= MAX_GROUPS) break
       const params = new URLSearchParams({ carId: ref.carId, partNameIds: sid })
@@ -118,7 +126,10 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
       for (const schema of firstArray(data, ['list']) ?? []) {
         const groupId = str(schema, ['groupId', 'id'])
         if (!groupId || groups.has(groupId)) continue
-        groups.set(groupId, str(schema, ['name']) ?? '')
+        groups.set(groupId, {
+          category: str(schema, ['name']) ?? '',
+          imageUrl: normalizeImageUrl(str(schema, ['img'])),
+        })
         if (groups.size >= MAX_GROUPS) break
       }
     }
@@ -126,7 +137,7 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
     // Шаг 3: схема → детали; оставляем только детали искомых sid (см. collectParts).
     const parts: Part[] = []
     const seen = new Set<string>()
-    for (const [groupId, category] of groups) {
+    for (const [groupId, group] of groups) {
       if (parts.length >= PARTSCATALOGS_MAX_PARTS) break
       const params = new URLSearchParams({ carId: ref.carId, groupId })
       if (ref.criteria) params.set('criteria', ref.criteria)
@@ -134,7 +145,9 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
         `/catalogs/${encodeURIComponent(ref.catalogId)}/parts2?${params}`,
       )
       if (data === null) continue
-      collectParts(data, { category, brand: vehicle.make, sidSet, seen, out: parts })
+      // У parts2 своя копия картинки схемы — берём её, если в списке схем пусто.
+      const imageUrl = group.imageUrl ?? (isRecord(data) ? normalizeImageUrl(str(data, ['img'])) : null)
+      collectParts(data, { category: group.category, imageUrl, brand: vehicle.make, sidSet, seen, out: parts })
     }
     return parts
   }
@@ -261,6 +274,8 @@ export function collectParts(
   data: unknown,
   ctx: {
     category: string
+    /** Картинка схемы узла — общая для всех деталей этой группы. */
+    imageUrl: string | null
     brand: string | null
     sidSet: Set<string>
     seen: Set<string>
@@ -283,7 +298,34 @@ export function collectParts(
       if (ctx.seen.has(key)) continue
       ctx.seen.add(key)
 
-      ctx.out.push({ oemNumber, name, category: ctx.category, brand: ctx.brand })
+      ctx.out.push({ oemNumber, name, category: ctx.category, brand: ctx.brand, imageUrl: ctx.imageUrl })
     }
   }
+}
+
+/**
+ * Варианты запроса для groups-suggest: исходный, затем без последних слов
+ * («колодки тормозные передние» → «колодки тормозные» → «колодки»). Подсказка
+ * ищет по названиям деталей, где уточнений позиции обычно нет.
+ */
+export function shortenQuery(query: string): string[] {
+  const words = query.split(/\s+/).filter(Boolean)
+  const out: string[] = []
+  for (let count = words.length; count >= 1; count--) {
+    out.push(words.slice(0, count).join(' '))
+  }
+  return out
+}
+
+/**
+ * Картинки схем приходят протокол-относительными («//ru.img.parts-catalogs.com/…»)
+ * или с шаблонным плейсхолдером «{IMG_URL}» (пустая схема) — приводим к https
+ * либо отбрасываем.
+ */
+export function normalizeImageUrl(raw: string | null): string | null {
+  if (!raw) return null
+  const value = raw.trim()
+  if (value.startsWith('//')) return `https:${value}`
+  if (value.startsWith('http://') || value.startsWith('https://')) return value
+  return null
 }

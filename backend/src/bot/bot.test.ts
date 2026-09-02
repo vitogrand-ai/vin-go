@@ -1,13 +1,18 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { createMockCatalogService } from '../catalog/service'
+import type { Part, Vehicle } from '@web-app-demo/contracts'
+
+import { MockPlateProvider, MockSupplierProvider } from '../catalog/mock-providers'
+import { CatalogService, createMockCatalogService } from '../catalog/service'
 import { TelegramBot } from './bot'
-import type { SendMessageOptions, TelegramClient, TgUpdate } from './telegram'
+import type { SendMessageOptions, SendPhotoOptions, TelegramClient, TgUpdate } from './telegram'
 
 type SentMessage = { chatId: number; text: string; options?: SendMessageOptions }
+type SentPhoto = { chatId: number; photoUrl: string; options?: SendPhotoOptions }
 
 class FakeTelegramClient implements TelegramClient {
   readonly sent: SentMessage[] = []
+  readonly sentPhotos: SentPhoto[] = []
   readonly answered: string[] = []
 
   async getUpdates(): Promise<TgUpdate[]> {
@@ -16,6 +21,10 @@ class FakeTelegramClient implements TelegramClient {
 
   async sendMessage(chatId: number, text: string, options?: SendMessageOptions): Promise<void> {
     this.sent.push({ chatId, text, options })
+  }
+
+  async sendPhoto(chatId: number, photoUrl: string, options?: SendPhotoOptions): Promise<void> {
+    this.sentPhotos.push({ chatId, photoUrl, options })
   }
 
   async answerCallbackQuery(callbackQueryId: string): Promise<void> {
@@ -103,5 +112,79 @@ describe('TelegramBot', () => {
     await bot.handleUpdate(messageUpdate('ABC123'))
     // 'ABC123' не VIN и трактуется как запрос запчасти без сохранённого VIN
     expect(client.sent[0]?.text).toContain('Сначала пришлите VIN')
+  })
+
+  test('деталь со схемой уходит фотографией с той же клавиатурой', async () => {
+    const vehicle: Vehicle = {
+      vin: DEMO_VIN,
+      make: 'Volkswagen',
+      model: 'Golf',
+      year: 2003,
+      engine: null,
+      bodyType: null,
+    }
+    const part: Part = {
+      oemNumber: '1J0698151',
+      name: 'Колодки тормозные',
+      category: 'Тормоза',
+      brand: 'VW',
+      imageUrl: 'https://img.example.com/schema.png',
+    }
+    const catalog = new CatalogService(
+      {
+        decodeVin: async () => vehicle,
+        searchParts: async () => [part],
+      },
+      new MockSupplierProvider(),
+      new MockPlateProvider(),
+    )
+    const photoBot = new TelegramBot(client, catalog)
+
+    await photoBot.handleUpdate(messageUpdate(DEMO_VIN))
+    await photoBot.handleUpdate(messageUpdate('колодки'))
+
+    const photo = client.sentPhotos.at(-1)
+    expect(photo?.photoUrl).toBe('https://img.example.com/schema.png')
+    expect(photo?.options?.caption).toContain('Найдено запчастей')
+    expect(photo?.options?.replyMarkup?.inline_keyboard?.[0]?.[0]?.callback_data).toBe(
+      'oem:1J0698151',
+    )
+  })
+
+  test('сбой отправки фото не теряет выдачу — уходит текстом', async () => {
+    const vehicle: Vehicle = {
+      vin: DEMO_VIN,
+      make: 'Volkswagen',
+      model: 'Golf',
+      year: 2003,
+      engine: null,
+      bodyType: null,
+    }
+    const part: Part = {
+      oemNumber: '1J0698151',
+      name: 'Колодки тормозные',
+      category: 'Тормоза',
+      brand: 'VW',
+      imageUrl: 'https://img.example.com/broken.png',
+    }
+    client.sendPhoto = async () => {
+      throw new Error('Telegram sendPhoto: wrong file identifier')
+    }
+    const catalog = new CatalogService(
+      {
+        decodeVin: async () => vehicle,
+        searchParts: async () => [part],
+      },
+      new MockSupplierProvider(),
+      new MockPlateProvider(),
+    )
+    const photoBot = new TelegramBot(client, catalog)
+
+    await photoBot.handleUpdate(messageUpdate(DEMO_VIN))
+    await photoBot.handleUpdate(messageUpdate('колодки'))
+
+    const last = client.sent.at(-1)
+    expect(last?.text).toContain('Найдено запчастей')
+    expect(last?.options?.replyMarkup?.inline_keyboard?.length).toBe(1)
   })
 })

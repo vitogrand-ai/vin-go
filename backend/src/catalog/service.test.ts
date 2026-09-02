@@ -89,6 +89,49 @@ describe('CatalogService.searchParts — понимание жаргона', () 
     expect(catalog.asked.length).toBeGreaterThan(1)
   })
 
+  test('дубли по OEM-номеру схлопываются, картинка добирается из дубля', async () => {
+    const catalog: CatalogProvider = {
+      async decodeVin() {
+        return VEHICLE
+      },
+      async searchParts() {
+        return [
+          { oemNumber: 'X1', name: 'Колодки тормозные', category: 'Тормоза', brand: null },
+          {
+            oemNumber: 'X1',
+            name: 'Колодки тормозные',
+            category: 'Тормоза',
+            brand: null,
+            imageUrl: 'https://img.example.com/schema.png',
+          },
+          { oemNumber: 'X2', name: 'Датчик износа', category: 'Тормоза', brand: null },
+        ]
+      },
+    }
+
+    const result = await serviceWith(catalog).searchParts(VEHICLE.vin, 'колодки')
+    expect(result.parts).toHaveLength(2)
+    expect(result.parts[0]?.oemNumber).toBe('X1')
+    expect(result.parts[0]?.imageUrl).toBe('https://img.example.com/schema.png')
+  })
+
+  test('уточнение позиции в запросе отрезает детали противоположной стороны', async () => {
+    const catalog: CatalogProvider = {
+      async decodeVin() {
+        return VEHICLE
+      },
+      async searchParts() {
+        return [
+          { oemNumber: 'F1', name: 'Brake pad set, front', category: '', brand: null },
+          { oemNumber: 'R1', name: 'Brake-pad sensor, rear', category: '', brand: null },
+        ]
+      },
+    }
+
+    const result = await serviceWith(catalog).searchParts(VEHICLE.vin, 'колодки передние')
+    expect(result.parts.map((p) => p.oemNumber)).toEqual(['F1'])
+  })
+
   test('ИЗВЕСТНОЕ ОГРАНИЧЕНИЕ: склонение жаргонизма не распознаётся', async () => {
     // Словарь сопоставляет формы дословно: «гранатка» знает, «гранатку» — нет.
     // Так работал и прототип на пилоте. Лечится либо пополнением словаря

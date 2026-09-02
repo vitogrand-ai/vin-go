@@ -8,9 +8,10 @@ import type { CatalogProvider } from './providers'
  * (напр. acat как широкий primary + PartsIndex под свежих китайцев).
  *
  * decodeVin идёт по источникам по порядку до первого, кто опознал VIN. Источник,
- * определивший авто, помечается в `vehicle.raw` — чтобы searchParts пошёл в ТОТ ЖЕ
- * каталог (номера деталей каталог-специфичны: искать деталь в чужом каталоге для
- * авто, которое он не определял, некорректно).
+ * определивший авто, помечается в `vehicle.raw` — searchParts спрашивает его
+ * ПЕРВЫМ (номера деталей каталог-специфичны, у «владельца» самая точная
+ * применимость), а при пустом ответе добирает по остальным источникам —
+ * адаптеры сами переопределяют чужое авто по VIN перед поиском.
  *
  * Семантика ошибок сохраняется: «не найдено» у одного источника → пробуем
  * следующий; если ни один не нашёл, но были сбои (AppError) — пробрасываем сбой,
@@ -75,18 +76,28 @@ export class FallbackCatalogProvider implements CatalogProvider {
     const source = readSource(vehicle)
     const origin = source ? this.providers.find((p) => p.name === source) : undefined
 
-    // Авто определил конкретный каталог — ищем деталь только в нём.
-    if (origin) return origin.provider.searchParts(vehicle, query)
+    // Каталог, определивший авто, спрашивается первым: номера деталей
+    // каталог-специфичны, и у «владельца» самая точная применимость. Но если
+    // он деталь не нашёл (живой случай: 17vin опознал Subaru, а колодок по
+    // китайскому словарю не нашёл) — пробуем остальные источники: каждый
+    // адаптер сам переопределяет чужое авто по VIN перед поиском.
+    const ordered = origin
+      ? [origin, ...this.providers.filter((p) => p !== origin)]
+      : this.providers
 
-    // Источник неизвестен (напр. авто из другого места) — best-effort по порядку.
-    for (const { name, provider } of this.providers) {
+    let firstError: unknown = null
+    for (const { name, provider } of ordered) {
       try {
         const parts = await provider.searchParts(vehicle, query)
         if (parts.length > 0) return parts
       } catch (error) {
         console.error(`[catalog:${name}] searchParts упал, пробуем следующий источник`, error)
+        firstError ??= error
       }
     }
+
+    // Никто не нашёл, но были отказы — не выдаём сбой upstream за «не найдено».
+    if (firstError !== null) throw firstError
     return []
   }
 }

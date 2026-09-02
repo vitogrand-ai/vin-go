@@ -5,9 +5,12 @@ import type {
   SearchPartsResponse,
 } from '@web-app-demo/contracts'
 
+import type { Part } from '@web-app-demo/contracts'
+
 import { AppError } from '../http/errors'
 import { MockCatalogProvider, MockPlateProvider, MockSupplierProvider } from './mock-providers'
 import { expandPartQuery } from './part-jargon'
+import { filterByPosition } from './position-filter'
 import type { CatalogProvider, PlateProvider, SupplierProvider } from './providers'
 import { selectTiers } from './tiering'
 
@@ -53,12 +56,19 @@ export class CatalogService {
 
     const variants = expandPartQuery(query)
     for (const variant of variants) {
-      const parts = await this.catalog.searchParts(vehicle, variant)
-      if (parts.length > 0) {
-        // Подсказку отдаём, только если искали не тем, что ввёл пользователь.
-        const resolvedQuery = variant.toLowerCase() === query.trim().toLowerCase() ? undefined : variant
-        return { vehicle, parts, resolvedQuery }
-      }
+      const found = await this.catalog.searchParts(vehicle, variant)
+      if (found.length === 0) continue
+
+      // Провайдеры отдают одну деталь несколькими строками применимости, а
+      // нечёткий поиск теряет уточнение позиции — чистим выдачу здесь, чтобы
+      // веб, бот и мобильное видели одно и то же. Фильтр по позиции идёт от
+      // ИСХОДНОГО запроса: канонизация жаргона позицию не меняет.
+      const parts = filterByPosition(dedupeByOem(found), query)
+      if (parts.length === 0) continue
+
+      // Подсказку отдаём, только если искали не тем, что ввёл пользователь.
+      const resolvedQuery = variant.toLowerCase() === query.trim().toLowerCase() ? undefined : variant
+      return { vehicle, parts, resolvedQuery }
     }
 
     return { vehicle, parts: [] }
@@ -73,6 +83,24 @@ export class CatalogService {
       offers: sorted,
     }
   }
+}
+
+/**
+ * Схлопывает дубли по OEM-номеру: номер идентифицирует деталь, а каталоги
+ * присылают её по строке на каждую позицию применимости. Первое вхождение
+ * задаёт название; картинка схемы добирается из любого дубля, у которого есть.
+ */
+function dedupeByOem(parts: Part[]): Part[] {
+  const byOem = new Map<string, Part>()
+  for (const part of parts) {
+    const existing = byOem.get(part.oemNumber)
+    if (!existing) {
+      byOem.set(part.oemNumber, part)
+    } else if (!existing.imageUrl && part.imageUrl) {
+      byOem.set(part.oemNumber, { ...existing, imageUrl: part.imageUrl })
+    }
+  }
+  return [...byOem.values()]
 }
 
 /** Сервис на мок-провайдерах (используется ботом и тестами). */

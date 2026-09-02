@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import type { Vehicle } from '@web-app-demo/contracts'
+import type { Part, Vehicle } from '@web-app-demo/contracts'
 
 import { AppError } from '../http/errors'
 import { CATALOG_SOURCE_KEY } from './fallback-catalog'
@@ -9,6 +9,8 @@ import {
   PartsCatalogsCatalogProvider,
   collectParts,
   mapVehicle,
+  normalizeImageUrl,
+  shortenQuery,
 } from './partscatalogs-provider'
 
 /** Стаб fetch: маршрутизирует по URL, запоминает вызовы (url + заголовки). */
@@ -221,12 +223,15 @@ describe('PartsCatalogsCatalogProvider.searchParts', () => {
     const parts = await provider.searchParts(vehicle, 'масляный фильтр')
 
     // Деталь с nameId 87 (искомый sid) прошла, «Heat exchanger» (1075) — нет.
+    // Картинка схемы: в списке схем плейсхолдер «{IMG_URL}» (отбрасывается),
+    // поэтому взята копия из parts2 с добавленным протоколом.
     expect(parts).toEqual([
       {
         oemNumber: '11422469721',
         name: 'Engine oil filter',
         category: 'Lubricat.syst.-oil filter, heat exchanger',
         brand: 'Skoda',
+        imageUrl: 'https://ru.img.parts-catalogs.com/bmw_2020_01/data/JPG/502704.png',
       },
     ])
 
@@ -279,6 +284,27 @@ describe('PartsCatalogsCatalogProvider.searchParts', () => {
     expect(calls.every((c) => c.url.includes('/groups-suggest'))).toBe(true)
   })
 
+  test('suggest не знает уточнённую фразу → повтор укороченным запросом', async () => {
+    // Живой случай: «Колодки тормозные передние» подсказка не знает — деталь
+    // называется «Колодки тормозные»; уточнение позиции отрезается с конца.
+    const suggestQueries: string[] = []
+    const provider = providerWith((url) => {
+      if (url.includes('/groups-suggest')) {
+        const q = new URL(url).searchParams.get('q') ?? ''
+        suggestQueries.push(q)
+        return q === 'Колодки тормозные' ? json(SUGGEST) : json([])
+      }
+      if (url.includes('/schemas')) return json(SCHEMAS)
+      if (url.includes('/parts2')) return json(PARTS2)
+      return new Response('', { status: 404 })
+    })
+
+    const parts = await provider.searchParts(vehicle, 'Колодки тормозные передние')
+
+    expect(suggestQueries).toEqual(['Колодки тормозные передние', 'Колодки тормозные'])
+    expect(parts).toHaveLength(1)
+  })
+
   test('пустой запрос → [] без обращений к API', async () => {
     const calls: { url: string; headers: Record<string, string> }[] = []
     const provider = providerWith(() => json([]), calls)
@@ -311,10 +337,11 @@ describe('mapVehicle', () => {
 describe('collectParts', () => {
   const ctx = () => ({
     category: 'Узел',
+    imageUrl: null as string | null,
     brand: 'Skoda',
     sidSet: new Set(['87']),
     seen: new Set<string>(),
-    out: [] as { oemNumber: string; name: string; category: string; brand: string | null }[],
+    out: [] as Part[],
   })
 
   test('деталь без nameId отбрасывается (живьём это крепёж/мелочь узла)', () => {
@@ -333,7 +360,13 @@ describe('collectParts', () => {
       c,
     )
     expect(c.out).toEqual([
-      { oemNumber: '04E115561H', name: 'Фильтр масляный двигателя', category: 'Узел', brand: 'Skoda' },
+      {
+        oemNumber: '04E115561H',
+        name: 'Фильтр масляный двигателя',
+        category: 'Узел',
+        brand: 'Skoda',
+        imageUrl: null,
+      },
     ])
   })
 
@@ -366,5 +399,26 @@ describe('collectParts', () => {
     }))
     collectParts({ partGroups: [{ parts }] }, c)
     expect(c.out).toHaveLength(PARTSCATALOGS_MAX_PARTS)
+  })
+})
+
+describe('shortenQuery / normalizeImageUrl', () => {
+  test('варианты запроса: исходный, затем без последних слов', () => {
+    expect(shortenQuery('колодки тормозные передние')).toEqual([
+      'колодки тормозные передние',
+      'колодки тормозные',
+      'колодки',
+    ])
+    expect(shortenQuery('фильтр')).toEqual(['фильтр'])
+  })
+
+  test('протокол-относительный URL картинки получает https, мусор отбрасывается', () => {
+    expect(normalizeImageUrl('//ru.img.parts-catalogs.com/x.png')).toBe(
+      'https://ru.img.parts-catalogs.com/x.png',
+    )
+    expect(normalizeImageUrl('https://img.example.com/x.png')).toBe('https://img.example.com/x.png')
+    expect(normalizeImageUrl('{IMG_URL}')).toBeNull()
+    expect(normalizeImageUrl('')).toBeNull()
+    expect(normalizeImageUrl(null)).toBeNull()
   })
 })

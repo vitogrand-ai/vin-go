@@ -362,20 +362,30 @@ function PartsList({
               type="button"
               onClick={() => onSelect(part)}
               className={cn(
-                'grid gap-1 rounded-lg border bg-card p-4 text-left transition-colors',
+                'flex items-center gap-3 rounded-lg border bg-card p-4 text-left transition-colors',
                 'hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 isActive && 'border-primary bg-secondary',
               )}
             >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <Typography variant="bodySmMedium">{part.name}</Typography>
-                <Typography variant="code" tone="muted">
-                  {part.oemNumber}
+              {part.imageUrl ? (
+                <img
+                  src={part.imageUrl}
+                  alt=""
+                  loading="lazy"
+                  className="h-14 w-14 shrink-0 rounded border bg-white object-contain"
+                />
+              ) : null}
+              <div className="grid min-w-0 flex-1 gap-1">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Typography variant="bodySmMedium">{part.name}</Typography>
+                  <Typography variant="code" tone="muted">
+                    {part.oemNumber}
+                  </Typography>
+                </div>
+                <Typography variant="bodyXs" tone="muted">
+                  {part.category}
                 </Typography>
               </div>
-              <Typography variant="bodyXs" tone="muted">
-                {part.category}
-              </Typography>
             </button>
           )
         })}
@@ -438,6 +448,15 @@ function OffersPanel({ part, vehicleVin }: { part: Part; vehicleVin?: string }) 
           OEM {part.oemNumber}
         </Typography>
       </div>
+
+      {part.imageUrl ? (
+        <img
+          src={part.imageUrl}
+          alt={`Схема узла: ${part.name}`}
+          loading="lazy"
+          className="max-h-72 w-full rounded-lg border bg-white object-contain"
+        />
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-3">
         {picks.map((pick) => (

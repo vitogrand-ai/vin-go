@@ -56,10 +56,20 @@ export type SendMessageOptions = {
   parseMode?: 'HTML' | 'Markdown'
 }
 
+export type SendPhotoOptions = SendMessageOptions & {
+  /** Подпись под фото (лимит Telegram — 1024 символа). */
+  caption?: string
+}
+
 /** Абстракция клиента — для подмены фейком в тестах. */
 export interface TelegramClient {
   getUpdates(offset: number, timeoutSeconds: number): Promise<TgUpdate[]>
   sendMessage(chatId: number, text: string, options?: SendMessageOptions): Promise<void>
+  /**
+   * Отправка фото по URL: картинку скачивает сам Telegram. Ошибка (битый URL,
+   * недоступный хост) пробрасывается — вызывающая сторона шлёт текстовый фолбэк.
+   */
+  sendPhoto(chatId: number, photoUrl: string, options?: SendPhotoOptions): Promise<void>
   answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void>
   /**
    * Скачивает вложение по file_id. Возвращает null, если файл недоступен
@@ -115,6 +125,16 @@ export class HttpTelegramClient implements TelegramClient {
     await this.call('sendMessage', {
       chat_id: chatId,
       text,
+      parse_mode: options?.parseMode,
+      reply_markup: options?.replyMarkup,
+    })
+  }
+
+  async sendPhoto(chatId: number, photoUrl: string, options?: SendPhotoOptions): Promise<void> {
+    await this.call('sendPhoto', {
+      chat_id: chatId,
+      photo: photoUrl,
+      caption: options?.caption,
       parse_mode: options?.parseMode,
       reply_markup: options?.replyMarkup,
     })

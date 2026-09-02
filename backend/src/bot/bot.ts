@@ -1,6 +1,7 @@
-import { plateSchema, vinOrFrameSchema, type TierPick } from '@web-app-demo/contracts'
+import { plateSchema, vinOrFrameSchema, type Part, type TierPick } from '@web-app-demo/contracts'
 
 import type { CatalogService } from '../catalog/service'
+import { AppError } from '../http/errors'
 import type { OrdersService } from '../orders/service'
 import type { TelegramLinkService } from '../telegram/service'
 import { computeServiceIntervals } from '../garage/service-intervals'
@@ -261,10 +262,14 @@ export class TelegramBot {
       const { vehicle } = await this.catalog.decodeVin(vin)
       this.session(chatId).vin = vin
       await this.client.sendMessage(chatId, formatVehicle(vehicle), { parseMode: 'HTML' })
-    } catch {
+    } catch (error) {
+      // «Не найден» и «каталог лежит» — разные ответы: сбой источника не должен
+      // выглядеть так, будто мастер ошибся в VIN.
       await this.client.sendMessage(
         chatId,
-        'Не удалось найти автомобиль по этому номеру. Проверьте VIN (17 символов) или номер кузова (например SXA10-0012345) и пришлите снова.',
+        isNotFound(error)
+          ? 'Автомобиль не найден в подключённых каталогах. Проверьте VIN (17 символов) или номер кузова (например SXA10-0012345) и пришлите снова.'
+          : 'Каталог сейчас недоступен. Попробуйте ещё раз через пару минут.',
       )
     }
   }
@@ -292,7 +297,19 @@ export class TelegramBot {
       return
     }
 
-    const { parts, resolvedQuery } = await this.catalog.searchParts(session.vin, query)
+    let parts: Part[]
+    let resolvedQuery: string | undefined
+    try {
+      ;({ parts, resolvedQuery } = await this.catalog.searchParts(session.vin, query))
+    } catch (error) {
+      // Без этого ответа сбой источника выглядит как молчание бота.
+      console.error('[bot] поиск запчасти упал:', error)
+      await this.client.sendMessage(
+        chatId,
+        'Каталог сейчас недоступен. Попробуйте ещё раз через пару минут.',
+      )
+      return
+    }
     if (parts.length === 0) {
       await this.client.sendMessage(
         chatId,
@@ -303,6 +320,23 @@ export class TelegramBot {
 
     session.parts = Object.fromEntries(parts.map((part) => [part.oemNumber, part.name]))
     const { text, keyboard } = partsMessage(parts, resolvedQuery)
+
+    // Схема узла из каталога — мастеру видно, ту ли деталь он выбирает.
+    // Фото не критично: любой сбой (битый URL, недоступный хост картинок) —
+    // и выдача уходит обычным текстом.
+    const imageUrl = parts.find((part) => part.imageUrl)?.imageUrl
+    if (imageUrl) {
+      try {
+        await this.client.sendPhoto(chatId, imageUrl, {
+          caption: text,
+          parseMode: 'HTML',
+          replyMarkup: keyboard,
+        })
+        return
+      } catch (error) {
+        console.warn('[bot] схема не отправилась, шлём выдачу текстом', error)
+      }
+    }
     await this.client.sendMessage(chatId, text, { parseMode: 'HTML', replyMarkup: keyboard })
   }
 
@@ -481,6 +515,11 @@ export function parseServiceCommand(text: string): number | null {
   const mileage = Number.parseInt(match[1]!.replace(/\s+/g, ''), 10)
   if (!Number.isFinite(mileage) || mileage <= 0 || mileage > 2_000_000) return null
   return mileage
+}
+
+/** Честное «не найдено» от каталога — в отличие от сбоя источника (502 и т.п.). */
+function isNotFound(error: unknown): boolean {
+  return error instanceof AppError && error.status === 404
 }
 
 /** Прислан ли документ, который является изображением (фото «без сжатия»). */

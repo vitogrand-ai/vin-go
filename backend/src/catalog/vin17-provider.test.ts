@@ -296,6 +296,12 @@ describe('mapParts', () => {
       { oemNumber: '091140G010', name: '千斤顶把手', category: '', brand: null },
     ])
   })
+
+  test('дубли (номер+название) схлопываются: деталь приходит строкой на каждую позицию', () => {
+    const row = { partnumber: '34356890788', name_en: 'Brake pad wear sensor, front' }
+    const parts = mapParts({ searchlist: [row, { ...row }, { ...row }] }, 'BMW')
+    expect(parts).toHaveLength(1)
+  })
 })
 
 describe('brandFromEpc / stripBrandPrefix', () => {

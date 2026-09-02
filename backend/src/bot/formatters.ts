@@ -54,6 +54,12 @@ export function formatVehicle(vehicle: Vehicle): string {
   return lines.join('\n')
 }
 
+/**
+ * Потолок кнопок в выдаче: простыня из ста кнопок в чате нечитаема, а Telegram
+ * и вовсе отклоняет слишком длинную клавиатуру. Уточните запрос — короче список.
+ */
+export const MAX_PART_BUTTONS = 20
+
 export function partsMessage(
   parts: Part[],
   resolvedQuery?: string,
@@ -61,10 +67,15 @@ export function partsMessage(
   // Если искали не тем словом, что прислал мастер, — говорим об этом прямо,
   // иначе выдача по «гранатке» выглядит как ошибка бота.
   const hint = resolvedQuery ? `🔎 Искал как «${escapeHtml(resolvedQuery)}».\n` : ''
+  const shown = parts.slice(0, MAX_PART_BUTTONS)
+  const overflow =
+    parts.length > shown.length
+      ? `\nПоказаны первые ${shown.length} — уточните запрос, чтобы сузить список.`
+      : ''
   return {
-    text: `${hint}Найдено запчастей: ${parts.length}. Выберите нужную:`,
+    text: `${hint}Найдено запчастей: ${parts.length}. Выберите нужную:${overflow}`,
     keyboard: {
-      inline_keyboard: parts.map((part) => [
+      inline_keyboard: shown.map((part) => [
         {
           text: truncate(`${part.name} (${part.oemNumber})`, 60),
           callback_data: `oem:${part.oemNumber}`,

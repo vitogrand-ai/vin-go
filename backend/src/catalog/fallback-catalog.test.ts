@@ -103,13 +103,57 @@ describe('FallbackCatalogProvider.searchParts', () => {
       },
     ])
 
-    // Авто определил partsindex → ищем только там.
+    // Авто определил partsindex → ищем там; нашлось — остальных не трогаем.
     const vehicle: Vehicle = { ...baseVehicle, raw: { [CATALOG_SOURCE_KEY]: 'partsindex' } }
     const parts = await fb.searchParts(vehicle, 'фильтр')
 
     expect(parts).toEqual([piPart])
     expect(piSearched).toBe(true)
     expect(acatSearched).toBe(false)
+  })
+
+  test('каталог-«владелец» не нашёл деталь → добираем по остальным источникам', async () => {
+    const order: string[] = []
+    const acatPart: Part = { oemNumber: 'A1', name: 'из acat', category: '', brand: null }
+
+    const fb = new FallbackCatalogProvider([
+      {
+        name: 'acat',
+        provider: fakeProvider({ parts: [acatPart], onSearch: () => order.push('acat') }),
+      },
+      {
+        name: 'vin17',
+        provider: fakeProvider({ parts: [], onSearch: () => order.push('vin17') }),
+      },
+    ])
+
+    // Авто определил vin17, но деталь он не нашёл — ответ приходит из acat.
+    const vehicle: Vehicle = { ...baseVehicle, raw: { [CATALOG_SOURCE_KEY]: 'vin17' } }
+    const parts = await fb.searchParts(vehicle, 'колодки')
+
+    expect(order).toEqual(['vin17', 'acat']) // «владелец» всё равно первым
+    expect(parts).toEqual([acatPart])
+  })
+
+  test('никто не нашёл, но был сбой → пробрасываем ошибку (не маскируем под пусто)', async () => {
+    const boom = new Error('vin17 down')
+    const fb = new FallbackCatalogProvider([
+      {
+        name: 'vin17',
+        provider: {
+          async decodeVin() {
+            return null
+          },
+          async searchParts() {
+            throw boom
+          },
+        },
+      },
+      { name: 'acat', provider: fakeProvider({ parts: [] }) },
+    ])
+
+    const vehicle: Vehicle = { ...baseVehicle, raw: { [CATALOG_SOURCE_KEY]: 'vin17' } }
+    expect(fb.searchParts(vehicle, 'колодки')).rejects.toBe(boom)
   })
 })
 

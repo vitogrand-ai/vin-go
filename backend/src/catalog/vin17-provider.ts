@@ -314,7 +314,8 @@ function normalizeBrand(value: string): string {
 
 /**
  * Payload поиска 5107 (или списка 5105) → детали контракта. Детали, явно
- * помеченные неприменимыми к этому VIN, и записи без номера/названия
+ * помеченные неприменимыми к этому VIN, записи без номера/названия и дубли
+ * (номер+название: одна деталь приходит несколькими строками применимости)
  * отбрасываются; выдача ограничена VIN17_MAX_PARTS.
  */
 export function mapParts(payload: Record<string, unknown>, brand: string | null): Part[] {
@@ -322,6 +323,7 @@ export function mapParts(payload: Record<string, unknown>, brand: string | null)
   if (!list) return []
 
   const parts: Part[] = []
+  const seen = new Set<string>()
   for (const item of list) {
     if (parts.length >= VIN17_MAX_PARTS) break
     if (int(item, ['is_fit_for_this_vin']) === 0) continue // явно не подходит к VIN
@@ -329,6 +331,10 @@ export function mapParts(payload: Record<string, unknown>, brand: string | null)
     const oemNumber = str(item, ['partnumber_original', 'partnumber'])
     const name = str(item, ['name_en', 'std_name_en', 'name_zh', 'std_name_zh'])
     if (!oemNumber || !name) continue
+
+    const key = `${oemNumber}|${name}`
+    if (seen.has(key)) continue
+    seen.add(key)
 
     // cata_name_en — путь категорий через «>», берём последний осмысленный узел.
     const cataPath = str(item, ['cata_name_en', 'cata_name_zh']) ?? ''

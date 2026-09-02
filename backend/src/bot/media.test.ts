@@ -23,6 +23,10 @@ class FakeTelegramClient implements TelegramClient {
   async sendMessage(chatId: number, text: string, options?: SendMessageOptions): Promise<void> {
     this.sent.push({ chatId, text, options })
   }
+  /** В сценариях вложений схемы не шлются — фото учитывается как обычный текст. */
+  async sendPhoto(chatId: number, _photoUrl: string): Promise<void> {
+    this.sent.push({ chatId, text: '[фото]', options: undefined })
+  }
   async answerCallbackQuery(): Promise<void> {}
   async downloadFile(fileId: string): Promise<Uint8Array | null> {
     this.downloaded.push(fileId)
