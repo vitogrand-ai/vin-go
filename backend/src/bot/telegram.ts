@@ -70,18 +70,32 @@ export interface TelegramClient {
 }
 
 export class HttpTelegramClient implements TelegramClient {
-  constructor(private readonly token: string) {}
+  /**
+   * `fetchImpl` внедряется так же, как у провайдеров каталога
+   * (`provider-http.ts`): тесты подставляют стаб через конструктор, а не
+   * подменяют глобальный fetch.
+   */
+  constructor(
+    private readonly token: string,
+    private readonly fetchImpl: typeof fetch = fetch,
+  ) {}
 
   private url(method: string): string {
     return `https://api.telegram.org/bot${this.token}/${method}`
   }
 
   private async call<T>(method: string, body: unknown): Promise<T> {
-    const response = await fetch(this.url(method), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
+    let response: Response
+    try {
+      response = await this.fetchImpl(this.url(method), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+    } catch (error) {
+      // Сетевую ошибку не пробрасываем как есть: см. describeNetworkError.
+      throw new Error(`Telegram ${method}: ${describeNetworkError(error)}`)
+    }
     const data = (await response.json()) as { ok: boolean; result?: T; description?: string }
     if (!data.ok) {
       throw new Error(`Telegram ${method}: ${data.description ?? response.status}`)
@@ -119,7 +133,7 @@ export class HttpTelegramClient implements TelegramClient {
       const file = await this.call<{ file_path?: string }>('getFile', { file_id: fileId })
       if (!file.file_path) return null
 
-      const response = await fetch(
+      const response = await this.fetchImpl(
         `https://api.telegram.org/file/bot${this.token}/${file.file_path}`,
       )
       if (!response.ok) {
@@ -128,8 +142,27 @@ export class HttpTelegramClient implements TelegramClient {
       }
       return new Uint8Array(await response.arrayBuffer())
     } catch (error) {
-      console.warn(`[telegram] файл ${fileId} не скачан`, error)
+      console.warn(`[telegram] файл ${fileId} не скачан: ${describeNetworkError(error)}`)
       return null
     }
   }
+}
+
+/**
+ * Короткое описание сетевого сбоя БЕЗ адреса запроса.
+ *
+ * Каждый вызов Bot API несёт токен прямо в пути URL, а объект ошибки fetch
+ * хранит этот URL в поле `path` — значит `console.error(error)` печатает токен
+ * в журнал открытым текстом (так он и утёк в journald на боевом сервере).
+ * Наружу отдаём только код сбоя: для диагностики нужен именно он
+ * («ConnectionRefused», «TimeoutError»), а адрес и так известен.
+ */
+export function describeNetworkError(error: unknown): string {
+  if (typeof error === 'object' && error !== null) {
+    const code = (error as { code?: unknown }).code
+    if (typeof code === 'string' && code) return code
+    const name = (error as { name?: unknown }).name
+    if (typeof name === 'string' && name) return name
+  }
+  return 'сетевая ошибка'
 }

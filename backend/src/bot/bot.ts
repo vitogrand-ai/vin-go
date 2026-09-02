@@ -14,7 +14,7 @@ import {
   tierAddKeyboard,
   WELCOME,
 } from './formatters'
-import type { TelegramClient, TgCallbackQuery, TgMessage, TgUpdate } from './telegram'
+import { describeNetworkError, type TelegramClient, type TgCallbackQuery, type TgMessage, type TgUpdate } from './telegram'
 import { detectImageMediaType, type VinOcrProvider } from './vin-ocr'
 import type { VoiceTranscriber } from './voice-transcribe'
 
@@ -448,7 +448,11 @@ export class TelegramBot {
         updates = await this.client.getUpdates(offset, pollTimeoutSeconds)
       } catch (error) {
         if (signal.aborted) break
-        console.error('Ошибка getUpdates:', error)
+        // Только сообщение: объект ошибки fetch содержит URL с токеном бота.
+        console.error(
+          'Ошибка getUpdates:',
+          error instanceof Error ? error.message : describeNetworkError(error),
+        )
         await delay(2000)
         continue
       }
