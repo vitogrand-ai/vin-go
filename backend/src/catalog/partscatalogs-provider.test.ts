@@ -421,4 +421,11 @@ describe('shortenQuery / normalizeImageUrl', () => {
     expect(normalizeImageUrl('')).toBeNull()
     expect(normalizeImageUrl(null)).toBeNull()
   })
+
+  test('без параметра year, criteria и description год = null, а не 0', () => {
+    const vehicle = mapVehicle('WDD1770871V030773', [
+      { brand: 'Mercedes-Benz', title: 'A200', catalogId: 'mercedes', carId: 'c1' },
+    ])
+    expect(vehicle?.year).toBeNull()
+  })
 })

@@ -2,17 +2,162 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   AddCartItemRequest,
   AddVehicleRequest,
+  AnswerExpertRequest,
   CartResponse,
+  CreateCustomerRequest,
+  CreateExpertRequest,
   OrderDto,
   OrderStatus,
+  OrganizationResponse,
   PaymentMethod,
+  UpdateCustomerRequest,
+  UpdateOrganizationRequest,
+  UpdateVehicleRequest,
 } from '@web-app-demo/contracts'
 
+import { publicApi } from '@/lib/public-api'
 import { useAuth } from '@/lib/use-auth'
 
 const garageKey = ['garage'] as const
 const cartKey = ['cart'] as const
 const ordersKey = ['orders'] as const
+const orgKey = ['org'] as const
+const customersKey = ['customers'] as const
+const expertsKey = ['experts'] as const
+
+/** Заявки эксперту: автосервису — свои, оператору платформы — общая очередь. */
+export function useExpertRequests() {
+  const { api, isAuthenticated } = useAuth()
+  return useQuery({
+    queryKey: expertsKey,
+    enabled: isAuthenticated,
+    queryFn: () => api.listExpertRequests(),
+  })
+}
+
+export function useCreateExpertRequest() {
+  const { api } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: CreateExpertRequest) => api.createExpertRequest(input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: expertsKey }),
+  })
+}
+
+export function useAnswerExpertRequest() {
+  const { api } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: AnswerExpertRequest) => api.answerExpertRequest(input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: expertsKey }),
+  })
+}
+
+/** Подключённые источники данных (публично): для честного индикатора демо-режима. */
+export function useCatalogStatus() {
+  return useQuery({
+    queryKey: ['catalog', 'status'],
+    queryFn: () => publicApi.catalogStatus(),
+    staleTime: 5 * 60_000,
+  })
+}
+
+/** Автосервис пользователя. */
+export function useOrganization() {
+  const { api, isAuthenticated } = useAuth()
+  return useQuery({
+    queryKey: orgKey,
+    enabled: isAuthenticated,
+    queryFn: () => api.getOrganization(),
+  })
+}
+
+export function useUpdateOrganization() {
+  const { api } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: UpdateOrganizationRequest) => api.updateOrganization(input),
+    onSuccess: (data) => queryClient.setQueryData<OrganizationResponse>(orgKey, data),
+  })
+}
+
+export function useRotateInviteCode() {
+  const { api } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.rotateInviteCode(),
+    onSuccess: (data) => queryClient.setQueryData<OrganizationResponse>(orgKey, data),
+  })
+}
+
+/** Переход в другой автосервис: меняется всё, что видит пользователь. */
+export function useJoinOrganization() {
+  const { api } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (inviteCode: string) => api.joinOrganization({ inviteCode }),
+    onSuccess: (data) => {
+      queryClient.setQueryData<OrganizationResponse>(orgKey, data)
+      void queryClient.invalidateQueries()
+    },
+  })
+}
+
+/** Клиенты автосервиса. */
+export function useCustomers() {
+  const { api, isAuthenticated } = useAuth()
+  return useQuery({
+    queryKey: customersKey,
+    enabled: isAuthenticated,
+    queryFn: () => api.listCustomers(),
+  })
+}
+
+export function useCreateCustomer() {
+  const { api } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: CreateCustomerRequest) => api.createCustomer(input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: customersKey }),
+  })
+}
+
+export function useUpdateCustomer() {
+  const { api } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: UpdateCustomerRequest) => api.updateCustomer(input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: customersKey })
+      void queryClient.invalidateQueries({ queryKey: garageKey })
+    },
+  })
+}
+
+export function useRemoveCustomer() {
+  const { api } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.removeCustomer({ id }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: customersKey })
+      void queryClient.invalidateQueries({ queryKey: garageKey })
+    },
+  })
+}
+
+/** Правка карточки авто: госномер, пробег, клиент, название. */
+export function useUpdateVehicle() {
+  const { api } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: UpdateVehicleRequest) => api.updateVehicle(input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: garageKey })
+      void queryClient.invalidateQueries({ queryKey: customersKey })
+    },
+  })
+}
 
 /** Гараж пользователя. */
 export function useGarage() {
@@ -66,6 +211,27 @@ export function useUpdateCartItem() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (input: { itemId: string; quantity: number }) => api.updateCartItem(input),
+    onSuccess: (data) => queryClient.setQueryData<CartResponse>(cartKey, { order: data.order }),
+  })
+}
+
+/** Ручная цена для клиента по позиции корзины. */
+export function useUpdateCartItemSalePrice() {
+  const { api } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { itemId: string; saleAmount: number }) =>
+      api.updateCartItemSalePrice(input),
+    onSuccess: (data) => queryClient.setQueryData<CartResponse>(cartKey, { order: data.order }),
+  })
+}
+
+/** Клиент автосервиса для корзины (null — отвязать). */
+export function useSetCartCustomer() {
+  const { api } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (customerId: string | null) => api.setCartCustomer({ customerId }),
     onSuccess: (data) => queryClient.setQueryData<CartResponse>(cartKey, { order: data.order }),
   })
 }

@@ -15,8 +15,11 @@ export const userSchema = z.object({
   id: z.string(),
   email: z.string(),
   displayName: z.string().nullable(),
-  // Роль: клиент или оператор автосервиса (зеркало @web-app-demo/contracts).
+  // Роль: клиент или оператор платформы (зеркало @web-app-demo/contracts).
   role: z.enum(['USER', 'OPERATOR']).default('USER'),
+  // Автосервис пользователя и роль в нём (появились вместе с организациями).
+  orgId: z.string().nullable().optional(),
+  orgRole: z.enum(['OWNER', 'MEMBER']).optional(),
   createdAt: z.string(),
 })
 
@@ -85,7 +88,8 @@ export const vehicleSchema = z.object({
   vin: z.string(),
   make: z.string(),
   model: z.string(),
-  year: z.number().int(),
+  /** null — каталог год не отдал. */
+  year: z.number().int().nullable(),
   engine: z.string().nullable(),
   bodyType: z.string().nullable(),
 })
@@ -138,6 +142,13 @@ export const resolvePlateResponseSchema = z.object({ vehicle: vehicleSchema })
 export const savedVehicleSchema = vehicleSchema.extend({
   id: z.string(),
   nickname: z.string().nullable(),
+  // Госномер, пробег и клиент-владелец — общий гараж автосервиса.
+  plate: z.string().nullable().optional(),
+  mileageKm: z.number().int().nullable().optional(),
+  customer: z
+    .object({ id: z.string(), name: z.string(), phone: z.string().nullable() })
+    .nullable()
+    .optional(),
   createdAt: z.string(),
 })
 
@@ -168,21 +179,36 @@ export const orderItemSchema = z.object({
   quality: partQualitySchema,
   isOriginal: z.boolean(),
   tier: offerTierSchema.nullable(),
+  /** Закупочная цена у поставщика. */
   price: moneySchema,
+  /** Цена для клиента автосервиса (закуп × наценка). */
+  salePrice: moneySchema.optional(),
+  markupBps: z.number().int().optional(),
   deliveryDays: z.number().int().nonnegative(),
   quantity: z.number().int().positive(),
   lineTotal: moneySchema,
+  saleLineTotal: moneySchema.optional(),
 })
 
 export const orderSchema = z.object({
   id: z.string(),
+  /** Сквозной человекочитаемый номер заказа. */
+  number: z.number().int().optional(),
   status: orderStatusSchema,
   paymentStatus: orderPaymentStatusSchema,
   vehicleVin: z.string().nullable(),
+  customer: z
+    .object({ id: z.string(), name: z.string(), phone: z.string().nullable() })
+    .nullable()
+    .optional(),
   notes: z.string().nullable(),
   items: z.array(orderItemSchema),
   itemCount: z.number().int().nonnegative(),
+  /** Закупочная сумма (к оплате). */
   total: moneySchema,
+  /** Сумма для клиента автосервиса и маржа. */
+  saleTotal: moneySchema.optional(),
+  marginTotal: moneySchema.optional(),
   createdAt: z.string(),
   placedAt: z.string().nullable(),
 })

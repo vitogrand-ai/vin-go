@@ -1,9 +1,11 @@
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import {
   allowedOrderTransitionsFor,
+  marginPercent,
   type OrderDto,
   type OrderItemDto,
   type OrderStatus,
+  type OrganizationDto,
   type PaymentMethod,
 } from '@web-app-demo/contracts'
 import { useState } from 'react'
@@ -21,6 +23,7 @@ import { RequireAuth } from '@/features/cabinet/RequireAuth'
 import {
   useCreatePayment,
   useOrder,
+  useOrganization,
   useRefundOrder,
   useReorder,
   useUpdateOrderNotes,
@@ -71,8 +74,9 @@ function OrderDetail() {
 
 function Loaded({ order }: { order: OrderDto }) {
   const { user } = useAuth()
+  const organization = useOrganization()
   const status = STATUS_LABEL[order.status]
-  // Клиент видит только отмену до оплаты; операторские переходы — у оператора.
+  // Сотрудник видит только отмену до оплаты; операторские переходы — у оператора платформы.
   const transitions = allowedOrderTransitionsFor(user?.role ?? 'USER', order.status)
   const placed = order.placedAt ?? order.createdAt
 
@@ -149,36 +153,57 @@ function Loaded({ order }: { order: OrderDto }) {
             Повторить заказ
           </Button>
           <Button type="button" variant="outline" size="sm" onClick={() => window.print()}>
-            Печать накладной
+            Печать сметы для клиента
           </Button>
         </div>
       </div>
 
-      {/* Накладная */}
-      <Card>
+      {/* Рабочая карточка: закуп, цена для клиента и маржа. На печать не идёт. */}
+      <Card className="print:hidden">
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle>Заказ № {order.id.slice(0, 8).toUpperCase()}</CardTitle>
+            <CardTitle>Заказ № {order.number}</CardTitle>
             <Badge variant={status.variant}>{status.label}</Badge>
           </div>
           <Typography tone="muted" variant="bodySm">
             от {new Date(placed).toLocaleString('ru-RU')}
             {order.vehicleVin ? ` · VIN ${order.vehicleVin}` : ''}
+            {order.customer
+              ? ` · ${order.customer.name}${order.customer.phone ? `, ${order.customer.phone}` : ''}`
+              : ''}
           </Typography>
         </CardHeader>
         <CardContent className="grid gap-3">
+          <div className="hidden grid-cols-[1fr_auto_auto] gap-x-6 text-right sm:grid">
+            <span />
+            <Typography variant="bodyXs" tone="muted">
+              Закуп
+            </Typography>
+            <Typography variant="bodyXs" tone="muted">
+              Клиенту
+            </Typography>
+          </div>
           {order.items.map((item) => (
             <OrderItemRow key={item.id} item={item} />
           ))}
           <Separator />
-          <div className="flex items-center justify-between">
+          <div className="grid gap-1 sm:grid-cols-[1fr_auto_auto] sm:gap-x-6 sm:text-right">
             <Typography variant="bodySm" tone="muted">
               Итого ({order.itemCount} шт.)
             </Typography>
-            <Typography variant="h4">{formatMoney(order.total)}</Typography>
+            <Typography variant="h5">{formatMoney(order.total)}</Typography>
+            <Typography variant="h5">{formatMoney(order.saleTotal)}</Typography>
           </div>
+          <Typography variant="bodyXs" tone="muted" className="sm:text-right">
+            Маржа автосервиса: {formatMoney(order.marginTotal)} (
+            {marginPercent(order.total.amount, order.saleTotal.amount).toLocaleString('ru-RU')} %
+            к закупу)
+          </Typography>
         </CardContent>
       </Card>
+
+      {/* Смета для клиента: только цены для клиента, без закупа и маржи. */}
+      <Estimate order={order} organization={organization.data?.organization ?? null} />
 
       {/* Действия */}
       <div className="flex flex-wrap items-center gap-2 print:hidden">
@@ -203,7 +228,7 @@ function Loaded({ order }: { order: OrderDto }) {
             </div>
             <Button type="button" disabled={createPayment.isPending} onClick={handlePay}>
               {createPayment.isPending ? <Spinner /> : null}
-              Оплатить
+              Оплатить {formatMoney(order.total)}
             </Button>
           </>
         ) : null}
@@ -241,7 +266,7 @@ function OrderItemRow({ item }: { item: OrderItemDto }) {
 
   return (
     <div className="grid gap-2">
-      <div className="flex items-start justify-between gap-3">
+      <div className="grid gap-1 sm:grid-cols-[1fr_auto_auto] sm:items-start sm:gap-x-6">
         <div className="min-w-0">
           <Typography variant="bodySmMedium">{item.partName}</Typography>
           <Typography variant="bodyXs" tone="muted">
@@ -250,16 +275,98 @@ function OrderItemRow({ item }: { item: OrderItemDto }) {
           <button
             type="button"
             onClick={() => setShowAnalogs((value) => !value)}
-            className="text-xs text-primary hover:underline print:hidden"
+            className="text-xs text-primary hover:underline"
           >
             {showAnalogs ? 'Скрыть аналоги' : 'Показать аналоги'}
           </button>
         </div>
-        <Typography variant="bodySmMedium" className="shrink-0">
+        <Typography variant="bodySmMedium" className="shrink-0 sm:text-right">
           {formatMoney(item.lineTotal)}
+        </Typography>
+        <Typography variant="bodySmMedium" className="shrink-0 sm:text-right">
+          {formatMoney(item.saleLineTotal)}
         </Typography>
       </div>
       {showAnalogs ? <AnalogsPanel oemNumber={item.oemNumber} /> : null}
+    </div>
+  )
+}
+
+/**
+ * Печатная смета для клиента автосервиса. Показывается только на печати:
+ * в ней нет закупочных цен и маржи, зато есть автосервис, клиент и машина.
+ */
+function Estimate({ order, organization }: { order: OrderDto; organization: OrganizationDto | null }) {
+  const placed = order.placedAt ?? order.createdAt
+  return (
+    <div className="hidden print:block">
+      <div className="grid gap-1">
+        <Typography variant="h3">{organization?.name ?? 'Автосервис'}</Typography>
+        {organization?.phone ? <Typography variant="bodySm">{organization.phone}</Typography> : null}
+        <Typography variant="h4" className="pt-3">
+          Смета № {order.number} от {new Date(placed).toLocaleDateString('ru-RU')}
+        </Typography>
+        {order.customer ? (
+          <Typography variant="bodySm">
+            Клиент: {order.customer.name}
+            {order.customer.phone ? `, ${order.customer.phone}` : ''}
+          </Typography>
+        ) : null}
+        {order.vehicleVin ? <Typography variant="bodySm">VIN: {order.vehicleVin}</Typography> : null}
+      </div>
+      <table className="mt-4 w-full">
+        <thead>
+          <tr className="border-b text-left">
+            <th className="py-1">
+              <Typography variant="bodySmMedium">Позиция</Typography>
+            </th>
+            <th className="py-1 text-right">
+              <Typography variant="bodySmMedium">Кол-во</Typography>
+            </th>
+            <th className="py-1 text-right">
+              <Typography variant="bodySmMedium">Цена</Typography>
+            </th>
+            <th className="py-1 text-right">
+              <Typography variant="bodySmMedium">Сумма</Typography>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {order.items.map((item) => (
+            <tr key={item.id} className="border-b">
+              <td className="py-1">
+                <Typography variant="bodySm">
+                  {item.partName} · {item.brand}
+                </Typography>
+              </td>
+              <td className="py-1 text-right">
+                <Typography variant="bodySm">{item.quantity}</Typography>
+              </td>
+              <td className="py-1 text-right">
+                <Typography variant="bodySm">{formatMoney(item.salePrice)}</Typography>
+              </td>
+              <td className="py-1 text-right">
+                <Typography variant="bodySm">{formatMoney(item.saleLineTotal)}</Typography>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colSpan={3} className="py-2 text-right">
+              <Typography variant="bodySmMedium">Итого</Typography>
+            </td>
+            <td className="py-2 text-right">
+              <Typography variant="h5">{formatMoney(order.saleTotal)}</Typography>
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+      {order.notes ? (
+        <Typography variant="bodyXs" tone="muted" className="pt-3">
+          {order.notes}
+        </Typography>
+      ) : null}
     </div>
   )
 }
@@ -278,7 +385,7 @@ function NotesEditor({ orderId, initial }: { orderId: string; initial: string | 
         <Textarea
           value={notes}
           onChange={(event) => setNotes(event.target.value)}
-          placeholder="Комментарий: контакт клиента, договорённости, особенности…"
+          placeholder="Комментарий: договорённости, особенности… Печатается в смете."
           maxLength={2000}
           rows={3}
         />

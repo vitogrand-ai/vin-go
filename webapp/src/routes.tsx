@@ -1,6 +1,8 @@
 import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
 
 import { CartPage } from './features/cart/CartPage'
+import { CustomersPage } from './features/customers/CustomersPage'
+import { ExpertsPage } from './features/experts/ExpertsPage'
 import { GaragePage } from './features/garage/GaragePage'
 import { OrderDetailPage } from './features/orders/OrderDetailPage'
 import { OrdersPage } from './features/orders/OrdersPage'
@@ -33,6 +35,18 @@ const garageRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/garage',
   component: GaragePage,
+})
+
+const customersRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/customers',
+  component: CustomersPage,
+})
+
+const expertsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/experts',
+  component: ExpertsPage,
 })
 
 const cartRoute = createRoute({
@@ -69,6 +83,8 @@ const routeTree = rootRoute.addChildren([
   indexRoute,
   searchRoute,
   garageRoute,
+  customersRoute,
+  expertsRoute,
   cartRoute,
   ordersRoute,
   orderDetailRoute,

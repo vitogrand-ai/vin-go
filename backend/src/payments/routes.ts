@@ -8,6 +8,7 @@ import {
 } from '@web-app-demo/contracts'
 import { createRoute, OpenAPIHono } from '@hono/zod-openapi'
 
+import type { Actor } from '../auth/actor'
 import { requireAuth } from '../auth/middleware'
 import type { AuthService } from '../auth/service'
 import type { AppEnv } from '../env'
@@ -21,6 +22,7 @@ type PaymentRouteEnv = {
     paymentService: PaymentService
     env: AppEnv
     userId: string
+    actor: Actor
   }
 }
 
@@ -98,12 +100,12 @@ export function createPaymentRoutes() {
   routes.openapi(createRouteDef, async (c) => {
     const service = c.get('paymentService')
     const { orderId, method } = c.req.valid('json')
-    return c.json(await service.createForOrder(c.get('userId'), orderId, method), 200)
+    return c.json(await service.createForOrder(c.get('actor'), orderId, method), 200)
   })
 
   routes.openapi(refundRouteDef, async (c) => {
     const service = c.get('paymentService')
-    return c.json(await service.refundOrder(c.get('userId'), c.req.valid('json').orderId), 200)
+    return c.json(await service.refundOrder(c.get('actor'), c.req.valid('json').orderId), 200)
   })
 
   routes.openapi(confirmMockRouteDef, async (c) => {

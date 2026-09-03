@@ -9,6 +9,10 @@ import { AuthService } from './auth/service'
 import { createCatalogProviders } from './catalog/factory'
 import { createCatalogRoutes } from './catalog/routes'
 import { CatalogService } from './catalog/service'
+import { createCustomersRoutes } from './customers/routes'
+import { CustomersService } from './customers/service'
+import { createExpertsRoutes } from './experts/routes'
+import { ExpertsService } from './experts/service'
 import { createGarageRoutes } from './garage/routes'
 import { GarageService } from './garage/service'
 import { createDeviceRoutes } from './devices/routes'
@@ -20,6 +24,8 @@ import {
 } from './notifications/service'
 import { createOrdersRoutes } from './orders/routes'
 import { OrdersService } from './orders/service'
+import { createOrgRoutes } from './org/routes'
+import { OrganizationService } from './org/service'
 import { createPaymentProvider } from './payments/factory'
 import { createPaymentRoutes } from './payments/routes'
 import { PaymentService } from './payments/service'
@@ -38,6 +44,9 @@ type AppBindings = {
     paymentService: PaymentService
     telegramLinkService: TelegramLinkService
     deviceService: DeviceService
+    organizationService: OrganizationService
+    customersService: CustomersService
+    expertsService: ExpertsService
     env: AppEnv
     storageService: StorageService | null
     userId: string
@@ -50,20 +59,29 @@ type CreateAppOptions = {
 }
 
 export function createApp({ env, prisma }: CreateAppOptions) {
-  const authService = new AuthService(prisma, env)
+  const organizationService = new OrganizationService(prisma)
+  const customersService = new CustomersService(prisma)
+  const authService = new AuthService(prisma, env, organizationService)
   const {
     catalog: catalogProvider,
     suppliers: supplierProvider,
     plates: plateProvider,
     offerResolver,
+    meta: providersMeta,
   } = createCatalogProviders(env, prisma)
-  const catalogService = new CatalogService(catalogProvider, supplierProvider, plateProvider)
+  const catalogService = new CatalogService(
+    catalogProvider,
+    supplierProvider,
+    plateProvider,
+    providersMeta,
+  )
   const garageService = new GarageService(prisma, catalogProvider)
   const notificationService = new NotificationService(prisma, {
     pushSend: makeExpoPushSend(),
     telegramSend: env.TELEGRAM_BOT_TOKEN ? makeTelegramSend(env.TELEGRAM_BOT_TOKEN) : undefined,
   })
   const deviceService = new DeviceService(prisma)
+  const expertsService = new ExpertsService(prisma, catalogProvider, notificationService)
   const ordersService = new OrdersService(prisma, supplierProvider, notificationService, offerResolver)
   const paymentProvider = createPaymentProvider(env)
   const webappOrigin = env.CORS_ORIGINS[0] ?? 'http://localhost:5173'
@@ -105,6 +123,9 @@ export function createApp({ env, prisma }: CreateAppOptions) {
     c.set('paymentService', paymentService)
     c.set('telegramLinkService', telegramLinkService)
     c.set('deviceService', deviceService)
+    c.set('organizationService', organizationService)
+    c.set('customersService', customersService)
+    c.set('expertsService', expertsService)
     c.set('env', env)
     c.set('storageService', storageService)
     await next()
@@ -148,6 +169,9 @@ export function createApp({ env, prisma }: CreateAppOptions) {
   app.route('/api/payments', createPaymentRoutes())
   app.route('/api/telegram', createTelegramRoutes())
   app.route('/api/devices', createDeviceRoutes())
+  app.route('/api/org', createOrgRoutes())
+  app.route('/api/customers', createCustomersRoutes())
+  app.route('/api/experts', createExpertsRoutes())
 
   app.doc('/openapi.json', {
     openapi: '3.0.0',

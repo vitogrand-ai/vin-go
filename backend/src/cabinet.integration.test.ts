@@ -1,10 +1,14 @@
 import { afterAll, beforeEach, describe, expect, test } from 'bun:test'
-import type {
-  CartResponse,
-  GarageResponse,
-  OffersResponse,
-  OrderResponse,
-  OrdersResponse,
+import {
+  applyMarkup,
+  type CartResponse,
+  type CustomerResponse,
+  type GarageResponse,
+  type OffersResponse,
+  type OrderResponse,
+  type OrdersResponse,
+  type OrganizationResponse,
+  type VehicleResponse,
 } from '@web-app-demo/contracts'
 
 import { createApp } from './app'
@@ -42,18 +46,34 @@ maybeDescribe('личный кабинет: гараж, корзина, зака
     await prisma.orderItem.deleteMany()
     await prisma.order.deleteMany()
     await prisma.vehicle.deleteMany()
+    await prisma.customer.deleteMany()
     await prisma.authSession.deleteMany()
     await prisma.user.deleteMany()
+    await prisma.organization.deleteMany()
   }
 
-  async function registerUser(): Promise<string> {
+  async function registerUser(
+    email = 'service@example.com',
+    extra: Record<string, unknown> = {},
+  ): Promise<string> {
     const res = await app.request('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Client-Platform': 'mobile' },
-      body: JSON.stringify({ email: 'service@example.com', password: 'password123' }),
+      body: JSON.stringify({ email, password: 'password123', ...extra }),
     })
     const data = (await res.json()) as { accessToken: string }
     return data.accessToken
+  }
+
+  /** Эконом-предложение по демо-OEM из выдачи поставщиков. */
+  async function economyOffer(oemNumber = '1J0698151') {
+    const offersRes = await app.request('/api/catalog/offers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ oemNumber }),
+    })
+    return ((await offersRes.json()) as OffersResponse).picks.find((p) => p.tier === 'ECONOMY')!
+      .offer
   }
 
   function authed(token: string, path: string, body?: unknown, method: 'GET' | 'POST' = body === undefined ? 'GET' : 'POST') {
@@ -93,9 +113,13 @@ maybeDescribe('личный кабинет: гараж, корзина, зака
   })
 
   test('снимок выдачи: addItem резолвит offerId без повторного запроса к поставщику', async () => {
-    const user = await prisma.user.create({
-      data: { email: 'snapshot@example.com', passwordHash: 'x' },
+    const org = await prisma.organization.create({
+      data: { name: 'Снимок', inviteCode: 'SNAPSHOT' },
     })
+    const user = await prisma.user.create({
+      data: { email: 'snapshot@example.com', passwordHash: 'x', orgId: org.id, orgRole: 'OWNER' },
+    })
+    const actor = { userId: user.id, orgId: org.id, role: 'USER' as const, orgRole: 'OWNER' as const }
     let getOffersCalls = 0
     const inner: SupplierProvider = {
       getOffers: async (oem, region) => {
@@ -111,14 +135,14 @@ maybeDescribe('личный кабинет: гараж, корзина, зака
     expect(getOffersCalls).toBe(1)
 
     // В корзину по id из снимка — без повторного getOffers.
-    await svc.addItem(user.id, {
+    await svc.addItem(actor, {
       oemNumber: '1J0698151',
       offerId: offers[0]!.id,
       partName: 'Колодки',
     })
     expect(getOffersCalls).toBe(1)
 
-    const cart = await svc.getCart(user.id)
+    const cart = await svc.getCart(actor)
     expect(cart.order?.items).toHaveLength(1)
     expect(cart.order?.items[0]?.oemNumber).toBe('1J0698151')
   })
@@ -273,5 +297,166 @@ maybeDescribe('личный кабинет: гараж, корзина, зака
       partName: 'Колодки',
     })
     expect(res.status).toBe(404)
+  })
+
+  test('регистрация создаёт автосервис, а его владелец видит настройки', async () => {
+    const token = await registerUser('owner@example.com', { orgName: 'СТО «Гараж 5»' })
+    const me = (await (await authed(token, '/api/auth/me')).json()) as {
+      user: { orgId: string | null; orgRole: string }
+    }
+    expect(me.user.orgId).not.toBeNull()
+    expect(me.user.orgRole).toBe('OWNER')
+
+    const org = (await (await authed(token, '/api/org')).json()) as OrganizationResponse
+    expect(org.organization.name).toBe('СТО «Гараж 5»')
+    expect(org.organization.memberCount).toBe(1)
+    expect(org.organization.inviteCode.length).toBeGreaterThanOrEqual(6)
+  })
+
+  test('изоляция автосервисов: чужие заказы и гараж не видны', async () => {
+    const alice = await registerUser('alice@example.com')
+    const bob = await registerUser('bob@example.com')
+
+    const economy = await economyOffer()
+    await authed(alice, '/api/cart/items', {
+      oemNumber: economy.oemNumber,
+      offerId: economy.id,
+      partName: 'Колодки',
+    })
+    const placed = (await (await post(alice, '/api/cart/checkout')).json()) as OrderResponse
+    await authed(alice, '/api/vehicles', { vin: DEMO_VIN })
+
+    const bobOrders = (await (await authed(bob, '/api/orders')).json()) as OrdersResponse
+    expect(bobOrders.orders).toHaveLength(0)
+    expect((await authed(bob, `/api/orders/${placed.order.id}`)).status).toBe(404)
+    expect((await authed(bob, '/api/orders/notes', { orderId: placed.order.id, notes: 'x' })).status).toBe(404)
+    expect((await authed(bob, '/api/payments/create', { orderId: placed.order.id })).status).toBe(404)
+
+    const bobGarage = (await (await authed(bob, '/api/vehicles')).json()) as GarageResponse
+    expect(bobGarage.vehicles).toHaveLength(0)
+  })
+
+  test('сотрудник по коду приглашения видит заказы и гараж автосервиса', async () => {
+    const owner = await registerUser('owner@example.com')
+    const org = (await (await authed(owner, '/api/org')).json()) as OrganizationResponse
+
+    const economy = await economyOffer()
+    await authed(owner, '/api/cart/items', {
+      oemNumber: economy.oemNumber,
+      offerId: economy.id,
+      partName: 'Колодки',
+    })
+    await post(owner, '/api/cart/checkout')
+    await authed(owner, '/api/vehicles', { vin: DEMO_VIN })
+
+    const member = await registerUser('member@example.com', {
+      inviteCode: org.organization.inviteCode,
+    })
+    const memberOrders = (await (await authed(member, '/api/orders')).json()) as OrdersResponse
+    expect(memberOrders.orders).toHaveLength(1)
+    const memberGarage = (await (await authed(member, '/api/vehicles')).json()) as GarageResponse
+    expect(memberGarage.vehicles).toHaveLength(1)
+
+    const orgAfter = (await (await authed(member, '/api/org')).json()) as OrganizationResponse
+    expect(orgAfter.organization.memberCount).toBe(2)
+
+    // Настройки автосервиса меняет только владелец.
+    expect((await authed(member, '/api/org', { defaultMarkupBps: 1000 })).status).toBe(403)
+    expect((await authed(owner, '/api/org', { defaultMarkupBps: 1000 })).status).toBe(200)
+
+    // Неверный код приглашения при регистрации отклоняется.
+    const bad = await app.request('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'x@example.com', password: 'password123', inviteCode: 'NOPE1234' }),
+    })
+    expect(bad.status).toBe(400)
+  })
+
+  test('наценка: цена для клиента считается от закупа, правится вручную и даёт маржу', async () => {
+    const token = await registerUser('markup@example.com')
+    await authed(token, '/api/org', { defaultMarkupBps: 2500 })
+
+    const economy = await economyOffer()
+    const added = (await (
+      await authed(token, '/api/cart/items', {
+        oemNumber: economy.oemNumber,
+        offerId: economy.id,
+        partName: 'Колодки',
+        quantity: 2,
+      })
+    ).json()) as OrderResponse
+    const item = added.order.items[0]!
+    expect(item.price.amount).toBe(economy.price.amount)
+    expect(item.markupBps).toBe(2500)
+    expect(item.salePrice.amount).toBe(applyMarkup(economy.price.amount, 2500))
+    expect(added.order.total.amount).toBe(economy.price.amount * 2)
+    expect(added.order.saleTotal.amount).toBe(item.salePrice.amount * 2)
+    expect(added.order.marginTotal.amount).toBe(
+      added.order.saleTotal.amount - added.order.total.amount,
+    )
+
+    // Ручная цена для клиента: наценка позиции пересчитывается из факта.
+    const manual = economy.price.amount * 2
+    const priced = (await (
+      await authed(token, '/api/cart/items/sale-price', { itemId: item.id, saleAmount: manual })
+    ).json()) as OrderResponse
+    expect(priced.order.items[0]?.salePrice.amount).toBe(manual)
+    expect(priced.order.items[0]?.markupBps).toBe(10_000)
+
+    // Заказ получает сквозной номер и сохраняет цены для клиента.
+    const placed = (await (await post(token, '/api/cart/checkout')).json()) as OrderResponse
+    expect(placed.order.number).toBeGreaterThan(0)
+    expect(placed.order.saleTotal.amount).toBe(manual * 2)
+  })
+
+  test('клиенты автосервиса: карточка, авто с госномером и автопривязка к корзине', async () => {
+    const token = await registerUser('customers@example.com')
+
+    const created = (await (
+      await authed(token, '/api/customers', { name: 'Иван Петров', phone: '+7 900 000-00-00' })
+    ).json()) as CustomerResponse
+    expect(created.customer.name).toBe('Иван Петров')
+
+    // Госномер нормализуется (латиница → кириллица), клиент привязан.
+    const vehicle = (await (
+      await authed(token, '/api/vehicles', {
+        vin: DEMO_VIN,
+        plate: 'a123bc777',
+        mileageKm: 145000,
+        customerId: created.customer.id,
+      })
+    ).json()) as VehicleResponse
+    expect(vehicle.vehicle.plate).toBe('А123ВС777')
+    expect(vehicle.vehicle.mileageKm).toBe(145000)
+    expect(vehicle.vehicle.customer?.id).toBe(created.customer.id)
+
+    // Правка карточки: пробег обновлён, госномер очищен.
+    const updated = (await (
+      await authed(token, '/api/vehicles/update', {
+        id: vehicle.vehicle.id,
+        mileageKm: 150000,
+        plate: null,
+      })
+    ).json()) as VehicleResponse
+    expect(updated.vehicle.mileageKm).toBe(150000)
+    expect(updated.vehicle.plate).toBeNull()
+
+    // Привязка корзины к авто из гаража подставляет клиента.
+    const cart = (await (
+      await authed(token, '/api/cart/vehicle', { vin: DEMO_VIN })
+    ).json()) as OrderResponse
+    expect(cart.order.customer?.id).toBe(created.customer.id)
+
+    // Чужого клиента привязать нельзя.
+    expect(
+      (await authed(token, '/api/cart/customer', { customerId: '00000000-0000-0000-0000-000000000000' })).status,
+    ).toBe(404)
+
+    // Список клиентов считает авто и заказы.
+    const list = (await (await authed(token, '/api/customers')).json()) as {
+      customers: { vehicleCount: number }[]
+    }
+    expect(list.customers[0]?.vehicleCount).toBe(1)
   })
 })

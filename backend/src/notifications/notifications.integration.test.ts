@@ -34,6 +34,7 @@ maybeDescribe('NotificationService', () => {
     await prisma.telegramAccount.deleteMany()
     await prisma.authSession.deleteMany()
     await prisma.user.deleteMany()
+    await prisma.organization.deleteMany()
   }
 
   beforeEach(reset)
@@ -65,16 +66,23 @@ maybeDescribe('NotificationService', () => {
   })
 
   test('смена статуса заказа триггерит уведомление', async () => {
-    const user = await prisma.user.create({ data: { email: 's@example.com', passwordHash: 'x' } })
+    const org = await prisma.organization.create({ data: { name: 'СТО', inviteCode: 'NOTIF001' } })
+    const user = await prisma.user.create({
+      data: { email: 's@example.com', passwordHash: 'x', orgId: org.id, orgRole: 'OWNER' },
+    })
     await prisma.deviceToken.create({ data: { userId: user.id, token: 'ExponentPushToken[xyz]' } })
     const order = await prisma.order.create({
-      data: { userId: user.id, status: 'PAID', currency: 'RUB' },
+      data: { userId: user.id, orgId: org.id, status: 'PAID', currency: 'RUB' },
     })
 
     const notifications = new NotificationService(prisma, { pushSend, telegramSend })
     const orders = new OrdersService(prisma, new MockSupplierProvider(), notifications)
-    // Переход PAID → PROCESSING — операторский.
-    await orders.updateStatus(user.id, 'OPERATOR', order.id, 'PROCESSING')
+    // Переход PAID → PROCESSING — операторский (оператор платформы).
+    await orders.updateStatus(
+      { userId: user.id, orgId: org.id, role: 'OPERATOR', orgRole: 'OWNER' },
+      order.id,
+      'PROCESSING',
+    )
 
     expect(pushCalls).toHaveLength(1)
     expect(pushCalls[0]?.title).toBe('Статус заказа изменён')

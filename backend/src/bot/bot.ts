@@ -1,6 +1,9 @@
 import { plateSchema, vinOrFrameSchema, type Part, type TierPick } from '@web-app-demo/contracts'
 
+import type { Actor } from '../auth/actor'
 import type { CatalogService } from '../catalog/service'
+import type { ExpertsService } from '../experts/service'
+import type { GarageService } from '../garage/service'
 import { AppError } from '../http/errors'
 import type { OrdersService } from '../orders/service'
 import type { TelegramLinkService } from '../telegram/service'
@@ -8,6 +11,7 @@ import { computeServiceIntervals } from '../garage/service-intervals'
 import {
   cartMessage,
   formatVehicle,
+  garageMessage,
   offersMessage,
   ordersMessage,
   partsMessage,
@@ -15,11 +19,12 @@ import {
   tierAddKeyboard,
   WELCOME,
 } from './formatters'
+import type { SessionStore } from './session-store'
 import { describeNetworkError, type TelegramClient, type TgCallbackQuery, type TgMessage, type TgUpdate } from './telegram'
 import { detectImageMediaType, type VinOcrProvider } from './vin-ocr'
 import type { VoiceTranscriber } from './voice-transcribe'
 
-type ChatSession = {
+export type ChatSession = {
   vin?: string
   /** Карта oemNumber → название запчасти из последнего поиска. */
   parts?: Record<string, string>
@@ -29,12 +34,18 @@ type ChatSession = {
    * ту запчасть, а не последнюю показанную.
    */
   offers?: Record<string, { oemNumber: string; partName: string; picks: TierPick[] }>
+  /** Последний запрос детали — уходит эксперту по кнопке «Спросить эксперта». */
+  lastQuery?: string
 }
 
 /** Сервисы кабинета — доступны боту, когда аккаунт привязан. */
 export type BotCabinet = {
   link: TelegramLinkService
   orders: OrdersService
+  /** Заявки эксперту по кнопке в пустой выдаче. */
+  experts?: ExpertsService
+  /** Гараж автосервиса: /garage выбирает машину без ввода VIN. */
+  garage?: GarageService
 }
 
 /**
@@ -64,9 +75,14 @@ export class TelegramBot {
     private readonly catalog: CatalogService,
     private readonly cabinet?: BotCabinet,
     private readonly media: BotMedia = {},
+    /** Персистентность сессий между рестартами; без него — только память. */
+    private readonly store?: SessionStore,
   ) {}
 
   async handleUpdate(update: TgUpdate): Promise<void> {
+    const chatId = update.message?.chat.id ?? update.callback_query?.message?.chat.id
+    if (chatId !== undefined) await this.restoreSession(chatId)
+
     const message = update.message
     if (message?.text) {
       await this.handleMessage(message)
@@ -77,6 +93,21 @@ export class TelegramBot {
     } else if (update.callback_query) {
       await this.handleCallback(update.callback_query)
     }
+
+    if (chatId !== undefined) await this.persistSession(chatId)
+  }
+
+  /** Первое обращение чата после рестарта — поднимаем контекст из хранилища. */
+  private async restoreSession(chatId: number): Promise<void> {
+    if (!this.store || this.sessions.has(chatId)) return
+    const saved = await this.store.load(chatId)
+    if (saved) this.sessions.set(chatId, saved)
+  }
+
+  private async persistSession(chatId: number): Promise<void> {
+    const session = this.sessions.get(chatId)
+    if (!this.store || !session) return
+    await this.store.save(chatId, session)
   }
 
   /**
@@ -217,6 +248,10 @@ export class TelegramBot {
       await this.handleCart(chatId, telegramUserId)
       return
     }
+    if (command === '/garage' || command === 'гараж') {
+      await this.handleGarage(chatId, telegramUserId)
+      return
+    }
     if (command === '/orders' || command === 'заказы') {
       await this.handleOrders(chatId, telegramUserId)
       return
@@ -311,9 +346,22 @@ export class TelegramBot {
       return
     }
     if (parts.length === 0) {
+      // Тупик «не найдено» превращаем в заявку живому подборщику: это и есть
+      // ответ на неполное покрытие каталогов.
+      session.lastQuery = query
       await this.client.sendMessage(
         chatId,
-        'По этому запросу ничего не найдено. Попробуйте другое название запчасти.',
+        'По этому запросу ничего не найдено. Попробуйте другое название запчасти' +
+          (this.cabinet?.experts ? ' — или передайте запрос эксперту.' : '.'),
+        this.cabinet?.experts
+          ? {
+              replyMarkup: {
+                inline_keyboard: [
+                  [{ text: '🧑‍🔧 Спросить эксперта', callback_data: 'expert:ask' }],
+                ],
+              },
+            }
+          : undefined,
       )
       return
     }
@@ -350,6 +398,14 @@ export class TelegramBot {
       await this.showOffers(chatId, data.slice('oem:'.length))
       return
     }
+    if (data === 'expert:ask') {
+      await this.askExpert(chatId, callback.from.id)
+      return
+    }
+    if (data.startsWith('car:')) {
+      await this.pickGarageCar(chatId, callback.from.id, data.slice('car:'.length))
+      return
+    }
     if (data.startsWith('add:')) {
       // Формат callback: add:<tier>:<oem>. OEM в кнопке защищает от добавления
       // не той запчасти при нажатии на старое сообщение.
@@ -363,10 +419,10 @@ export class TelegramBot {
 
   private async showOffers(chatId: number, oemNumber: string): Promise<void> {
     const session = this.session(chatId)
-    const { picks, offers } = await this.catalog.getOffers(oemNumber)
+    const { picks, offers, source } = await this.catalog.getOffers(oemNumber)
     const partName = session.parts?.[oemNumber] ?? oemNumber
     ;(session.offers ??= {})[oemNumber] = { oemNumber, partName, picks }
-    await this.client.sendMessage(chatId, offersMessage(oemNumber, picks, offers), {
+    await this.client.sendMessage(chatId, offersMessage(oemNumber, picks, offers, source), {
       parseMode: 'HTML',
       replyMarkup: picks.length > 0 ? tierAddKeyboard(picks, oemNumber) : undefined,
     })
@@ -378,8 +434,8 @@ export class TelegramBot {
     tier: string,
     oemNumber: string | undefined,
   ): Promise<void> {
-    const userId = await this.requireUser(chatId, telegramUserId)
-    if (!userId) return
+    const actor = await this.requireActor(chatId, telegramUserId)
+    if (!actor) return
 
     const offerContext = oemNumber ? this.session(chatId).offers?.[oemNumber] : undefined
     const pick = offerContext?.picks.find((candidate) => candidate.tier === tier)
@@ -388,7 +444,7 @@ export class TelegramBot {
       return
     }
 
-    await this.cabinet!.orders.addItem(userId, {
+    await this.cabinet!.orders.addItem(actor, {
       oemNumber: offerContext.oemNumber,
       offerId: pick.offer.id,
       partName: offerContext.partName,
@@ -399,6 +455,54 @@ export class TelegramBot {
       chatId,
       `✅ «${offerContext.partName}» добавлено в корзину. Открыть: /cart`,
     )
+  }
+
+  /** Заявка эксперту по последнему пустому запросу. */
+  private async askExpert(chatId: number, telegramUserId: number): Promise<void> {
+    const session = this.session(chatId)
+    if (!this.cabinet?.experts || !session.vin || !session.lastQuery) {
+      await this.client.sendMessage(chatId, 'Сначала пришлите VIN и название запчасти.')
+      return
+    }
+    const actor = await this.requireActor(chatId, telegramUserId)
+    if (!actor) return
+    const { request } = await this.cabinet.experts.create(actor, {
+      vin: session.vin,
+      query: session.lastQuery,
+    })
+    await this.client.sendMessage(
+      chatId,
+      `📨 Заявка № ${request.number} отправлена эксперту: «${request.query}» для VIN <code>${request.vin}</code>. Ответ придёт сюда.`,
+      { parseMode: 'HTML' },
+    )
+  }
+
+  /** Гараж автосервиса: кнопки с машинами, выбор подставляет VIN в разговор. */
+  private async handleGarage(chatId: number, telegramUserId: number): Promise<void> {
+    if (!this.cabinet?.garage) {
+      await this.client.sendMessage(chatId, 'Гараж в боте сейчас недоступен.')
+      return
+    }
+    const actor = await this.requireActor(chatId, telegramUserId)
+    if (!actor) return
+    const { vehicles } = await this.cabinet.garage.list(actor)
+    const { text, keyboard } = garageMessage(vehicles)
+    await this.client.sendMessage(chatId, text, { parseMode: 'HTML', replyMarkup: keyboard })
+  }
+
+  private async pickGarageCar(chatId: number, telegramUserId: number, vin: string): Promise<void> {
+    if (!this.cabinet?.garage) return
+    const actor = await this.requireActor(chatId, telegramUserId)
+    if (!actor) return
+    // VIN берём только из гаража автосервиса — callback мог прийти со старой кнопки.
+    const { vehicles } = await this.cabinet.garage.list(actor)
+    const vehicle = vehicles.find((candidate) => candidate.vin === vin)
+    if (!vehicle) {
+      await this.client.sendMessage(chatId, 'Этой машины больше нет в гараже. Откройте /garage заново.')
+      return
+    }
+    this.session(chatId).vin = vehicle.vin
+    await this.client.sendMessage(chatId, formatVehicle(vehicle), { parseMode: 'HTML' })
   }
 
   private async handleLink(
@@ -425,49 +529,50 @@ export class TelegramBot {
   }
 
   private async handleCart(chatId: number, telegramUserId: number): Promise<void> {
-    const userId = await this.requireUser(chatId, telegramUserId)
-    if (!userId) return
-    const { order } = await this.cabinet!.orders.getCart(userId)
+    const actor = await this.requireActor(chatId, telegramUserId)
+    if (!actor) return
+    const { order } = await this.cabinet!.orders.getCart(actor)
     await this.client.sendMessage(chatId, cartMessage(order), { parseMode: 'HTML' })
   }
 
   private async handleOrders(chatId: number, telegramUserId: number): Promise<void> {
-    const userId = await this.requireUser(chatId, telegramUserId)
-    if (!userId) return
-    // Пользователь бота — всегда клиент: показываем только его заказы.
-    const { orders } = await this.cabinet!.orders.listOrders(userId, 'USER')
+    const actor = await this.requireActor(chatId, telegramUserId)
+    if (!actor) return
+    // В чате показываем заказы автосервиса, а не очередь всей платформы —
+    // даже если аккаунт оператора: длинный список в Telegram нечитаем.
+    const { orders } = await this.cabinet!.orders.listOrders({ ...actor, role: 'USER' })
     await this.client.sendMessage(chatId, ordersMessage(orders), { parseMode: 'HTML' })
   }
 
   private async handleCheckout(chatId: number, telegramUserId: number): Promise<void> {
-    const userId = await this.requireUser(chatId, telegramUserId)
-    if (!userId) return
+    const actor = await this.requireActor(chatId, telegramUserId)
+    if (!actor) return
     try {
-      const { order } = await this.cabinet!.orders.checkout(userId)
+      const { order } = await this.cabinet!.orders.checkout(actor)
       await this.client.sendMessage(
         chatId,
-        `✅ Заказ оформлен. Оплата — в личном кабинете на сайте.\nСумма: ${formatTotal(order.total)}`,
+        `✅ Заказ № ${order.number} оформлен. Оплата — в личном кабинете на сайте.\nСумма: ${formatTotal(order.total)}`,
       )
     } catch {
       await this.client.sendMessage(chatId, 'Корзина пуста — оформлять нечего.')
     }
   }
 
-  /** Возвращает userId привязанного аккаунта или подсказывает привязаться. */
-  private async requireUser(chatId: number, telegramUserId: number): Promise<string | null> {
+  /** Возвращает участника автосервиса по привязанному аккаунту или подсказывает привязаться. */
+  private async requireActor(chatId: number, telegramUserId: number): Promise<Actor | null> {
     if (!this.cabinet) {
       await this.client.sendMessage(chatId, 'Функции кабинета сейчас недоступны.')
       return null
     }
-    const userId = await this.cabinet.link.resolveUser(BigInt(telegramUserId))
-    if (!userId) {
+    const actor = await this.cabinet.link.resolveActor(BigInt(telegramUserId))
+    if (!actor) {
       await this.client.sendMessage(
         chatId,
         'Сначала привяжите аккаунт: в личном кабинете на сайте нажмите «Подключить Telegram» и пришлите сюда /start <код>.',
       )
       return null
     }
-    return userId
+    return actor
   }
 
   /**

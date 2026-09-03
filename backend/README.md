@@ -63,7 +63,7 @@ The backend is one workspace with one Prisma schema and one Dockerfile, but it h
 
 - API: `bun run start:api`, backed by `src/index.ts`.
 - Worker: `bun run start:worker`, backed by `src/worker.ts`. It is intentionally empty until a real long-running background handler is added, and deployment generation refuses to deploy this placeholder command as an App Platform worker.
-- Cron: `bun run start:cron -- <task>`, backed by `src/cron.ts`. Current local validation tasks are `noop` and `db:ping`.
+- Cron: `bun run start:cron -- <task>`, backed by `src/cron.ts`. Tasks: `noop`, `db:ping`, `payments:reconcile` (safety net for lost payment webhooks, every 15 min) and `auth:cleanup` (revoked/expired sessions, expired Telegram link codes, expired VIN cache, stale bot chat sessions — once a day).
 
 All entrypoints use `src/runtime.ts` for env loading, Prisma creation, and cleanup, so backend services can be shared without duplicating Prisma schema or database setup.
 

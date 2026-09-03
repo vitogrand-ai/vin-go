@@ -1,9 +1,13 @@
 import type {
+  OrgRole,
   TelegramLinkCodeResponse,
   TelegramStatusResponse,
+  UserRole,
 } from '@web-app-demo/contracts'
 
+import type { Actor } from '../auth/actor'
 import type { DbClient } from '../db'
+import { OrganizationService } from '../org/service'
 
 const CODE_TTL_MS = 15 * 60 * 1000
 
@@ -12,10 +16,14 @@ const CODE_TTL_MS = 15 * 60 * 1000
  * бот гасит его при `/start <code>` и связывает Telegram-аккаунт с кабинетом.
  */
 export class TelegramLinkService {
+  private readonly organizations: OrganizationService
+
   constructor(
     private readonly db: DbClient,
     private readonly botUsername?: string,
-  ) {}
+  ) {
+    this.organizations = new OrganizationService(db)
+  }
 
   async createLinkCode(userId: string): Promise<TelegramLinkCodeResponse> {
     await this.db.telegramLinkCode.deleteMany({ where: { userId } })
@@ -55,6 +63,23 @@ export class TelegramLinkService {
   async resolveUser(telegramUserId: bigint): Promise<string | null> {
     const account = await this.db.telegramAccount.findUnique({ where: { telegramUserId } })
     return account?.userId ?? null
+  }
+
+  /**
+   * Пользователь бота как участник автосервиса — то, с чем работают сервисы
+   * кабинета. Организация старой записи создаётся тут же, как и в API.
+   */
+  async resolveActor(telegramUserId: bigint): Promise<Actor | null> {
+    const account = await this.db.telegramAccount.findUnique({
+      where: { telegramUserId },
+      include: { user: { select: { id: true, role: true, orgId: true, orgRole: true } } },
+    })
+    if (!account) return null
+    const { user } = account
+    const org = user.orgId
+      ? { orgId: user.orgId, orgRole: user.orgRole as OrgRole }
+      : await this.organizations.ensureForUser(user.id)
+    return { userId: user.id, role: user.role as UserRole, orgId: org.orgId, orgRole: org.orgRole }
   }
 }
 

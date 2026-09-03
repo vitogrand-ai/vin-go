@@ -78,7 +78,7 @@ function Orders() {
         <Input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Поиск: VIN, запчасть, № заказа"
+          placeholder="Поиск: № заказа, клиент, VIN, запчасть"
           className="max-w-xs"
         />
       </div>
@@ -106,8 +106,11 @@ function Orders() {
 function matchesSearch(order: OrderDto, query: string): boolean {
   const q = query.trim().toLowerCase()
   if (!q) return true
+  if (String(order.number).includes(q)) return true
   if (order.id.toLowerCase().includes(q)) return true
   if (order.vehicleVin?.toLowerCase().includes(q)) return true
+  if (order.customer?.name.toLowerCase().includes(q)) return true
+  if (order.customer?.phone?.toLowerCase().includes(q)) return true
   return order.items.some(
     (item) =>
       item.partName.toLowerCase().includes(q) ||
@@ -163,7 +166,7 @@ function OrderCard({ order }: { order: OrderDto }) {
               params={{ id: order.id }}
               className="hover:underline"
             >
-              Заказ № {order.id.slice(0, 8).toUpperCase()}
+              Заказ № {order.number}
             </Link>
           </CardTitle>
           <Badge variant={status.variant}>{status.label}</Badge>
@@ -171,16 +174,25 @@ function OrderCard({ order }: { order: OrderDto }) {
         <CardDescription>
           {new Date(placed).toLocaleDateString('ru-RU')} · {order.itemCount} шт. ·{' '}
           {order.vehicleVin ? `VIN ${order.vehicleVin}` : 'без авто'}
+          {order.customer ? ` · ${order.customer.name}` : ''}
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-3">
         <Separator />
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="grid gap-0.5">
-            <Typography variant="bodyXs" tone="muted">
-              Итого
-            </Typography>
-            <Typography variant="h5">{formatMoney(order.total)}</Typography>
+          <div className="flex flex-wrap gap-6">
+            <div className="grid gap-0.5">
+              <Typography variant="bodyXs" tone="muted">
+                Закуп
+              </Typography>
+              <Typography variant="h5">{formatMoney(order.total)}</Typography>
+            </div>
+            <div className="grid gap-0.5">
+              <Typography variant="bodyXs" tone="muted">
+                Клиенту
+              </Typography>
+              <Typography variant="h5">{formatMoney(order.saleTotal)}</Typography>
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button asChild variant="outline">

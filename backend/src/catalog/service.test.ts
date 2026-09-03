@@ -3,7 +3,7 @@ import type { Part, Vehicle } from '@web-app-demo/contracts'
 
 import { MockPlateProvider, MockSupplierProvider } from './mock-providers'
 import type { CatalogProvider } from './providers'
-import { CatalogService } from './service'
+import { CatalogService, createMockCatalogService } from './service'
 
 const VEHICLE: Vehicle = {
   vin: 'WVWZZZ1JZ3W386752',
@@ -141,5 +141,37 @@ describe('CatalogService.searchParts — понимание жаргона', () 
     const result = await serviceWith(catalog).searchParts(VEHICLE.vin, 'гранатку')
 
     expect(result.parts).toEqual([])
+  })
+})
+
+describe('CatalogService — источник данных в ответах', () => {
+  test('мок-сервис честно помечает каталог и поставщиков как демо', async () => {
+    const service = createMockCatalogService()
+    const status = service.status()
+    expect(status.catalog.demo).toBe(true)
+    expect(status.suppliers.demo).toBe(true)
+
+    const offers = await service.getOffers('1J0698151')
+    expect(offers.source).toEqual({ names: ['mock'], demo: true })
+
+    const search = await service.searchParts(VEHICLE.vin, 'колодки')
+    expect(search.source?.demo).toBe(true)
+  })
+
+  test('с боевыми метаданными ответы несут имена источников', async () => {
+    const service = new CatalogService(
+      new CanonicalOnlyCatalog('шрус'),
+      new MockSupplierProvider(),
+      new MockPlateProvider(),
+      {
+        catalog: { names: ['acat', 'vin17'], demo: false },
+        suppliers: { names: ['abcp'], demo: false },
+        plates: { names: [], demo: true },
+      },
+    )
+    const offers = await service.getOffers('1J0698151')
+    expect(offers.source).toEqual({ names: ['abcp'], demo: false })
+    const search = await service.searchParts(VEHICLE.vin, 'шрус')
+    expect(search.source?.names).toEqual(['acat', 'vin17'])
   })
 })

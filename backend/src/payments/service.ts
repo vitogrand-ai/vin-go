@@ -8,10 +8,14 @@ import type {
   RefundResponse,
 } from '@web-app-demo/contracts'
 
+import type { Actor } from '../auth/actor'
 import type { DbClient } from '../db'
 import { AppError } from '../http/errors'
 import type { NotificationService } from '../notifications/service'
 import type { PaymentProvider, ReceiptData } from './providers'
+
+/** Кто платит/возвращает: сотрудник автосервиса-владельца заказа. */
+type Payer = Pick<Actor, 'userId' | 'orgId'>
 
 type PaymentRecord = {
   id: string
@@ -50,12 +54,13 @@ export class PaymentService {
   ) {}
 
   async createForOrder(
-    userId: string,
+    payer: Payer,
     orderId: string,
     method?: PaymentMethod,
   ): Promise<CreatePaymentResponse> {
     const order = await this.db.order.findFirst({
-      where: { id: orderId, userId },
+      // Оплачивает любой сотрудник автосервиса, которому принадлежит заказ.
+      where: { id: orderId, orgId: payer.orgId },
       include: { items: true, payments: { orderBy: { createdAt: 'desc' }, take: 1 } },
     })
     if (!order) {
@@ -84,7 +89,7 @@ export class PaymentService {
     const payment = await this.db.payment.create({
       data: {
         orderId: order.id,
-        userId,
+        userId: payer.userId,
         provider: this.provider.name,
         status: 'PENDING',
         method: method ?? null,
@@ -96,7 +101,7 @@ export class PaymentService {
     const providerPayment = await this.provider.createPayment({
       paymentId: payment.id,
       amount: { amount: total, currency: order.currency as Currency },
-      description: `Оплата заказа ${order.id}`,
+      description: `Оплата заказа № ${order.number}`,
       returnUrl: this.config.returnUrl,
       method,
       receipt: await this.buildReceiptForOrder(order.id),
@@ -142,10 +147,10 @@ export class PaymentService {
   }
 
   /** Возврат средств по заказу. Доступен для оплаченного и ещё не возвращённого заказа. */
-  async refundOrder(userId: string, orderId: string): Promise<RefundResponse> {
+  async refundOrder(payer: Payer, orderId: string): Promise<RefundResponse> {
     const order = await this.db.order.findFirst({
-      where: { id: orderId, userId },
-      select: { id: true, status: true },
+      where: { id: orderId, orgId: payer.orgId },
+      select: { id: true, status: true, userId: true, number: true },
     })
     if (!order) {
       throw new AppError(404, 'NOT_FOUND', 'Заказ не найден')
@@ -155,7 +160,7 @@ export class PaymentService {
     }
 
     const payment = await this.db.payment.findFirst({
-      where: { orderId, userId, status: 'SUCCEEDED' },
+      where: { orderId, status: 'SUCCEEDED' },
       include: { refunds: true },
     })
     if (!payment || !payment.providerPaymentId) {
@@ -169,7 +174,7 @@ export class PaymentService {
       data: {
         paymentId: payment.id,
         orderId,
-        userId,
+        userId: payer.userId,
         amount: payment.amount,
         currency: payment.currency,
         status: 'PENDING',
@@ -190,7 +195,7 @@ export class PaymentService {
 
     if (providerRefund.status === 'SUCCEEDED') {
       await this.db.order.update({ where: { id: orderId }, data: { status: 'REFUNDED' } })
-      await this.notifyOrder(userId, orderId, 'Возврат средств выполнен')
+      await this.notifyOrder(order.userId, order.number, 'Возврат средств выполнен')
     }
 
     return { refund: toRefundDto(updated) }
@@ -246,9 +251,14 @@ export class PaymentService {
         where: { id: refund.orderId, status: { not: 'REFUNDED' } },
         data: { status: 'REFUNDED' },
       })
-      // Уведомляем владельца только если статус реально сменился (идемпотентно).
-      if (result.count > 0) {
-        await this.notifyOrder(refund.userId, refund.orderId, 'Возврат средств выполнен')
+      // Уведомляем автора заказа только если статус реально сменился (идемпотентно)
+      // и есть кому уведомлять — иначе не тратим запрос к БД.
+      if (result.count > 0 && this.notifications) {
+        const order = await this.db.order.findUnique({
+          where: { id: refund.orderId },
+          select: { userId: true, number: true },
+        })
+        if (order) await this.notifyOrder(order.userId, order.number, 'Возврат средств выполнен')
       }
     }
   }
@@ -330,18 +340,18 @@ export class PaymentService {
     if (result.count > 0 && this.notifications) {
       const order = await this.db.order.findUnique({
         where: { id: orderId },
-        select: { userId: true },
+        select: { userId: true, number: true },
       })
-      if (order) await this.notifyOrder(order.userId, orderId, 'Заказ оплачен')
+      if (order) await this.notifyOrder(order.userId, order.number, 'Заказ оплачен')
     }
   }
 
-  /** Фоновое уведомление владельцу заказа (push + Telegram). Никогда не бросает. */
-  private async notifyOrder(userId: string, orderId: string, body: string): Promise<void> {
+  /** Фоновое уведомление автору заказа (push + Telegram). Никогда не бросает. */
+  private async notifyOrder(userId: string, orderNumber: number, body: string): Promise<void> {
     await this.notifications?.notifyUser(
       userId,
       'Статус заказа изменён',
-      `Заказ № ${orderId.slice(0, 8).toUpperCase()}: ${body}`,
+      `Заказ № ${orderNumber}: ${body}`,
     )
   }
 }

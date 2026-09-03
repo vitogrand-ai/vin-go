@@ -1,11 +1,12 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import type { OrderItemDto } from '@web-app-demo/contracts'
+import { marginPercent, type OrderDto, type OrderItemDto } from '@web-app-demo/contracts'
 import { useState } from 'react'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
 import { Typography } from '@/components/ui/typography'
@@ -15,13 +16,16 @@ import {
   useCart,
   useCheckout,
   useClearCart,
+  useCustomers,
   useGarage,
   useRemoveCartItem,
+  useSetCartCustomer,
   useSetCartVehicle,
   useUpdateCartItem,
+  useUpdateCartItemSalePrice,
 } from '@/features/cabinet/queries'
 import { describeApiError } from '@/lib/errors'
-import { formatDelivery, formatMoney, TIER_META } from '@/lib/format'
+import { formatDelivery, formatMarkup, formatMoney, parseRubInput, TIER_META } from '@/lib/format'
 
 export function CartPage() {
   return (
@@ -63,7 +67,10 @@ function Cart() {
 
   return (
     <CartShell>
-      <VehicleSelector currentVin={order.vehicleVin} />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <VehicleSelector currentVin={order.vehicleVin} />
+        <CustomerSelector currentCustomerId={order.customer?.id ?? null} />
+      </div>
 
       <div className="grid gap-3">
         {order.items.map((item) => (
@@ -73,46 +80,75 @@ function Cart() {
 
       <Separator />
 
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="grid gap-0.5">
-          <Typography variant="bodyXs" tone="muted">
-            Итого ({order.itemCount} шт.)
-          </Typography>
-          <Typography variant="h3">{formatMoney(order.total)}</Typography>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            disabled={clearCart.isPending}
-            onClick={() =>
-              clearCart.mutate(undefined, {
-                onError: (error) => toast.error(describeApiError(error)),
-              })
-            }
-          >
-            Очистить
-          </Button>
-          <Button
-            type="button"
-            size="lg"
-            disabled={checkout.isPending}
-            onClick={() =>
-              checkout.mutate(undefined, {
-                onSuccess: (data) => {
-                  toast.success(`Заказ оформлен на ${formatMoney(data.order.total)}`)
-                  void navigate({ to: '/orders' })
-                },
-                onError: (error) => toast.error(describeApiError(error)),
-              })
-            }
-          >
-            {checkout.isPending ? <Spinner /> : null}
-            Оформить заказ
-          </Button>
-        </div>
+      <Totals order={order} />
+
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          disabled={clearCart.isPending}
+          onClick={() =>
+            clearCart.mutate(undefined, {
+              onError: (error) => toast.error(describeApiError(error)),
+            })
+          }
+        >
+          Очистить
+        </Button>
+        <Button
+          type="button"
+          size="lg"
+          disabled={checkout.isPending}
+          onClick={() =>
+            checkout.mutate(undefined, {
+              onSuccess: (data) => {
+                toast.success(`Заказ № ${data.order.number} оформлен на ${formatMoney(data.order.total)}`)
+                void navigate({ to: '/orders' })
+              },
+              onError: (error) => toast.error(describeApiError(error)),
+            })
+          }
+        >
+          {checkout.isPending ? <Spinner /> : null}
+          Оформить заказ
+        </Button>
       </div>
     </CartShell>
+  )
+}
+
+/**
+ * Три суммы, которые нужны приёмщику: сколько платим поставщику, сколько
+ * называем клиенту и что остаётся автосервису.
+ */
+function Totals({ order }: { order: OrderDto }) {
+  const percent = marginPercent(order.total.amount, order.saleTotal.amount)
+  return (
+    <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-0.5 rounded-lg border p-4">
+        <Typography variant="bodyXs" tone="muted">
+          Закуп ({order.itemCount} шт.)
+        </Typography>
+        <Typography variant="h4">{formatMoney(order.total)}</Typography>
+      </div>
+      <div className="grid gap-0.5 rounded-lg border border-primary p-4">
+        <Typography variant="bodyXs" tone="muted">
+          Клиенту
+        </Typography>
+        <Typography variant="h4">{formatMoney(order.saleTotal)}</Typography>
+      </div>
+      <div className="grid gap-0.5 rounded-lg border p-4">
+        <Typography variant="bodyXs" tone="muted">
+          Маржа автосервиса
+        </Typography>
+        <Typography variant="h4" tone={order.marginTotal.amount < 0 ? 'destructive' : undefined}>
+          {formatMoney(order.marginTotal)}
+        </Typography>
+        <Typography variant="bodyXs" tone="muted">
+          {percent.toLocaleString('ru-RU')} % к закупу
+        </Typography>
+      </div>
+    </div>
   )
 }
 
@@ -123,13 +159,17 @@ function VehicleSelector({ currentVin }: { currentVin: string | null }) {
 
   if (vehicles.length === 0) {
     return (
-      <Typography variant="bodySm" tone="muted">
-        Добавьте автомобиль в{' '}
-        <Link to="/garage" className="text-primary hover:underline">
-          гараже
-        </Link>
-        , чтобы привязать его к заказу.
-      </Typography>
+      <Card size="sm">
+        <CardContent className="pt-6">
+          <Typography variant="bodySm" tone="muted">
+            Добавьте автомобиль в{' '}
+            <Link to="/garage" className="text-primary hover:underline">
+              гараже
+            </Link>
+            , чтобы привязать его к заказу.
+          </Typography>
+        </CardContent>
+      </Card>
     )
   }
 
@@ -154,10 +194,56 @@ function VehicleSelector({ currentVin }: { currentVin: string | null }) {
           </option>
           {vehicles.map((vehicle) => (
             <option key={vehicle.id} value={vehicle.vin}>
-              {(vehicle.nickname ?? `${vehicle.make} ${vehicle.model}`) + ` — ${vehicle.vin}`}
+              {(vehicle.plate ? `${vehicle.plate} · ` : '') +
+                (vehicle.nickname ?? `${vehicle.make} ${vehicle.model}`) +
+                ` — ${vehicle.vin}`}
             </option>
           ))}
         </select>
+      </CardContent>
+    </Card>
+  )
+}
+
+/** Клиент автосервиса для сметы. Подставляется сам, если авто из гаража привязано к клиенту. */
+function CustomerSelector({ currentCustomerId }: { currentCustomerId: string | null }) {
+  const customers = useCustomers()
+  const setCustomer = useSetCartCustomer()
+  const list = customers.data?.customers ?? []
+
+  return (
+    <Card size="sm">
+      <CardContent className="grid gap-2 pt-6">
+        <Typography variant="label" tone="muted">
+          Клиент (для сметы)
+        </Typography>
+        {list.length === 0 ? (
+          <Typography variant="bodySm" tone="muted">
+            Заведите клиента в разделе{' '}
+            <Link to="/customers" className="text-primary hover:underline">
+              «Клиенты»
+            </Link>
+            , чтобы смета была на его имя.
+          </Typography>
+        ) : (
+          <select
+            value={currentCustomerId ?? ''}
+            onChange={(event) =>
+              setCustomer.mutate(event.target.value === '' ? null : event.target.value, {
+                onError: (error) => toast.error(describeApiError(error)),
+              })
+            }
+            className="h-9 rounded-md border bg-input/30 px-3 text-sm"
+          >
+            <option value="">Без клиента</option>
+            {list.map((customer) => (
+              <option key={customer.id} value={customer.id}>
+                {customer.name}
+                {customer.phone ? ` · ${customer.phone}` : ''}
+              </option>
+            ))}
+          </select>
+        )}
       </CardContent>
     </Card>
   )
@@ -227,12 +313,17 @@ function CartRow({ item }: { item: OrderItemDto }) {
           </Button>
         </div>
 
-        <div className="w-24 text-right">
+        <div className="grid w-28 gap-0.5 text-right">
+          <Typography variant="bodyXs" tone="muted">
+            Закуп
+          </Typography>
           <Typography variant="bodySmMedium">{formatMoney(item.lineTotal)}</Typography>
           <Typography variant="bodyXs" tone="muted">
             {formatMoney(item.price)} / шт.
           </Typography>
         </div>
+
+        <SalePriceEditor item={item} />
 
         <Button
           type="button"
@@ -256,6 +347,52 @@ function CartRow({ item }: { item: OrderItemDto }) {
         ) : null}
       </CardContent>
     </Card>
+  )
+}
+
+/**
+ * Цена для клиента за штуку: по умолчанию закуп × наценка автосервиса, но
+ * приёмщик часто округляет или уступает — правится прямо в строке.
+ */
+function SalePriceEditor({ item }: { item: OrderItemDto }) {
+  const updateSalePrice = useUpdateCartItemSalePrice()
+  const [draft, setDraft] = useState<string | null>(null)
+  const value = draft ?? (item.salePrice.amount / 100).toString()
+
+  const commit = () => {
+    if (draft === null) return
+    const kopecks = parseRubInput(draft)
+    setDraft(null)
+    if (kopecks === null || kopecks === item.salePrice.amount) return
+    updateSalePrice.mutate(
+      { itemId: item.id, saleAmount: kopecks },
+      { onError: (error) => toast.error(describeApiError(error)) },
+    )
+  }
+
+  return (
+    <div className="grid w-36 gap-0.5">
+      <Typography variant="bodyXs" tone="muted">
+        Клиенту, ₽ / шт.
+      </Typography>
+      <Input
+        value={value}
+        inputMode="decimal"
+        aria-label="Цена для клиента за штуку"
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault()
+            event.currentTarget.blur()
+          }
+        }}
+        className="h-8 text-right"
+      />
+      <Typography variant="bodyXs" tone="muted">
+        {formatMoney(item.saleLineTotal)} · наценка {formatMarkup(item.markupBps)}
+      </Typography>
+    </div>
   )
 }
 

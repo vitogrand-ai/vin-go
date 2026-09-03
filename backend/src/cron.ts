@@ -12,6 +12,24 @@ const cronTasks = {
     await prisma.$queryRaw`SELECT 1`
     console.log('Cron db:ping task completed.')
   },
+  // Гигиена таблиц, которые растут сами по себе: каждый refresh создаёт новую
+  // строку сессии, коды привязки и кэш VIN живут по TTL, сессии бота — пока
+  // чат активен. Запускать раз в сутки (systemd-timer или cron).
+  'auth:cleanup': async ({ prisma }) => {
+    const now = new Date()
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+    const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+    const sessions = await prisma.authSession.deleteMany({
+      where: { OR: [{ revokedAt: { lt: weekAgo } }, { expiresAt: { lt: weekAgo } }] },
+    })
+    const codes = await prisma.telegramLinkCode.deleteMany({ where: { expiresAt: { lt: now } } })
+    const vins = await prisma.vinDecode.deleteMany({ where: { expiresAt: { lt: now } } })
+    const chats = await prisma.botSession.deleteMany({ where: { updatedAt: { lt: monthAgo } } })
+    console.log(
+      `Cron auth:cleanup: сессий ${sessions.count}, кодов ${codes.count}, ` +
+        `VIN-кэша ${vins.count}, чатов бота ${chats.count}.`,
+    )
+  },
   // Страховка от потерянного webhook: синхронизирует зависшие PENDING-платежи
   // и возвраты со статусом у провайдера. Запускать по расписанию (напр. раз в 5 мин).
   'payments:reconcile': async ({ prisma, env }) => {

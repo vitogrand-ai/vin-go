@@ -157,7 +157,7 @@ function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
       </Text>
       <Text style={[styles.mono, styles.muted]}>{vehicle.vin}</Text>
       <Text style={styles.muted}>
-        {vehicle.year}
+        {vehicle.year ?? 'Год не определён'}
         {vehicle.engine ? ` · ${vehicle.engine}` : ''}
       </Text>
     </View>

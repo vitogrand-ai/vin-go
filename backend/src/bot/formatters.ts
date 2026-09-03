@@ -1,4 +1,13 @@
-import type { Money, Offer, OrderDto, Part, TierPick, Vehicle } from '@web-app-demo/contracts'
+import type {
+  DataSource,
+  Money,
+  Offer,
+  OrderDto,
+  Part,
+  SavedVehicle,
+  TierPick,
+  Vehicle,
+} from '@web-app-demo/contracts'
 
 import {
   selectServiceAlerts,
@@ -41,14 +50,16 @@ export const WELCOME =
   '2. Затем — название запчасти (например, «тормозные колодки»).\n' +
   '   Понимаю <b>голосовые</b> и мастерской жаргон: «гранатка», «воздухан», «жабка».\n' +
   '3. Я покажу варианты: эконом, оптимальный и оригинал.\n\n' +
-  'Команды: /cart — корзина, /orders — заказы, /checkout — оформить, /start — помощь.'
+  'Команды: /garage — выбрать машину из гаража, /cart — корзина, /orders — заказы, ' +
+  '/checkout — оформить, /то 145000 — что пора менять, /start — помощь.'
 
 export function formatVehicle(vehicle: Vehicle): string {
   const lines = [
     `🚗 <b>${escapeHtml(vehicle.make)} ${escapeHtml(vehicle.model)}</b>`,
     `VIN: <code>${escapeHtml(vehicle.vin)}</code>`,
-    `Год: ${vehicle.year}`,
   ]
+  // «Год: 0» выглядит ошибкой продукта — неизвестный год просто не показываем.
+  if (vehicle.year) lines.push(`Год: ${vehicle.year}`)
   if (vehicle.engine) lines.push(`Двигатель: ${escapeHtml(vehicle.engine)}`)
   lines.push('', 'Теперь пришлите название запчасти 🔧')
   return lines.join('\n')
@@ -59,6 +70,32 @@ export function formatVehicle(vehicle: Vehicle): string {
  * и вовсе отклоняет слишком длинную клавиатуру. Уточните запрос — короче список.
  */
 export const MAX_PART_BUTTONS = 20
+
+/** Гараж автосервиса кнопками: госномер и модель — то, по чему мастер узнаёт машину. */
+export function garageMessage(vehicles: SavedVehicle[]): { text: string; keyboard?: InlineKeyboard } {
+  if (vehicles.length === 0) {
+    return { text: 'Гараж пуст. Добавьте машины клиентов в личном кабинете на сайте.' }
+  }
+  const shown = vehicles.slice(0, MAX_PART_BUTTONS)
+  const overflow =
+    vehicles.length > shown.length ? `\nПоказаны первые ${shown.length} машин.` : ''
+  return {
+    text: `🚗 <b>Гараж</b> — выберите машину:${overflow}`,
+    keyboard: {
+      inline_keyboard: shown.map((vehicle) => [
+        {
+          text: truncate(
+            [vehicle.plate, vehicle.nickname ?? `${vehicle.make} ${vehicle.model}`, vehicle.customer?.name]
+              .filter(Boolean)
+              .join(' · '),
+            60,
+          ),
+          callback_data: `car:${vehicle.vin}`,
+        },
+      ]),
+    },
+  }
+}
 
 export function partsMessage(
   parts: Part[],
@@ -133,12 +170,23 @@ export function ordersMessage(orders: OrderDto[]): string {
   return lines.join('\n')
 }
 
-export function offersMessage(oemNumber: string, picks: TierPick[], offers: Offer[]): string {
+export function offersMessage(
+  oemNumber: string,
+  picks: TierPick[],
+  offers: Offer[],
+  source?: DataSource,
+): string {
   const lines = [`📦 OEM <code>${escapeHtml(oemNumber)}</code>`, '']
 
   if (picks.length === 0) {
     lines.push('Предложений не найдено.')
     return lines.join('\n')
+  }
+
+  // Поставщики не подключены — цены сгенерированы. Мастер не должен звонить
+  // клиенту с выдуманной суммой, поэтому предупреждение стоит первым.
+  if (source?.demo) {
+    lines.push('⚠️ <b>Демо-цены.</b> Поставщики ещё не подключены — цены и сроки условные.', '')
   }
 
   for (const pick of picks) {

@@ -239,10 +239,13 @@ export function mapVehicle(vin: string, payload: Record<string, unknown>): Vehic
     vin,
     make: make ? normalizeBrand(make) : 'Не определено',
     model: modelName ?? 'Не определено',
-    // Год из самого VIN точнее года поколения модели (Model_year).
+    // Год из самого VIN точнее года поколения модели (Model_year); когда нет ни
+    // того, ни другого (живой случай: европейский Mercedes), год стоит в конце
+    // описания модели («… Dynamic Type 2019»). Иначе честный null, а не 0.
     year:
       int(payload, ['model_year_from_vin']) ??
-      (model ? (int(model, ['Model_year']) ?? 0) : Number.parseInt(attrs?.get('year') ?? '', 10) || 0),
+      (model ? int(model, ['Model_year']) : parseIntOrNull(attrs?.get('year'))) ??
+      yearFromModelDetail(modelDetail),
     engine: model
       ? str(model, ['Engine_no_en', 'Engine_no'])
       : (attrs?.get('engine') ?? attrs?.get('engine code') ?? null),
@@ -307,9 +310,35 @@ export function stripBrandPrefix(modelName: string | null, make: string | null):
   return rest.length > 0 ? rest : trimmed
 }
 
-function normalizeBrand(value: string): string {
-  if (!/^[a-z]+$/.test(value)) return value
-  return value.length <= 3 ? value.toUpperCase() : value[0]!.toUpperCase() + value.slice(1)
+/**
+ * Читаемый вид марки: EPC отдаёт бренды в нижнем регистре («bmw»), а составные
+ * — с заглавной только у первого слова («Mercedes-benz», «Alfa romeo»).
+ */
+export function normalizeBrand(value: string): string {
+  const trimmed = value.trim()
+  if (/^[a-z]+$/.test(trimmed)) {
+    return trimmed.length <= 3 ? trimmed.toUpperCase() : capitalize(trimmed)
+  }
+  // Составная марка: каждая часть после дефиса/пробела с заглавной.
+  if (/^[A-Za-z]+([- ][A-Za-z]+)+$/.test(trimmed)) {
+    return trimmed.replace(/[A-Za-z]+/g, (word) => capitalize(word.toLowerCase()))
+  }
+  return trimmed
+}
+
+function capitalize(word: string): string {
+  return word[0]!.toUpperCase() + word.slice(1)
+}
+
+function parseIntOrNull(value: string | undefined): number | null {
+  const parsed = Number.parseInt(value ?? '', 10)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+/** Год в конце описания модели («… Dynamic Type 2019»); только правдоподобный. */
+export function yearFromModelDetail(modelDetail: string | null): number | null {
+  const match = modelDetail?.match(/\b((?:19|20)\d{2})\b\s*$/)
+  return match ? Number.parseInt(match[1]!, 10) : null
 }
 
 /**

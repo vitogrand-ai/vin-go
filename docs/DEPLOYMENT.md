@@ -92,6 +92,8 @@ export DO_BACKEND_CRON_TIME_ZONE=UTC
 bun run deploy:do:specs backend-final
 ```
 
+Housekeeping cron — schedule `auth:cleanup` once a day (`DO_BACKEND_CRON_TASK=auth:cleanup`, `DO_BACKEND_CRON_SCHEDULE="20 3 * * *"`): it deletes revoked/expired auth sessions, expired Telegram link codes, expired rows of the VIN decode cache and bot chat sessions idle for 30 days. On the AdminVPS deployment use a systemd timer that runs `bun run start:cron -- auth:cleanup` from `/opt/vingo/app/backend`.
+
 Fiscalization (54-ФЗ): set `YOOKASSA_VAT_CODE` only when an online cash register / ОФД is connected in ЛК ЮKassa. When set, every payment and refund carries a receipt built from order items and the customer email. If a cash register is connected but no VAT code is configured, ЮKassa will reject payments for a missing receipt.
 
 Sandbox verification before switching to production keys:

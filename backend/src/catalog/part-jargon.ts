@@ -1194,10 +1194,26 @@ export function normalizePartQuery(text: string): string {
     }
   }
 
-  return out.replace(TOKEN_RE, (token) => {
+  const replaced = out.replace(TOKEN_RE, (token) => {
     const canonical = JARGON_WITH_YO_VARIANTS[token]
     return canonical ? canonical.toLowerCase() : token
   })
+  return collapseRepeatedWords(replaced)
+}
+
+/**
+ * Канон может повторить слово, которое уже стояло рядом: «колодки тормозные
+ * передние» → «колодки тормозные тормозные передние». Подряд идущие дубли
+ * схлопываем — иначе подсказка «искал как …» выглядит опечаткой.
+ */
+function collapseRepeatedWords(text: string): string {
+  const words = text.split(/\s+/).filter(Boolean)
+  const out: string[] = []
+  for (const word of words) {
+    if (out.length > 0 && out[out.length - 1]!.toLowerCase() === word.toLowerCase()) continue
+    out.push(word)
+  }
+  return out.join(' ')
 }
 
 /**

@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { inviteCodeSchema, orgNameSchema, orgRoleSchema } from './org'
+
 const displayNameSchema = z
   .union([z.string().trim().min(2).max(80), z.literal('')])
   .optional()
@@ -27,13 +29,27 @@ export const userSchema = z.object({
   email: emailSchema,
   displayName: z.string().nullable(),
   role: userRoleSchema,
+  /** Автосервис пользователя. null — только у старых записей до первого входа. */
+  orgId: z.string().nullable(),
+  orgRole: orgRoleSchema,
   createdAt: z.string().datetime(),
 })
+
+/** Пустая строка из формы = «не указано». */
+const optionalFormString = <T extends z.ZodType<string>>(schema: T) =>
+  z
+    .union([schema, z.literal('')])
+    .optional()
+    .transform((value) => (value === '' || value === undefined ? undefined : value))
 
 export const registerRequestSchema = z.object({
   email: emailSchema,
   password: passwordSchema,
   displayName: displayNameSchema,
+  /** Название автосервиса для новой организации (без кода приглашения). */
+  orgName: optionalFormString(orgNameSchema),
+  /** Код приглашения — регистрация сотрудником в существующий автосервис. */
+  inviteCode: optionalFormString(inviteCodeSchema),
 })
 
 export const loginRequestSchema = z.object({

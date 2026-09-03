@@ -195,7 +195,7 @@ export function mapVehicle(vinOrFrame: string, data: unknown): Vehicle | null {
     vin: vinOrFrame,
     make: make ?? 'Не определено',
     model: model ?? 'Не определено',
-    year: (yearParam ? Number.parseInt(yearParam, 10) : null) ?? parseYear(car) ?? 0,
+    year: (yearParam ? Number.parseInt(yearParam, 10) : null) ?? parseYear(car),
     engine: paramValue(car, ['spec_engine', 'engine'], ['двигатель', 'engine', 'мотор']),
     bodyType: paramValue(car, ['body', 'body_type'], ['кузов', 'body']),
     // Только координаты каталога — они нужны searchParts; полный ответ не тащим.

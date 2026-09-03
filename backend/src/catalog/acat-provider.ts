@@ -96,7 +96,7 @@ export function mapVehicle(vin: string, data: unknown): Vehicle | null {
     vin,
     make: make ?? 'Не определено',
     model: model ?? 'Не определено',
-    year: int(v, ['year', 'modelYear', 'productionYear']) ?? 0,
+    year: int(v, ['year', 'modelYear', 'productionYear']),
     engine: str(v, ['engine', 'engineCode', 'motor']),
     bodyType: str(v, ['bodyType', 'body', 'kuzov']),
     raw: v,

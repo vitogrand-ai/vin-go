@@ -29,19 +29,23 @@ import { ApiRequestError } from '@/lib/api'
 import { useAuth } from '@/lib/use-auth'
 
 type AuthMode = 'login' | 'register'
-type FieldName = 'displayName' | 'email' | 'password'
+type FieldName = 'displayName' | 'email' | 'password' | 'orgName' | 'inviteCode'
 type FormError = { message?: string }
 type FieldErrors = Partial<Record<FieldName, FormError[]>>
 type AuthDraft = {
   email: string
   password: string
   displayName: string
+  orgName: string
+  inviteCode: string
 }
 
 const emptyDraft: AuthDraft = {
   email: '',
   password: '',
   displayName: '',
+  orgName: '',
+  inviteCode: '',
 }
 
 export function AuthForm() {
@@ -101,6 +105,10 @@ function RegisterForm({
   const emailErrorId = useId()
   const passwordId = useId()
   const passwordErrorId = useId()
+  const orgNameId = useId()
+  const orgNameErrorId = useId()
+  const inviteCodeId = useId()
+  const inviteCodeErrorId = useId()
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [formError, setFormError] = useState<string | null>(null)
 
@@ -214,6 +222,61 @@ function RegisterForm({
                 }}
               />
               <FieldError id={passwordErrorId} errors={fieldErrors.password} />
+            </Field>
+          )}
+        />
+
+        {/* Без кода приглашения создаётся свой автосервис; с кодом — вход сотрудником. */}
+        <form.Field
+          name="orgName"
+          children={(field) => (
+            <Field data-invalid={hasErrors(fieldErrors.orgName)}>
+              <FieldLabel htmlFor={orgNameId}>Название автосервиса (необязательно)</FieldLabel>
+              <Input
+                id={orgNameId}
+                name={field.name}
+                value={field.state.value ?? ''}
+                autoComplete="organization"
+                placeholder="СТО «Гараж 5»"
+                aria-invalid={hasErrors(fieldErrors.orgName)}
+                aria-describedby={errorId(fieldErrors.orgName, orgNameErrorId)}
+                onBlur={field.handleBlur}
+                onChange={(event) => {
+                  const value = event.target.value
+                  field.handleChange(value)
+                  onDraftChange({ orgName: value })
+                  clearFieldError('orgName', setFieldErrors)
+                  setFormError(null)
+                }}
+              />
+              <FieldError id={orgNameErrorId} errors={fieldErrors.orgName} />
+            </Field>
+          )}
+        />
+
+        <form.Field
+          name="inviteCode"
+          children={(field) => (
+            <Field data-invalid={hasErrors(fieldErrors.inviteCode)}>
+              <FieldLabel htmlFor={inviteCodeId}>Код приглашения (если вас пригласили)</FieldLabel>
+              <Input
+                id={inviteCodeId}
+                name={field.name}
+                value={field.state.value ?? ''}
+                autoComplete="off"
+                placeholder="ABCD2345"
+                aria-invalid={hasErrors(fieldErrors.inviteCode)}
+                aria-describedby={errorId(fieldErrors.inviteCode, inviteCodeErrorId)}
+                onBlur={field.handleBlur}
+                onChange={(event) => {
+                  const value = event.target.value.toUpperCase()
+                  field.handleChange(value)
+                  onDraftChange({ inviteCode: value })
+                  clearFieldError('inviteCode', setFieldErrors)
+                  setFormError(null)
+                }}
+              />
+              <FieldError id={inviteCodeErrorId} errors={fieldErrors.inviteCode} />
             </Field>
           )}
         />
@@ -396,5 +459,11 @@ function errorId(errors: FormError[] | undefined, id: string) {
 }
 
 function isFieldName(field: unknown): field is FieldName {
-  return field === 'displayName' || field === 'email' || field === 'password'
+  return (
+    field === 'displayName' ||
+    field === 'email' ||
+    field === 'password' ||
+    field === 'orgName' ||
+    field === 'inviteCode'
+  )
 }

@@ -1,5 +1,6 @@
 import {
   apiErrorSchema,
+  catalogStatusResponseSchema,
   decodeVinRequestSchema,
   decodeVinResponseSchema,
   offersRequestSchema,
@@ -87,9 +88,24 @@ const offersRoute = createRoute({
   },
 })
 
+const statusRoute = createRoute({
+  method: 'get',
+  path: '/status',
+  responses: {
+    200: {
+      content: { 'application/json': { schema: catalogStatusResponseSchema } },
+      description: 'Подключённые источники данных и признак демо-режима',
+    },
+  },
+})
+
 export function createCatalogRoutes() {
   const routes = new OpenAPIHono<CatalogRouteEnv>({
     defaultHook: validationErrorHook,
+  })
+
+  routes.openapi(statusRoute, (c) => {
+    return c.json(c.get('catalogService').status(), 200)
   })
 
   routes.openapi(decodeVinRoute, async (c) => {

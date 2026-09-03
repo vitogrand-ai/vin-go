@@ -3,10 +3,12 @@ import {
   apiErrorSchema,
   garageResponseSchema,
   removeVehicleRequestSchema,
+  updateVehicleRequestSchema,
   vehicleResponseSchema,
 } from '@web-app-demo/contracts'
 import { createRoute, OpenAPIHono } from '@hono/zod-openapi'
 
+import type { Actor } from '../auth/actor'
 import { requireAuth } from '../auth/middleware'
 import type { AuthService } from '../auth/service'
 import { validationErrorHook } from '../http/errors'
@@ -16,11 +18,16 @@ type GarageRouteEnv = {
   Variables: {
     authService: AuthService
     garageService: GarageService
-    userId: string
+    actor: Actor
   }
 }
 
 const errorResponseContent = { 'application/json': { schema: apiErrorSchema } }
+const unauthorized = { content: errorResponseContent, description: 'Требуется авторизация' }
+const vehicleResponse = (description: string) => ({
+  content: { 'application/json': { schema: vehicleResponseSchema } },
+  description,
+})
 
 const listRoute = createRoute({
   method: 'get',
@@ -28,9 +35,9 @@ const listRoute = createRoute({
   responses: {
     200: {
       content: { 'application/json': { schema: garageResponseSchema } },
-      description: 'Список сохранённых автомобилей',
+      description: 'Гараж автосервиса',
     },
-    401: { content: errorResponseContent, description: 'Требуется авторизация' },
+    401: unauthorized,
   },
 })
 
@@ -41,13 +48,24 @@ const addRoute = createRoute({
     body: { content: { 'application/json': { schema: addVehicleRequestSchema } } },
   },
   responses: {
-    201: {
-      content: { 'application/json': { schema: vehicleResponseSchema } },
-      description: 'Автомобиль добавлен',
-    },
+    201: vehicleResponse('Автомобиль добавлен'),
     400: { content: errorResponseContent, description: 'Некорректный VIN' },
-    401: { content: errorResponseContent, description: 'Требуется авторизация' },
-    404: { content: errorResponseContent, description: 'Автомобиль не найден' },
+    401: unauthorized,
+    404: { content: errorResponseContent, description: 'Автомобиль или клиент не найден' },
+  },
+})
+
+const updateRoute = createRoute({
+  method: 'post',
+  path: '/update',
+  request: {
+    body: { content: { 'application/json': { schema: updateVehicleRequestSchema } } },
+  },
+  responses: {
+    200: vehicleResponse('Карточка обновлена'),
+    400: { content: errorResponseContent, description: 'Некорректные данные' },
+    401: unauthorized,
+    404: { content: errorResponseContent, description: 'Автомобиль или клиент не найден' },
   },
 })
 
@@ -59,7 +77,7 @@ const removeRoute = createRoute({
   },
   responses: {
     204: { description: 'Автомобиль удалён' },
-    401: { content: errorResponseContent, description: 'Требуется авторизация' },
+    401: unauthorized,
     404: { content: errorResponseContent, description: 'Автомобиль не найден' },
   },
 })
@@ -72,18 +90,21 @@ export function createGarageRoutes() {
   routes.use('*', requireAuth())
 
   routes.openapi(listRoute, async (c) => {
-    const service = c.get('garageService')
-    return c.json(await service.list(c.get('userId')), 200)
+    return c.json(await c.get('garageService').list(c.get('actor')), 200)
   })
 
   routes.openapi(addRoute, async (c) => {
     const service = c.get('garageService')
-    return c.json(await service.add(c.get('userId'), c.req.valid('json')), 201)
+    return c.json(await service.add(c.get('actor'), c.req.valid('json')), 201)
+  })
+
+  routes.openapi(updateRoute, async (c) => {
+    const service = c.get('garageService')
+    return c.json(await service.update(c.get('actor'), c.req.valid('json')), 200)
   })
 
   routes.openapi(removeRoute, async (c) => {
-    const service = c.get('garageService')
-    await service.remove(c.get('userId'), c.req.valid('json').id)
+    await c.get('garageService').remove(c.get('actor'), c.req.valid('json').id)
     return c.body(null, 204)
   })
 

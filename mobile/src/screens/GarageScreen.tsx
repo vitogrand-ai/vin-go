@@ -76,7 +76,8 @@ export function GarageScreen() {
             <Text style={styles.vehicleTitle}>{vehicle.nickname ?? `${vehicle.make} ${vehicle.model}`}</Text>
             <Text style={[styles.mono, styles.muted]}>{vehicle.vin}</Text>
             <Text style={styles.muted}>
-              {vehicle.make} {vehicle.model}, {vehicle.year}
+              {vehicle.make} {vehicle.model}
+              {vehicle.year ? `, ${vehicle.year}` : ''}
             </Text>
             <Pressable onPress={() => remove.mutate(vehicle.id)} disabled={remove.isPending}>
               <Text style={styles.remove}>Удалить</Text>

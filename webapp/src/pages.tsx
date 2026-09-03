@@ -48,6 +48,11 @@ export function RootLayout() {
                   </Link>
                 </Typography>
                 <Typography asChild variant="control" tone="muted">
+                  <Link to="/customers" className={navLinkClass}>
+                    Клиенты
+                  </Link>
+                </Typography>
+                <Typography asChild variant="control" tone="muted">
                   <Link to="/cart" className={navLinkClass}>
                     Корзина
                   </Link>
@@ -55,6 +60,11 @@ export function RootLayout() {
                 <Typography asChild variant="control" tone="muted">
                   <Link to="/orders" className={navLinkClass}>
                     Заказы
+                  </Link>
+                </Typography>
+                <Typography asChild variant="control" tone="muted">
+                  <Link to="/experts" className={navLinkClass}>
+                    Эксперт
                   </Link>
                 </Typography>
                 <Typography asChild variant="control" tone="muted">
@@ -91,8 +101,9 @@ const TIERS = [
 
 const QUICK_ACTIONS = [
   { to: '/search', title: 'Поиск', desc: 'VIN или госномер → запчасти' },
-  { to: '/garage', title: 'Гараж', desc: 'Сохранённые автомобили' },
-  { to: '/orders', title: 'Заказы', desc: 'История и статусы' },
+  { to: '/garage', title: 'Гараж', desc: 'Машины клиентов: госномер, пробег' },
+  { to: '/customers', title: 'Клиенты', desc: 'Владельцы машин и их история' },
+  { to: '/orders', title: 'Заказы', desc: 'Закуп, цена клиенту, статусы' },
 ] as const
 
 export function HomePage() {
@@ -112,7 +123,7 @@ export function HomePage() {
           </Typography>
           <Typography tone="muted">С чего начнём?</Typography>
         </div>
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {QUICK_ACTIONS.map((action) => (
             <Link
               key={action.to}
@@ -145,7 +156,8 @@ export function HomePage() {
         </Typography>
         <Typography className="max-w-2xl" tone="muted">
           Введите VIN или госномер — определим автомобиль, подберём каталожный номер и покажем
-          предложения в трёх тирах. Для небольших автосервисов: гараж, корзина, заказы и оплата.
+          предложения в трёх тирах. Для небольших автосервисов: клиенты и их машины, наценка и
+          смета для клиента, заказы и оплата — одно рабочее место для всей команды.
         </Typography>
         <div className="grid gap-3 sm:grid-cols-3">
           {TIERS.map((tier) => (

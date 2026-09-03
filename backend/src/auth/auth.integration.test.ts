@@ -29,6 +29,7 @@ maybeDescribe('auth API integration', () => {
   beforeEach(async () => {
     await prisma.authSession.deleteMany()
     await prisma.user.deleteMany()
+    await prisma.organization.deleteMany()
   })
 
   afterAll(async () => {

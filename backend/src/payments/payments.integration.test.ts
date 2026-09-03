@@ -40,6 +40,7 @@ maybeDescribe('оплата заказа (мок-провайдер)', () => {
     await prisma.order.deleteMany()
     await prisma.authSession.deleteMany()
     await prisma.user.deleteMany()
+    await prisma.organization.deleteMany()
   }
 
   function authed(token: string, path: string, body?: unknown, method: 'GET' | 'POST' = body === undefined ? 'GET' : 'POST') {
@@ -292,7 +293,7 @@ maybeDescribe('оплата заказа (мок-провайдер)', () => {
       returnUrl: 'http://localhost:5173/orders',
       vatCode: 4,
     })
-    await withFiscal.createForOrder(order.userId, orderId)
+    await withFiscal.createForOrder({ userId: order.userId, orgId: order.orgId! }, orderId)
     const receipt = captured as { customerEmail: string; items: { vatCode: number }[] }
     expect(receipt.customerEmail).toBe('pay@example.com')
     expect(receipt.items).toHaveLength(order.items.length)
@@ -323,7 +324,7 @@ maybeDescribe('оплата заказа (мок-провайдер)', () => {
       webappOrigin: 'http://localhost:5173',
       returnUrl: 'http://localhost:5173/orders',
     })
-    await noFiscal.createForOrder(order.userId, orderId)
+    await noFiscal.createForOrder({ userId: order.userId, orgId: order.orgId! }, orderId)
     expect(captured).toBeUndefined()
   })
 

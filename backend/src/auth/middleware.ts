@@ -1,18 +1,22 @@
 import type { Context, MiddlewareHandler } from 'hono'
 
+import type { Actor } from './actor'
 import type { AuthService } from './service'
 
 /**
- * Middleware авторизации: проверяет Bearer-токен и активную сессию,
- * затем кладёт `userId` в контекст. Используется на защищённых роутах
- * (гараж, корзина, заказы).
+ * Middleware авторизации: проверяет Bearer-токен и активную сессию, затем
+ * кладёт в контекст `actor` (пользователь + автосервис + роли) и отдельные
+ * поля `userId`/`role`/`orgId` для роутов, которым нужен только один из них.
  */
 export function requireAuth(): MiddlewareHandler {
   return async (c, next) => {
     const authService = c.get('authService') as AuthService
-    const { userId, role } = await authService.authenticate(bearerToken(c))
+    const { userId, role, orgId, orgRole } = await authService.authenticate(bearerToken(c))
+    const actor: Actor = { userId, orgId, role, orgRole }
+    c.set('actor', actor)
     c.set('userId', userId)
     c.set('role', role)
+    c.set('orgId', orgId)
     await next()
   }
 }

@@ -13,6 +13,7 @@ import {
   safeBase64,
   stripBrandPrefix,
 } from './vin17-provider'
+import { normalizeBrand, yearFromModelDetail } from './vin17-provider'
 
 /** Стаб fetch: отвечает заданной функцией, без реальной сети. */
 function stubFetch(handler: (url: string) => Response): typeof fetch {
@@ -329,5 +330,22 @@ describe('brandFromEpc / stripBrandPrefix', () => {
 
   test('модель без префикса не трогается', () => {
     expect(stripBrandPrefix('Camry 70', 'Toyota')).toBe('Camry 70')
+  })
+})
+
+describe('17vin: год и марка на живых нюансах прода', () => {
+  test('год берётся из конца описания модели, когда каталог его не отдал', () => {
+    expect(yearFromModelDetail('Mercedes-benz A-Class A200 1.3T DCT(7-speed) Dynamic Type 2019')).toBe(2019)
+    // Год не в конце или его нет вовсе — null, а не случайное число из описания.
+    expect(yearFromModelDetail('Lexus ES260 2.5L AMT(8-speed) F SPORT National V')).toBeNull()
+    expect(yearFromModelDetail(null)).toBeNull()
+  })
+
+  test('составная марка приводится к читаемому виду', () => {
+    expect(normalizeBrand('Mercedes-benz')).toBe('Mercedes-Benz')
+    expect(normalizeBrand('alfa romeo')).toBe('Alfa Romeo')
+    expect(normalizeBrand('bmw')).toBe('BMW')
+    expect(normalizeBrand('toyota')).toBe('Toyota')
+    expect(normalizeBrand('Lexus')).toBe('Lexus')
   })
 })

@@ -1,4 +1,5 @@
 import type {
+  CatalogStatusResponse,
   DecodeVinResponse,
   OffersResponse,
   ResolvePlateResponse,
@@ -8,6 +9,7 @@ import type {
 import type { Part } from '@web-app-demo/contracts'
 
 import { AppError } from '../http/errors'
+import { MOCK_PROVIDERS_META, type CatalogProvidersMeta } from './factory'
 import { MockCatalogProvider, MockPlateProvider, MockSupplierProvider } from './mock-providers'
 import { expandPartQuery } from './part-jargon'
 import { filterByPosition } from './position-filter'
@@ -24,7 +26,22 @@ export class CatalogService {
     private readonly catalog: CatalogProvider,
     private readonly suppliers: SupplierProvider,
     private readonly plates: PlateProvider,
+    /**
+     * Что подключено. Ответы поиска и предложений несут отметку источника, чтобы
+     * веб и бот показывали «демо-цены», когда поставщиков нет, — выдуманные
+     * цены не должны выглядеть настоящими.
+     */
+    private readonly meta: CatalogProvidersMeta = MOCK_PROVIDERS_META,
   ) {}
+
+  /** Состояние источников данных: каталог, поставщики, реестр госномеров. */
+  status(): CatalogStatusResponse {
+    return {
+      catalog: this.meta.catalog,
+      suppliers: this.meta.suppliers,
+      plates: this.meta.plates,
+    }
+  }
 
   async decodeVin(vin: string): Promise<DecodeVinResponse> {
     const vehicle = await this.catalog.decodeVin(vin)
@@ -68,10 +85,10 @@ export class CatalogService {
 
       // Подсказку отдаём, только если искали не тем, что ввёл пользователь.
       const resolvedQuery = variant.toLowerCase() === query.trim().toLowerCase() ? undefined : variant
-      return { vehicle, parts, resolvedQuery }
+      return { vehicle, parts, resolvedQuery, source: this.meta.catalog }
     }
 
-    return { vehicle, parts: [] }
+    return { vehicle, parts: [], source: this.meta.catalog }
   }
 
   async getOffers(oemNumber: string, region?: string): Promise<OffersResponse> {
@@ -81,6 +98,7 @@ export class CatalogService {
       oemNumber: oemNumber.trim().toUpperCase(),
       picks: selectTiers(sorted),
       offers: sorted,
+      source: this.meta.suppliers,
     }
   }
 }

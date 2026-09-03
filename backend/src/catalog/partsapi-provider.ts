@@ -175,7 +175,7 @@ function mapVehicle(
     model,
     // Год выпуска модификации — начало производства; точного года по VIN
     // TecDoc не даёт (для этого в прототипе подключался Автокод).
-    year: int(variant, ['yearOfConstrFrom', 'yearFrom']) ?? 0,
+    year: int(variant, ['yearOfConstrFrom', 'yearFrom']),
     engine: [typeName, capacityLiters ? `${capacityLiters} л` : null].filter(Boolean).join(', ') || null,
     bodyType: str(variant, ['bodyStyle']),
     raw: {

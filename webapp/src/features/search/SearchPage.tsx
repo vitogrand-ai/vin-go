@@ -17,7 +17,7 @@ import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
 import { Typography } from '@/components/ui/typography'
-import { useAddCartItem } from '@/features/cabinet/queries'
+import { useAddCartItem, useCreateExpertRequest } from '@/features/cabinet/queries'
 import { ApiRequestError } from '@/lib/api'
 import { describeApiError } from '@/lib/errors'
 import { formatDelivery, formatMoney, TIER_META } from '@/lib/format'
@@ -277,10 +277,83 @@ export function SearchPage() {
         <PartsList parts={parts} selectedPart={selectedPart} onSelect={setSelectedPart} />
       ) : null}
 
+      {search.isSuccess && parts.length === 0 && vehicle ? (
+        <AskExpert vin={vehicle.vin} query={query} />
+      ) : null}
+
       {selectedPart ? (
         <OffersPanel part={selectedPart} vehicleVin={vehicle?.vin} />
       ) : null}
     </section>
+  )
+}
+
+/**
+ * Тупик «ничего не найдено» превращается в заявку живому подборщику: каталоги
+ * не покрывают всё, и это честный запасной путь вместо «попробуйте другое слово».
+ */
+function AskExpert({ vin, query }: { vin: string; query: string }) {
+  const auth = useAuth()
+  const create = useCreateExpertRequest()
+  const [comment, setComment] = useState('')
+  const [sentNumber, setSentNumber] = useState<number | null>(null)
+
+  if (sentNumber !== null) {
+    return (
+      <Card size="sm">
+        <CardContent className="grid gap-2 pt-6">
+          <Typography variant="bodySmMedium">Заявка № {sentNumber} отправлена эксперту</Typography>
+          <Typography variant="bodySm" tone="muted">
+            Ответ с каталожными номерами придёт уведомлением и появится в разделе «Эксперт».
+          </Typography>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card size="sm">
+      <CardHeader>
+        <CardTitle>Спросить эксперта</CardTitle>
+        <CardDescription>
+          Живой подборщик найдёт каталожный номер по VIN {vin} для запроса «{query}» и пришлёт
+          ответ в кабинет и в Telegram.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-3">
+        {auth.isAuthenticated ? (
+          <>
+            <Input
+              value={comment}
+              onChange={(event) => setComment(event.target.value)}
+              placeholder="Уточнение: сторона, двигатель, что уже пробовали (необязательно)"
+              maxLength={1000}
+            />
+            <Button
+              type="button"
+              className="w-fit"
+              disabled={create.isPending}
+              onClick={() =>
+                create.mutate(
+                  { vin, query, comment: comment.trim() || undefined },
+                  {
+                    onSuccess: (data) => setSentNumber(data.request.number),
+                    onError: (error) => toast.error(describeApiError(error)),
+                  },
+                )
+              }
+            >
+              {create.isPending ? <Spinner /> : null}
+              Отправить эксперту
+            </Button>
+          </>
+        ) : (
+          <Typography variant="bodySm" tone="muted">
+            Войдите в кабинет, чтобы отправить запрос эксперту.
+          </Typography>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -298,7 +371,7 @@ function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
   const facts: Array<[string, string]> = [
     ['Марка', vehicle.make],
     ['Модель', vehicle.model],
-    ['Год', String(vehicle.year)],
+    ['Год', vehicle.year ? String(vehicle.year) : '—'],
     ['Двигатель', vehicle.engine ?? '—'],
     ['Кузов', vehicle.bodyType ?? '—'],
   ]
@@ -438,7 +511,7 @@ function OffersPanel({ part, vehicleVin }: { part: Part; vehicleVin?: string }) 
     return <Typography tone="destructive">{describeError(offersQuery.error)}</Typography>
   }
 
-  const { picks, offers } = offersQuery.data
+  const { picks, offers, source } = offersQuery.data
 
   return (
     <div className="grid gap-4">
@@ -448,6 +521,8 @@ function OffersPanel({ part, vehicleVin }: { part: Part; vehicleVin?: string }) 
           OEM {part.oemNumber}
         </Typography>
       </div>
+
+      {source?.demo ? <DemoPricesNotice /> : null}
 
       {part.imageUrl ? (
         <img
@@ -659,6 +734,27 @@ function OfferRow({ offer, onAdd }: { offer: Offer; onAdd: AddToCart }) {
         </Button>
       </td>
     </tr>
+  )
+}
+
+/**
+ * Поставщики не подключены — цены сгенерированы. Предупреждение стоит над
+ * тирами, а не в подвале: приёмщик не должен называть клиенту выдуманную сумму.
+ */
+function DemoPricesNotice() {
+  return (
+    <div
+      role="status"
+      className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2"
+    >
+      <Badge variant="outline" className="border-amber-500/60 text-amber-700">
+        Демо-цены
+      </Badge>
+      <Typography variant="bodySm">
+        Поставщики ещё не подключены — цены, сроки и наличие ниже условные. Каталожные номера
+        настоящие: их можно отправить своему поставщику.
+      </Typography>
+    </div>
   )
 }
 

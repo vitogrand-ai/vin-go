@@ -13,6 +13,8 @@ describe('contracts', () => {
       email: 'user@example.com',
       password: 'password123',
       displayName: undefined,
+      orgName: undefined,
+      inviteCode: undefined,
     })
   })
 })

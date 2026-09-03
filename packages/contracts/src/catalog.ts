@@ -84,7 +84,8 @@ export const vehicleSchema = z.object({
   vin: vinOrFrameSchema,
   make: z.string(),
   model: z.string(),
-  year: z.number().int(),
+  /** Модельный год; null — каталог его не отдал (европейские VIN год не кодируют). */
+  year: z.number().int().nullable(),
   engine: z.string().nullable(),
   bodyType: z.string().nullable(),
   /** Сырой ответ провайдера каталога — для отладки и будущих полей. */
@@ -130,6 +131,17 @@ export const tierPickSchema = z.object({
   reason: z.string(),
 })
 
+/**
+ * Источник данных в ответе. Продукт может работать на демо-данных (моки), и
+ * пользователь должен это видеть: выдуманные цены поставщиков нельзя выдавать
+ * за реальные. `names` — подключённые источники («abcp», «emex», «mock»).
+ */
+export const dataSourceSchema = z.object({
+  names: z.array(z.string()),
+  /** true — данные демонстрационные: цены, сроки и наличие условные. */
+  demo: z.boolean(),
+})
+
 // --- Запросы и ответы ---
 
 export const decodeVinRequestSchema = z.object({
@@ -162,6 +174,8 @@ export const searchPartsResponseSchema = z.object({
    * выглядит случайной. Отсутствует, если искали ровно так, как ввели.
    */
   resolvedQuery: z.string().optional(),
+  /** Каталог, из которого пришла выдача (демо или боевой). */
+  source: dataSourceSchema.optional(),
 })
 
 export const offersRequestSchema = z.object({
@@ -175,6 +189,15 @@ export const offersResponseSchema = z.object({
   picks: z.array(tierPickSchema),
   /** Полный список предложений, отсортированный по цене. */
   offers: z.array(offerSchema),
+  /** Поставщики, из которых собраны предложения (демо или боевые). */
+  source: dataSourceSchema.optional(),
+})
+
+/** Состояние подключённых источников данных — для честного индикатора в UI. */
+export const catalogStatusResponseSchema = z.object({
+  catalog: dataSourceSchema,
+  suppliers: dataSourceSchema,
+  plates: dataSourceSchema,
 })
 
 // --- Типы ---
@@ -196,3 +219,5 @@ export type SearchPartsRequest = z.infer<typeof searchPartsRequestSchema>
 export type SearchPartsResponse = z.infer<typeof searchPartsResponseSchema>
 export type OffersRequest = z.infer<typeof offersRequestSchema>
 export type OffersResponse = z.infer<typeof offersResponseSchema>
+export type DataSource = z.infer<typeof dataSourceSchema>
+export type CatalogStatusResponse = z.infer<typeof catalogStatusResponseSchema>

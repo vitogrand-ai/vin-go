@@ -4,9 +4,12 @@ import { createCatalogProviders } from './catalog/factory'
 import { CatalogService } from './catalog/service'
 import { createPrisma } from './db'
 import { loadEnv } from './env'
+import { ExpertsService } from './experts/service'
+import { GarageService } from './garage/service'
 import { OrdersService } from './orders/service'
 import { TelegramLinkService } from './telegram/service'
 import { TelegramBot, type BotMedia } from './bot/bot'
+import { PrismaSessionStore } from './bot/session-store'
 import { HttpTelegramClient } from './bot/telegram'
 import { AnthropicVinOcrProvider } from './bot/vin-ocr'
 import { WhisperVoiceTranscriber } from './bot/voice-transcribe'
@@ -25,9 +28,17 @@ export async function main() {
   // Единый набор провайдеров (те же, что у API) — один инстанс поставщиков на
   // каталог и корзину, чтобы будущие кэш/лимиты реального API не расходились.
   const providers = createCatalogProviders(env, prisma)
-  const catalog = new CatalogService(providers.catalog, providers.suppliers, providers.plates)
+  const catalog = new CatalogService(
+    providers.catalog,
+    providers.suppliers,
+    providers.plates,
+    providers.meta,
+  )
   const orders = new OrdersService(prisma, providers.suppliers, undefined, providers.offerResolver)
   const link = new TelegramLinkService(prisma, env.TELEGRAM_BOT_USERNAME)
+  // Ответ эксперта приходит из API-процесса (там же уведомления); бот только создаёт заявки.
+  const experts = new ExpertsService(prisma, providers.catalog)
+  const garage = new GarageService(prisma, providers.catalog)
 
   // Распознавание вложений включается ключами; без них бот работает как раньше
   // и просто просит прислать данные текстом.
@@ -45,7 +56,13 @@ export async function main() {
   )
 
   const client = new HttpTelegramClient(env.TELEGRAM_BOT_TOKEN)
-  const bot = new TelegramBot(client, catalog, { link, orders }, media)
+  const bot = new TelegramBot(
+    client,
+    catalog,
+    { link, orders, experts, garage },
+    media,
+    new PrismaSessionStore(prisma),
+  )
 
   const controller = new AbortController()
   const stop = () => controller.abort()

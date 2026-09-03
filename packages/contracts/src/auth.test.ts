@@ -16,6 +16,8 @@ const validUser = {
   email: 'user@example.com',
   displayName: null,
   role: 'USER' as const,
+  orgId: null,
+  orgRole: 'MEMBER' as const,
   createdAt: '2026-05-11T00:00:00.000Z',
 }
 
@@ -31,6 +33,8 @@ describe('auth contracts', () => {
       email: 'user@example.com',
       password: 'password123',
       displayName: 'Jane',
+      orgName: undefined,
+      inviteCode: undefined,
     })
 
     expect(
@@ -43,6 +47,8 @@ describe('auth contracts', () => {
       email: 'user@example.com',
       password: 'password123',
       displayName: undefined,
+      orgName: undefined,
+      inviteCode: undefined,
     })
 
     expect(

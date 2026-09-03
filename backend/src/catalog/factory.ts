@@ -16,7 +16,9 @@ import { PARTSAPI_DEFAULT_BASE_URL, PartsApiCatalogProvider } from './partsapi-p
 import { PARTSCATALOGS_DEFAULT_BASE_URL, PartsCatalogsCatalogProvider } from './partscatalogs-provider'
 import { PARTSINDEX_DEFAULT_BASE_URL, PartsIndexCatalogProvider } from './partsindex-provider'
 import type { CatalogProvider, PlateProvider, SupplierProvider } from './providers'
+import { CachingCatalogProvider } from './vin-cache'
 import { VIN17_DEFAULT_BASE_URL, Vin17CatalogProvider } from './vin17-provider'
+import type { DataSource } from '@web-app-demo/contracts'
 
 export type CatalogProviders = {
   catalog: CatalogProvider
@@ -24,6 +26,21 @@ export type CatalogProviders = {
   plates: PlateProvider
   /** Снимок выдачи для резолва offerId корзиной (тот же инстанс, что suppliers). */
   offerResolver: OfferResolver
+  /** Какие источники подключены и что из них демо — для честных ответов API. */
+  meta: CatalogProvidersMeta
+}
+
+export type CatalogProvidersMeta = {
+  catalog: DataSource
+  suppliers: DataSource
+  plates: DataSource
+}
+
+/** Метаданные для полностью мокового набора (бот без ключей, тесты). */
+export const MOCK_PROVIDERS_META: CatalogProvidersMeta = {
+  catalog: { names: ['mock'], demo: true },
+  suppliers: { names: ['mock'], demo: true },
+  plates: { names: ['mock'], demo: true },
 }
 
 /**
@@ -48,14 +65,20 @@ export type CatalogProviders = {
  * Госномера: `AVTOCOD_API_KEY` → боевой Avtocod (госномер→VIN), иначе мок.
  * Перевод: `ANTHROPIC_API_KEY` + доступная БД → выдача каталога переводится на
  *   русский с кэшем (TranslatingCatalogProvider); иначе — язык провайдера.
+ * Кэш VIN: при боевом каталоге и доступной БД расшифровка кэшируется в
+ *   таблице vin_decodes (CachingCatalogProvider) — повторы бесплатны.
+ * `meta` описывает, что подключено: API отдаёт это в ответах, чтобы веб и бот
+ *   честно помечали демо-данные.
  */
 export function createCatalogProviders(env: AppEnv, db?: DbClient): CatalogProviders {
   // Поставщики оборачиваются кэшем-снимком: поиск запоминает предложения по id,
   // корзина резолвит выбранное из снимка (см. CachingSupplierProvider).
-  const suppliers = new CachingSupplierProvider(createSupplierProvider(env))
+  const supplierSources = createSupplierProvider(env)
+  const suppliers = new CachingSupplierProvider(supplierSources.provider)
+  const catalogSources = createCatalogProvider(env)
 
   return {
-    catalog: withTranslation(createCatalogProvider(env), env, db),
+    catalog: withTranslation(withVinCache(catalogSources, db), env, db),
     suppliers,
     plates: env.AVTOCOD_API_KEY
       ? new AvtocodPlateProvider({
@@ -64,7 +87,24 @@ export function createCatalogProviders(env: AppEnv, db?: DbClient): CatalogProvi
         })
       : new MockPlateProvider(),
     offerResolver: suppliers,
+    meta: {
+      catalog: { names: catalogSources.names, demo: catalogSources.names.length === 0 },
+      suppliers: { names: supplierSources.names, demo: supplierSources.names.length === 0 },
+      plates: env.AVTOCOD_API_KEY ? { names: ['avtocod'], demo: false } : { names: [], demo: true },
+    },
   }
+}
+
+/** Собранный слой источников: провайдер и имена боевых источников (пусто = мок). */
+type AssembledSources<T> = { provider: T; names: string[] }
+
+/**
+ * Кэш расшифровки VIN в БД — только для боевых каталогов и только при наличии
+ * БД: мок отвечает мгновенно и бесплатно, а тесты каталога живут без Postgres.
+ */
+function withVinCache(sources: AssembledSources<CatalogProvider>, db?: DbClient): CatalogProvider {
+  if (sources.names.length === 0 || !db) return sources.provider
+  return new CachingCatalogProvider(sources.provider, db)
 }
 
 /**
@@ -86,7 +126,7 @@ function withTranslation(catalog: CatalogProvider, env: AppEnv, db?: DbClient): 
 }
 
 /** Собирает поставщиков из доступных ключей: 0 → мок, 1 → он, 2+ → слияние выдач. */
-function createSupplierProvider(env: AppEnv): SupplierProvider {
+function createSupplierProvider(env: AppEnv): AssembledSources<SupplierProvider> {
   const sources: NamedSupplierProvider[] = []
 
   if (env.ABCP_LOGIN && env.ABCP_PASSWORD && env.ABCP_API_URL) {
@@ -110,13 +150,14 @@ function createSupplierProvider(env: AppEnv): SupplierProvider {
     })
   }
 
-  if (sources.length === 0) return new MockSupplierProvider()
-  if (sources.length === 1) return sources[0]!.provider
-  return new MergingSupplierProvider(sources)
+  const names = sources.map((source) => source.name)
+  if (sources.length === 0) return { provider: new MockSupplierProvider(), names }
+  if (sources.length === 1) return { provider: sources[0]!.provider, names }
+  return { provider: new MergingSupplierProvider(sources), names }
 }
 
 /** Собирает каталог из доступных источников: 0 → мок, 1 → он, 2+ → агрегация. */
-function createCatalogProvider(env: AppEnv): CatalogProvider {
+function createCatalogProvider(env: AppEnv): AssembledSources<CatalogProvider> {
   const sources: NamedCatalogProvider[] = []
 
   if (env.ACAT_API_KEY) {
@@ -200,7 +241,8 @@ function createCatalogProvider(env: AppEnv): CatalogProvider {
     })
   }
 
-  if (sources.length === 0) return new MockCatalogProvider()
-  if (sources.length === 1) return sources[0]!.provider
-  return new FallbackCatalogProvider(sources)
+  const names = sources.map((source) => source.name)
+  if (sources.length === 0) return { provider: new MockCatalogProvider(), names }
+  if (sources.length === 1) return { provider: sources[0]!.provider, names }
+  return { provider: new FallbackCatalogProvider(sources), names }
 }

@@ -78,6 +78,13 @@ describe('expandPartQuery', () => {
   test('пустой ввод даёт пустой список', () => {
     expect(expandPartQuery('   ')).toEqual([])
   })
+
+  test('канон не дублирует слово, которое уже стояло рядом (живой случай с прода)', () => {
+    expect(normalizePartQuery('колодки тормозные передние')).toBe('колодки тормозные передние')
+    for (const variant of expandPartQuery('колодки тормозные передние')) {
+      expect(variant).not.toMatch(/тормозные тормозные/i)
+    }
+  })
 })
 
 describe('jargonReplacements', () => {

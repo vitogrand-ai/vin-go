@@ -1,15 +1,31 @@
 import {
   addCartItemRequestSchema,
   addVehicleRequestSchema,
+  answerExpertRequestSchema,
   apiErrorSchema,
+  createExpertRequestSchema,
+  expertRequestResponseSchema,
+  expertRequestsResponseSchema,
   authResponseSchema,
   cartResponseSchema,
+  catalogStatusResponseSchema,
   confirmMockPaymentRequestSchema,
+  createCustomerRequestSchema,
   createPaymentRequestSchema,
   createPaymentResponseSchema,
+  customerResponseSchema,
+  customersResponseSchema,
   decodeVinRequestSchema,
   decodeVinResponseSchema,
   garageResponseSchema,
+  joinOrganizationRequestSchema,
+  organizationResponseSchema,
+  removeCustomerRequestSchema,
+  setCartCustomerRequestSchema,
+  updateCartItemSalePriceRequestSchema,
+  updateCustomerRequestSchema,
+  updateOrganizationRequestSchema,
+  updateVehicleRequestSchema,
   loginRequestSchema,
   logoutRequestSchema,
   meResponseSchema,
@@ -37,9 +53,25 @@ import {
   vehicleResponseSchema,
   type AddCartItemRequest,
   type AddVehicleRequest,
+  type AnswerExpertRequest,
   type AuthResponse,
   type CartResponse,
+  type CatalogStatusResponse,
+  type CreateExpertRequest,
+  type ExpertRequestResponse,
+  type ExpertRequestsResponse,
   type ConfirmMockPaymentRequest,
+  type CreateCustomerRequest,
+  type CustomerResponse,
+  type CustomersResponse,
+  type JoinOrganizationRequest,
+  type OrganizationResponse,
+  type RemoveCustomerRequest,
+  type SetCartCustomerRequest,
+  type UpdateCartItemSalePriceRequest,
+  type UpdateCustomerRequest,
+  type UpdateOrganizationRequest,
+  type UpdateVehicleRequest,
   type CreatePaymentRequest,
   type CreatePaymentResponse,
   type DecodeVinRequest,
@@ -178,6 +210,11 @@ export class ApiClient {
     })
   }
 
+  /** Подключённые источники данных и признак демо-режима. */
+  catalogStatus(): Promise<CatalogStatusResponse> {
+    return this.request('/api/catalog/status', catalogStatusResponseSchema, { auth: false })
+  }
+
   // --- Гараж (требует авторизации) ---
 
   listVehicles(): Promise<GarageResponse> {
@@ -198,6 +235,97 @@ export class ApiClient {
     await this.rawRequest('/api/vehicles/remove', { method: 'POST', body: payload, auth: true })
   }
 
+  updateVehicle(input: UpdateVehicleRequest): Promise<VehicleResponse> {
+    const payload = updateVehicleRequestSchema.parse(input)
+    return this.request('/api/vehicles/update', vehicleResponseSchema, {
+      method: 'POST',
+      body: payload,
+      auth: true,
+    })
+  }
+
+  // --- Автосервис и клиенты (требует авторизации) ---
+
+  getOrganization(): Promise<OrganizationResponse> {
+    return this.request('/api/org', organizationResponseSchema, { auth: true })
+  }
+
+  updateOrganization(input: UpdateOrganizationRequest): Promise<OrganizationResponse> {
+    const payload = updateOrganizationRequestSchema.parse(input)
+    return this.request('/api/org', organizationResponseSchema, {
+      method: 'POST',
+      body: payload,
+      auth: true,
+    })
+  }
+
+  rotateInviteCode(): Promise<OrganizationResponse> {
+    return this.request('/api/org/invite/rotate', organizationResponseSchema, {
+      method: 'POST',
+      auth: true,
+    })
+  }
+
+  joinOrganization(input: JoinOrganizationRequest): Promise<OrganizationResponse> {
+    const payload = joinOrganizationRequestSchema.parse(input)
+    return this.request('/api/org/join', organizationResponseSchema, {
+      method: 'POST',
+      body: payload,
+      auth: true,
+    })
+  }
+
+  // --- Заявки эксперту (требует авторизации) ---
+
+  listExpertRequests(): Promise<ExpertRequestsResponse> {
+    return this.request('/api/experts/requests', expertRequestsResponseSchema, { auth: true })
+  }
+
+  createExpertRequest(input: CreateExpertRequest): Promise<ExpertRequestResponse> {
+    const payload = createExpertRequestSchema.parse(input)
+    return this.request('/api/experts/requests', expertRequestResponseSchema, {
+      method: 'POST',
+      body: payload,
+      auth: true,
+    })
+  }
+
+  answerExpertRequest(input: AnswerExpertRequest): Promise<ExpertRequestResponse> {
+    const payload = answerExpertRequestSchema.parse(input)
+    return this.request('/api/experts/requests/answer', expertRequestResponseSchema, {
+      method: 'POST',
+      body: payload,
+      auth: true,
+    })
+  }
+
+  listCustomers(): Promise<CustomersResponse> {
+    return this.request('/api/customers', customersResponseSchema, { auth: true })
+  }
+
+  createCustomer(input: CreateCustomerRequest): Promise<CustomerResponse> {
+    const payload = createCustomerRequestSchema.parse(input)
+    return this.request('/api/customers', customerResponseSchema, {
+      method: 'POST',
+      body: payload,
+      auth: true,
+    })
+  }
+
+  updateCustomer(input: UpdateCustomerRequest): Promise<CustomerResponse> {
+    const payload = updateCustomerRequestSchema.parse(input)
+    return this.request('/api/customers/update', customerResponseSchema, {
+      method: 'POST',
+      body: payload,
+      auth: true,
+    })
+  }
+
+  async removeCustomer(input: RemoveCustomerRequest): Promise<void> {
+    const payload = removeCustomerRequestSchema.parse(input)
+    await this.rawRequest('/api/customers/remove', { method: 'POST', body: payload, auth: true })
+  }
+
   // --- Корзина и заказы (требует авторизации) ---
 
   getCart(): Promise<CartResponse> {
@@ -216,6 +344,24 @@ export class ApiClient {
   updateCartItem(input: UpdateCartItemRequest): Promise<OrderResponse> {
     const payload = updateCartItemRequestSchema.parse(input)
     return this.request('/api/cart/items/quantity', orderResponseSchema, {
+      method: 'POST',
+      body: payload,
+      auth: true,
+    })
+  }
+
+  updateCartItemSalePrice(input: UpdateCartItemSalePriceRequest): Promise<OrderResponse> {
+    const payload = updateCartItemSalePriceRequestSchema.parse(input)
+    return this.request('/api/cart/items/sale-price', orderResponseSchema, {
+      method: 'POST',
+      body: payload,
+      auth: true,
+    })
+  }
+
+  setCartCustomer(input: SetCartCustomerRequest): Promise<OrderResponse> {
+    const payload = setCartCustomerRequestSchema.parse(input)
+    return this.request('/api/cart/customer', orderResponseSchema, {
       method: 'POST',
       body: payload,
       auth: true,

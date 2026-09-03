@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import type { UserRole } from './auth'
 import { moneySchema, offerTierSchema, partQualitySchema, vinOrFrameSchema } from './catalog'
+import { customerBriefSchema } from './customers'
 import { orderPaymentStatusSchema } from './payments'
 
 export const orderStatusSchema = z.enum([
@@ -82,22 +83,38 @@ export const orderItemSchema = z.object({
   quality: partQualitySchema,
   isOriginal: z.boolean(),
   tier: offerTierSchema.nullable(),
+  /** Закупочная цена у поставщика — то, что платит автосервис. */
   price: moneySchema,
+  /** Цена для клиента автосервиса (закуп × наценка, правится вручную). */
+  salePrice: moneySchema,
+  /** Наценка, применённая к позиции (базисные пункты). */
+  markupBps: z.number().int(),
   deliveryDays: z.number().int().nonnegative(),
   quantity: z.number().int().positive(),
-  /** Стоимость позиции: цена × количество. */
+  /** Закупочная стоимость позиции: цена × количество. */
   lineTotal: moneySchema,
+  /** Стоимость позиции для клиента: salePrice × количество. */
+  saleLineTotal: moneySchema,
 })
 
 export const orderSchema = z.object({
   id: z.string(),
+  /** Человекочитаемый номер заказа (сквозной). */
+  number: z.number().int(),
   status: orderStatusSchema,
   paymentStatus: orderPaymentStatusSchema,
   vehicleVin: z.string().nullable(),
+  /** Клиент автосервиса, для которого заказ. */
+  customer: customerBriefSchema.nullable(),
   notes: z.string().nullable(),
   items: z.array(orderItemSchema),
   itemCount: z.number().int().nonnegative(),
+  /** Закупочная сумма — к оплате поставщику. */
   total: moneySchema,
+  /** Сумма для клиента автосервиса (смета). */
+  saleTotal: moneySchema,
+  /** Маржа автосервиса: saleTotal − total. */
+  marginTotal: moneySchema,
   createdAt: z.string().datetime(),
   placedAt: z.string().datetime().nullable(),
 })
@@ -137,6 +154,17 @@ export const setCartVehicleRequestSchema = z.object({
   vin: vinOrFrameSchema,
 })
 
+/** Ручная цена для клиента по позиции корзины (копейки). */
+export const updateCartItemSalePriceRequestSchema = z.object({
+  itemId: z.string().min(1),
+  saleAmount: z.number().int().min(0),
+})
+
+/** Клиент автосервиса для корзины; null — отвязать. */
+export const setCartCustomerRequestSchema = z.object({
+  customerId: z.string().min(1).nullable(),
+})
+
 /** Корзина = черновик заказа; null, если корзина ещё не создавалась. */
 export const cartResponseSchema = z.object({
   order: orderSchema.nullable(),
@@ -159,6 +187,8 @@ export type RemoveCartItemRequest = z.infer<typeof removeCartItemRequestSchema>
 export type UpdateOrderStatusRequest = z.infer<typeof updateOrderStatusRequestSchema>
 export type UpdateOrderNotesRequest = z.infer<typeof updateOrderNotesRequestSchema>
 export type SetCartVehicleRequest = z.infer<typeof setCartVehicleRequestSchema>
+export type UpdateCartItemSalePriceRequest = z.infer<typeof updateCartItemSalePriceRequestSchema>
+export type SetCartCustomerRequest = z.infer<typeof setCartCustomerRequestSchema>
 export type CartResponse = z.infer<typeof cartResponseSchema>
 export type OrderResponse = z.infer<typeof orderResponseSchema>
 export type OrdersResponse = z.infer<typeof ordersResponseSchema>

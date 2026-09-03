@@ -1,5 +1,6 @@
 import type {
   LoginRequest,
+  OrgRole,
   RegisterPayload,
   UserDto,
   UserRole,
@@ -9,6 +10,7 @@ import type { DbClient } from '../db'
 import type { AppEnv } from '../env'
 import { AppError } from '../http/errors'
 import { Prisma } from '../generated/prisma/client'
+import { createOrganization, defaultOrgName, OrganizationService } from '../org/service'
 import { signAccessToken, verifyAccessToken } from './access-tokens'
 import { hashPassword, verifyPassword } from './passwords'
 import { createRefreshToken, hashRefreshToken } from './refresh-tokens'
@@ -23,15 +25,29 @@ type UserRecord = {
   email: string
   displayName: string | null
   role: UserRole
+  orgId: string | null
+  orgRole: OrgRole
   createdAt: Date
 }
 
+/** Пользователь, у которого организация гарантированно есть. */
+type MemberRecord = UserRecord & { orgId: string }
+
 export class AuthService {
+  private readonly organizations: OrganizationService
+
   constructor(
     private readonly db: DbClient,
     private readonly env: AppEnv,
-  ) {}
+    organizations?: OrganizationService,
+  ) {
+    this.organizations = organizations ?? new OrganizationService(db)
+  }
 
+  /**
+   * Регистрация. Без кода приглашения создаётся новый автосервис, а человек
+   * становится его владельцем; с кодом — он входит сотрудником в существующий.
+   */
   async register(input: RegisterPayload, metadata: SessionMetadata) {
     const existingUser = await this.db.user.findUnique({
       where: { email: input.email },
@@ -42,15 +58,37 @@ export class AuthService {
       throw new AppError(409, 'CONFLICT', 'User with this email already exists')
     }
 
+    // Код проверяем до хеширования пароля: дешёвая проверка — первой.
+    const invitedOrg = input.inviteCode
+      ? await this.db.organization.findUnique({
+          where: { inviteCode: input.inviteCode },
+          select: { id: true },
+        })
+      : null
+    if (input.inviteCode && !invitedOrg) {
+      throw new AppError(400, 'BAD_REQUEST', 'Код приглашения не найден')
+    }
+
     const passwordHash = await hashPassword(input.password)
 
-    const user = await this.db.user
-      .create({
-        data: {
-          email: input.email,
-          passwordHash,
-          displayName: input.displayName,
-        },
+    const user = await this.db
+      .$transaction(async (tx) => {
+        const orgId =
+          invitedOrg?.id ??
+          (
+            await createOrganization(tx, {
+              name: input.orgName ?? defaultOrgName(input.displayName, input.email),
+            })
+          ).id
+        return tx.user.create({
+          data: {
+            email: input.email,
+            passwordHash,
+            displayName: input.displayName,
+            orgId,
+            orgRole: invitedOrg ? 'MEMBER' : 'OWNER',
+          },
+        })
       })
       .catch((error: unknown) => {
         if (isUniqueConstraintError(error)) {
@@ -60,7 +98,7 @@ export class AuthService {
         throw error
       })
 
-    return this.issueSession(user, metadata)
+    return this.issueSession(user as MemberRecord, metadata)
   }
 
   async login(input: LoginRequest, metadata: SessionMetadata) {
@@ -77,7 +115,7 @@ export class AuthService {
       throw new AppError(401, 'UNAUTHORIZED', 'Invalid email or password')
     }
 
-    return this.issueSession(user, metadata)
+    return this.issueSession(await this.withOrganization(user), metadata)
   }
 
   async refresh(refreshToken: string | undefined, metadata: SessionMetadata) {
@@ -157,13 +195,19 @@ export class AuthService {
     }
   }
 
-  /** Проверяет access-токен и активную сессию, возвращает идентификатор и роль пользователя. */
+  /**
+   * Проверяет access-токен и активную сессию, возвращает пользователя, его
+   * автосервис и роли. Организация есть всегда: старой записи без неё она
+   * создаётся здесь же (см. OrganizationService.ensureForUser).
+   */
   async authenticate(accessToken: string | undefined) {
     const session = await this.resolveSession(accessToken)
     return {
       userId: session.user.id,
       email: session.user.email,
       role: session.user.role as UserRole,
+      orgId: session.user.orgId,
+      orgRole: session.user.orgRole as OrgRole,
       sessionId: session.id,
     }
   }
@@ -195,7 +239,14 @@ export class AuthService {
       throw new AppError(401, 'UNAUTHORIZED', 'Session is invalid or expired')
     }
 
-    return session
+    return { ...session, user: await this.withOrganization(session.user) }
+  }
+
+  /** Дополняет пользователя организацией, создавая её для старых записей. */
+  private async withOrganization(user: UserRecord): Promise<MemberRecord> {
+    if (user.orgId) return user as MemberRecord
+    const ensured = await this.organizations.ensureForUser(user.id)
+    return { ...user, orgId: ensured.orgId, orgRole: ensured.orgRole }
   }
 
   async logout(refreshToken: string | undefined) {
@@ -212,7 +263,7 @@ export class AuthService {
     })
   }
 
-  private async issueSession(user: UserRecord, metadata: SessionMetadata) {
+  private async issueSession(user: MemberRecord, metadata: SessionMetadata) {
     const refreshToken = createRefreshToken()
     const session = await this.db.authSession.create({
       data: {
@@ -255,6 +306,8 @@ export function toUserDto(user: UserRecord): UserDto {
     email: user.email,
     displayName: user.displayName,
     role: user.role,
+    orgId: user.orgId,
+    orgRole: user.orgRole,
     createdAt: user.createdAt.toISOString(),
   }
 }

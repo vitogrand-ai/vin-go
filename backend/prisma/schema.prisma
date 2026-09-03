@@ -13,16 +13,72 @@ model User {
   passwordHash String        @map("password_hash")
   displayName  String?       @map("display_name")
   role         Role          @default(USER)
+  /// Автосервис, в котором работает пользователь. Nullable только ради старых
+  /// строк: сервис авторизации создаёт личную организацию при первом обращении.
+  orgId        String?       @db.Uuid @map("org_id")
+  orgRole      OrgRole       @default(MEMBER) @map("org_role")
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
+  organization Organization? @relation(fields: [orgId], references: [id], onDelete: SetNull, map: "users_org_id_fkey")
   sessions     AuthSession[]
   vehicles     Vehicle[]
   orders       Order[]
   telegram     TelegramAccount?
   telegramCodes TelegramLinkCode[]
   devices      DeviceToken[]
+  expertRequests ExpertRequest[]
 
+  @@index([orgId], map: "users_org_id_idx")
   @@map("users")
+}
+
+/// Роль внутри автосервиса: владелец управляет настройками и наценкой,
+/// сотрудник работает с гаражом, клиентами и заказами.
+enum OrgRole {
+  OWNER
+  MEMBER
+
+  @@map("org_role")
+}
+
+/// Автосервис (СТО) — рабочее пространство: общий гараж, клиенты, заказы и
+/// наценка. Каждый пользователь состоит ровно в одной организации; при
+/// регистрации без кода приглашения она создаётся автоматически.
+model Organization {
+  id               String     @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  name             String
+  phone            String?
+  /// Наценка по умолчанию на закупочную цену, в базисных пунктах (10000 = 100%).
+  defaultMarkupBps Int        @default(0) @map("default_markup_bps")
+  /// Код приглашения: регистрация с ним ведёт сотрудника в эту организацию.
+  inviteCode       String     @unique(map: "organizations_invite_code_key") @map("invite_code")
+  createdAt        DateTime   @default(now()) @map("created_at")
+  updatedAt        DateTime   @updatedAt @map("updated_at")
+  members          User[]
+  vehicles         Vehicle[]
+  customers        Customer[]
+  orders           Order[]
+  expertRequests   ExpertRequest[]
+
+  @@map("organizations")
+}
+
+/// Клиент автосервиса — владелец машины. Не пользователь системы: его заводит
+/// приёмщик, чтобы привязать авто и заказ к человеку и телефону.
+model Customer {
+  id           String       @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  orgId        String       @db.Uuid @map("org_id")
+  name         String
+  phone        String?
+  note         String?
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade, map: "customers_org_id_fkey")
+  vehicles     Vehicle[]
+  orders       Order[]
+
+  @@index([orgId, name], map: "customers_org_id_name_idx")
+  @@map("customers")
 }
 
 /// Роль пользователя: клиент (свой кабинет) или оператор автосервиса (ведёт чужие заказы).
@@ -69,23 +125,33 @@ model TelegramLinkCode {
   @@map("telegram_link_codes")
 }
 
-/// Сохранённый автомобиль пользователя («гараж»).
+/// Автомобиль в гараже автосервиса. Общий для всех сотрудников организации;
+/// `userId` — кто добавил. Госномер и пробег — то, чем оперирует приёмщик:
+/// машину ищут по номеру, а регламент ТО считают от пробега.
 model Vehicle {
-  id        String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
-  userId    String   @db.Uuid @map("user_id")
-  vin       String
-  make      String
-  model     String
-  year      Int
-  engine    String?
-  bodyType  String?  @map("body_type")
-  nickname  String?
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "vehicles_user_id_fkey")
+  id           String        @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  userId       String        @db.Uuid @map("user_id")
+  orgId        String?       @db.Uuid @map("org_id")
+  customerId   String?       @db.Uuid @map("customer_id")
+  vin          String
+  plate        String?
+  mileageKm    Int?          @map("mileage_km")
+  make         String
+  model        String
+  /// null — каталог год не отдал (европейские VIN его не кодируют).
+  year         Int?
+  engine       String?
+  bodyType     String?       @map("body_type")
+  nickname     String?
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade, map: "vehicles_user_id_fkey")
+  organization Organization? @relation(fields: [orgId], references: [id], onDelete: Cascade, map: "vehicles_org_id_fkey")
+  customer     Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull, map: "vehicles_customer_id_fkey")
 
-  @@unique([userId, vin], map: "vehicles_user_id_vin_key")
-  @@index([userId], map: "vehicles_user_id_idx")
+  @@unique([orgId, vin], map: "vehicles_org_id_vin_key")
+  @@index([orgId, plate], map: "vehicles_org_id_plate_idx")
+  @@index([customerId], map: "vehicles_customer_id_idx")
   @@map("vehicles")
 }
 
@@ -105,7 +171,13 @@ enum OrderStatus {
 /// Заказ. Черновик (DRAFT) играет роль корзины — у пользователя он один.
 model Order {
   id         String      @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  /// Человекочитаемый номер: его диктуют по телефону и пишут в смете.
+  number     Int         @unique(map: "orders_number_key") @default(autoincrement())
   userId     String      @db.Uuid @map("user_id")
+  /// Автосервис-владелец заказа: заказы видны всем сотрудникам организации.
+  orgId      String?     @db.Uuid @map("org_id")
+  /// Клиент автосервиса, для чьей машины заказ (для сметы и истории).
+  customerId String?     @db.Uuid @map("customer_id")
   status     OrderStatus @default(DRAFT)
   /// Гарантирует единственность корзины: = userId, пока заказ DRAFT, и null после
   /// оформления. Уникальность (NULL допускают дубли) не даёт создать два черновика.
@@ -116,11 +188,14 @@ model Order {
   createdAt  DateTime    @default(now()) @map("created_at")
   updatedAt  DateTime    @updatedAt @map("updated_at")
   placedAt   DateTime?   @map("placed_at")
-  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade, map: "orders_user_id_fkey")
-  items      OrderItem[]
-  payments   Payment[]
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade, map: "orders_user_id_fkey")
+  organization Organization? @relation(fields: [orgId], references: [id], onDelete: Cascade, map: "orders_org_id_fkey")
+  customer     Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull, map: "orders_customer_id_fkey")
+  items        OrderItem[]
+  payments     Payment[]
 
   @@index([userId, status], map: "orders_user_id_status_idx")
+  @@index([orgId, status, placedAt], map: "orders_org_id_status_placed_at_idx")
   @@map("orders")
 }
 
@@ -185,7 +260,12 @@ model OrderItem {
   quality       String
   isOriginal    Boolean  @map("is_original")
   tier          String?
+  /// Закупочная цена у поставщика (копейки) — то, что платит автосервис.
   priceAmount   Int      @map("price_amount")
+  /// Цена для клиента автосервиса (копейки): закуп × наценка, можно править вручную.
+  saleAmount    Int      @default(0) @map("sale_amount")
+  /// Наценка, применённая при добавлении (базисные пункты), — для отчёта по марже.
+  markupBps     Int      @default(0) @map("markup_bps")
   currency      String
   deliveryDays  Int      @map("delivery_days")
   quantity      Int      @default(1)
@@ -227,4 +307,69 @@ model CatalogTranslation {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@map("catalog_translations")
+}
+
+/// Кэш расшифровки VIN: карточка автомобиля от каталога целиком (включая raw с
+/// меткой источника). Повторный поиск по той же машине не тратит платный вызов
+/// внешнего каталога и не ждёт его. См. CachingCatalogProvider.
+model VinDecode {
+  /// Нормализованный VIN/frame — ключ кэша.
+  vin       String   @id
+  vehicle   Json
+  /// Имя каталога-источника («acat», «vin17»…) — для аналитики покрытия.
+  source    String
+  hitCount  Int      @default(0) @map("hit_count")
+  decodedAt DateTime @default(now()) @map("decoded_at")
+  expiresAt DateTime @map("expires_at")
+
+  @@index([expiresAt], map: "vin_decodes_expires_at_idx")
+  @@map("vin_decodes")
+}
+
+enum ExpertRequestStatus {
+  NEW
+  ANSWERED
+  REJECTED
+
+  @@map("expert_request_status")
+}
+
+/// Заявка «не нашли деталь — спросить эксперта». Сотрудник автосервиса
+/// описывает, что искал по этому VIN; оператор платформы подбирает каталожные
+/// номера вручную и отвечает. Ответ уходит автору push/Telegram-уведомлением.
+model ExpertRequest {
+  id           String              @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  number       Int                 @unique(map: "expert_requests_number_key") @default(autoincrement())
+  orgId        String              @db.Uuid @map("org_id")
+  userId       String              @db.Uuid @map("user_id")
+  vin          String
+  /// Снимок карточки авто на момент заявки (марка/модель/год), если VIN опознан.
+  vehicle      Json?
+  query        String
+  comment      String?
+  status       ExpertRequestStatus @default(NEW)
+  answerText   String?             @map("answer_text")
+  /// Каталожные номера от эксперта — по ним сразу ищутся предложения.
+  answerOems   String[]            @default([]) @map("answer_oems")
+  answeredBy   String?             @db.Uuid @map("answered_by")
+  answeredAt   DateTime?           @map("answered_at")
+  createdAt    DateTime            @default(now()) @map("created_at")
+  updatedAt    DateTime            @updatedAt @map("updated_at")
+  organization Organization        @relation(fields: [orgId], references: [id], onDelete: Cascade, map: "expert_requests_org_id_fkey")
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade, map: "expert_requests_user_id_fkey")
+
+  @@index([status, createdAt], map: "expert_requests_status_created_at_idx")
+  @@index([orgId, createdAt], map: "expert_requests_org_id_created_at_idx")
+  @@map("expert_requests")
+}
+
+/// Контекст чата Telegram-бота между рестартами процесса: VIN, последняя
+/// выдача и предложения. Без него после деплоя мастер получал «сначала
+/// пришлите VIN» посреди разговора.
+model BotSession {
+  chatId    BigInt   @id @map("chat_id")
+  state     Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("bot_sessions")
 }
