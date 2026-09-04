@@ -3,6 +3,7 @@ import type { Part, Vehicle } from '@web-app-demo/contracts'
 import { AppError } from '../http/errors'
 import { CATALOG_SOURCE_KEY } from './fallback-catalog'
 import { asArray, firstArray, int, isRecord, str } from './parse-utils'
+import { englishPartTerms } from './part-terms'
 import { requestProviderJson } from './provider-http'
 import type { CatalogProvider } from './providers'
 
@@ -22,8 +23,12 @@ import type { CatalogProvider } from './providers'
  *       GET /catalogs/{id}/groups-suggest?q=<текст>       → sid названий деталей
  *       GET /catalogs/{id}/schemas?carId&partNameIds=sid  → схемы (groupId)
  *       GET /catalogs/{id}/parts2?carId&groupId           → детали (nameId = sid)
- *     Выдача parts2 фильтруется по nameId ∈ найденным sid — иначе показали бы
- *     всю схему целиком (соседние детали узла).
+ *     Выдача parts2 прореживается (см. `collectParts`): узел целиком — это
+ *     десятки болтов и пыльников вокруг нужной детали.
+ *   • Локализовано только универсальное дерево каталога: у детали с `nameId`
+ *     название на языке запроса, у остальных — оригинальное английское
+ *     (`hasUniTree: false`, напр. subaru). Поэтому отбор идёт и по nameId, и по
+ *     английским терминам запроса из `part-terms`.
  *   • Ошибки — коды 1xxx (1001 ACCESS_DENY, 1003 IP_DENY, 1004 QUOTA_DENY,
  *     1005 RESOURCE_DENY, 1101 IP_BANNED). Живой формат (сверен запросом с
  *     невнесённого в allowlist IP): HTTP 4xx + тело {code: <http>, errorCode:
@@ -39,11 +44,18 @@ export const PARTSCATALOGS_DEFAULT_BASE_URL = 'https://api.parts-catalogs.com/v1
 /** Потолок деталей в ответе поиска — не тащим всю выдачу узлов через контракт в UI. */
 export const PARTSCATALOGS_MAX_PARTS = 100
 
-/** Сколько первых подсказок groups-suggest (sid) раскрываем в схемы. */
-const MAX_PART_NAMES = 3
+/**
+ * Сколько первых подсказок groups-suggest (sid) раскрываем в схемы. Пять, а не
+ * три: живьём на Subaru «колодки тормозные» подсказка отдаёт четыре названия, и
+ * нужное («Диски тормозные с колодками (комплект)») стоит последним.
+ */
+const MAX_PART_NAMES = 5
 
 /** Потолок вызовов parts2 на один поиск — у популярных запросов схем десятки. */
-const MAX_GROUPS = 4
+const MAX_GROUPS = 6
+
+/** Сколько раз повторяем поиск укороченным запросом, если деталей не нашлось. */
+const MAX_SEARCH_PASSES = 2
 
 /** Имя источника в fallback-цепочке (см. createCatalogProviders). */
 const SOURCE_NAME = 'partscatalogs'
@@ -95,26 +107,48 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
       if (!ref) return []
     }
 
-    // Шаг 1: текст запроса → sid названий деталей (русский работает напрямую).
-    // Подсказка знает названия деталей («Колодки тормозные»), а мастер шлёт
-    // уточнённую фразу («Колодки тормозные передние») — на пустом ответе
-    // пробуем укороченные варианты, отбрасывая слова с конца.
-    let sids: string[] = []
+    // Запрос отрабатывается целиком, а не по одному шагу: подсказка ищет по
+    // ВСЕМУ справочнику названий каталога, а не по этой машине, поэтому на
+    // «амортизатор передний» она отвечает единственным «Амортизатор передний
+    // пневматической подвески», которого у машины нет, — и весь поиск
+    // заканчивался пустотой. Если проход не дал ни одной детали, повторяем
+    // укороченным запросом (слова отбрасываются с конца). Проходов не больше
+    // MAX_SEARCH_PASSES: каждый — это вызовы schemas/parts2.
+    const englishTerms = englishPartTerms(q)
+    let passes = 0
     for (const attempt of shortenQuery(q)) {
-      const suggested = await this.request(
-        `/catalogs/${encodeURIComponent(ref.catalogId)}/groups-suggest?${new URLSearchParams({ q: attempt })}`,
-      )
-      sids = (asArray(suggested) ?? [])
-        .map((item) => str(item, ['sid', 'id']))
-        .filter((sid): sid is string => sid !== null)
-        .slice(0, MAX_PART_NAMES)
-      if (sids.length > 0) break
-    }
-    if (sids.length === 0) return []
-    const sidSet = new Set(sids)
+      const sids = await this.suggestPartNames(ref.catalogId, attempt)
+      if (sids.length === 0) continue // подсказка не знает фразы — она ничего не стоила
 
-    // Шаг 2: sid → схемы узлов, где такая деталь встречается
-    // (groupId + название + картинка схемы).
+      const parts = await this.collectFromSchemas(ref, sids, vehicle.make, englishTerms)
+      if (parts.length > 0) return parts
+      if (++passes >= MAX_SEARCH_PASSES) break
+    }
+    return []
+  }
+
+  /** Шаг 1: текст запроса → sid названий деталей (русский работает напрямую). */
+  private async suggestPartNames(catalogId: string, query: string): Promise<string[]> {
+    const suggested = await this.request(
+      `/catalogs/${encodeURIComponent(catalogId)}/groups-suggest?${new URLSearchParams({ q: query })}`,
+    )
+    return (asArray(suggested) ?? [])
+      .map((item) => str(item, ['sid', 'id']))
+      .filter((sid): sid is string => sid !== null)
+      .slice(0, MAX_PART_NAMES)
+  }
+
+  /**
+   * Шаги 2-3: sid → схемы узлов (groupId + название + картинка) → детали узла,
+   * прореженные до того, что спрашивали (см. `collectParts`).
+   */
+  private async collectFromSchemas(
+    ref: CarRef,
+    sids: string[],
+    brand: string | null,
+    englishTerms: string[],
+  ): Promise<Part[]> {
+    const sidSet = new Set(sids)
     const groups = new Map<string, { category: string; imageUrl: string | null }>()
     for (const sid of sids) {
       if (groups.size >= MAX_GROUPS) break
@@ -134,7 +168,6 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
       }
     }
 
-    // Шаг 3: схема → детали; оставляем только детали искомых sid (см. collectParts).
     const parts: Part[] = []
     const seen = new Set<string>()
     for (const [groupId, group] of groups) {
@@ -147,7 +180,15 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
       if (data === null) continue
       // У parts2 своя копия картинки схемы — берём её, если в списке схем пусто.
       const imageUrl = group.imageUrl ?? (isRecord(data) ? normalizeImageUrl(str(data, ['img'])) : null)
-      collectParts(data, { category: group.category, imageUrl, brand: vehicle.make, sidSet, seen, out: parts })
+      collectParts(data, {
+        category: group.category,
+        imageUrl,
+        brand,
+        sidSet,
+        englishTerms,
+        seen,
+        out: parts,
+      })
     }
     return parts
   }
@@ -272,11 +313,22 @@ function carRefFromRaw(raw: Record<string, unknown> | undefined): CarRef | null 
 }
 
 /**
- * Ответ parts2 (узел со схемой) → детали контракта. Деталь попадает в выдачу,
- * только если её nameId — один из искомых sid: живой ответ показал, что без
- * nameId идут крепёж и мелочь узла («винт», «уплотнительное кольцо»), а у
- * значимых деталей nameId проставлен. Записи без номера/названия и дубли
- * (номер+название) пропускаются; общий потолок — PARTSCATALOGS_MAX_PARTS.
+ * Ответ parts2 (узел со схемой) → детали контракта. Узел целиком отдавать
+ * нельзя: в живом ответе по переднему тормозу Subaru 36 разных деталей, из них
+ * колодки — четыре, остальное крепёж, пыльники и скобы. Деталь проходит по
+ * одному из двух признаков:
+ *
+ *   1. `nameId` — один из искомых sid. Точное попадание каталога: деталь есть в
+ *      его универсальном дереве, название уже локализовано.
+ *   2. Название содержит английский термин запроса. Обязательный второй путь:
+ *      локализованное дерево неполное (у subaru `hasUniTree: false`), и деталь
+ *      без nameId приходит с оригинальным английским названием — именно так
+ *      живьём выглядят передние колодки («PAD KIT-FRONT DISK BRAKE», nameId
+ *      null), из-за чего один только признак (1) отвечал «ничего не найдено».
+ *
+ * Точные попадания идут первыми — они называются так, как спрашивал мастер.
+ * Записи без номера/названия и дубли (номер+название) пропускаются; общий
+ * потолок — PARTSCATALOGS_MAX_PARTS.
  */
 export function collectParts(
   data: unknown,
@@ -286,29 +338,46 @@ export function collectParts(
     imageUrl: string | null
     brand: string | null
     sidSet: Set<string>
+    /** Английские термины запроса, см. `englishPartTerms`. */
+    englishTerms: string[]
     seen: Set<string>
     out: Part[]
   },
 ): void {
   if (!isRecord(data)) return
+
+  const exact: Part[] = []
+  const byName: Part[] = []
   for (const group of asArray(data['partGroups']) ?? []) {
     for (const part of asArray(group['parts']) ?? []) {
-      if (ctx.out.length >= PARTSCATALOGS_MAX_PARTS) return
-
-      const nameId = str(part, ['nameId'])
-      if (nameId === null || !ctx.sidSet.has(nameId)) continue // соседняя деталь/крепёж узла
-
       const oemNumber = str(part, ['number', 'id'])
       const name = str(part, ['name', 'notice'])
       if (!oemNumber || !name) continue
+
+      const nameId = str(part, ['nameId'])
+      const isExact = nameId !== null && ctx.sidSet.has(nameId)
+      if (!isExact && !matchesTerms(name, ctx.englishTerms)) continue // сосед по узлу
 
       const key = `${oemNumber}|${name}`
       if (ctx.seen.has(key)) continue
       ctx.seen.add(key)
 
-      ctx.out.push({ oemNumber, name, category: ctx.category, brand: ctx.brand, imageUrl: ctx.imageUrl })
+      const entry = { oemNumber, name, category: ctx.category, brand: ctx.brand, imageUrl: ctx.imageUrl }
+      ;(isExact ? exact : byName).push(entry)
     }
   }
+
+  for (const part of [...exact, ...byName]) {
+    if (ctx.out.length >= PARTSCATALOGS_MAX_PARTS) return
+    ctx.out.push(part)
+  }
+}
+
+/** Название детали отвечает запросу, если содержит любой из его терминов. */
+function matchesTerms(name: string, terms: string[]): boolean {
+  if (terms.length === 0) return false
+  const lowered = name.toLowerCase()
+  return terms.some((term) => lowered.includes(term))
 }
 
 /**

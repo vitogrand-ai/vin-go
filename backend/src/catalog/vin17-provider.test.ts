@@ -162,7 +162,7 @@ describe('Vin17CatalogProvider.searchParts', () => {
     const url = new URL(calls[0]!)
     expect(url.pathname).toBe('/toyota')
     expect(url.searchParams.get('action')).toBe('search_epc_part_name')
-    // «масляный фильтр» → 机油滤清器 (словарь part-query-zh)
+    // «масляный фильтр» → 机油滤清器 (словарь part-terms)
     expect(url.searchParams.get('query_part_name')).toBe(safeBase64('机油滤清器'))
     expect(url.searchParams.get('query_part_name_is_safebase64')).toBe('1')
 

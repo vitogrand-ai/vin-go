@@ -284,7 +284,7 @@ describe('PartsCatalogsCatalogProvider.searchParts', () => {
     expect(calls.every((c) => c.url.includes('/groups-suggest'))).toBe(true)
   })
 
-  test('suggest не знает уточнённую фразу → повтор укороченным запросом', async () => {
+  test('уточнённая фраза не найдена → названия добираются укороченным запросом', async () => {
     // Живой случай: «Колодки тормозные передние» подсказка не знает — деталь
     // называется «Колодки тормозные»; уточнение позиции отрезается с конца.
     const suggestQueries: string[] = []
@@ -303,6 +303,87 @@ describe('PartsCatalogsCatalogProvider.searchParts', () => {
 
     expect(suggestQueries).toEqual(['Колодки тормозные передние', 'Колодки тормозные'])
     expect(parts).toHaveLength(1)
+  })
+
+  test('подсказка знает фразу, но деталей у машины нет → повторный проход короче', async () => {
+    // Живой случай: подсказка ищет по всему справочнику названий, не по машине,
+    // и на «амортизатор передний» отвечает «Амортизатор передний пневматической
+    // подвески» — у машины такого узла нет. Без второго прохода поиск пустой.
+    const suggestQueries: string[] = []
+    const provider = providerWith((url) => {
+      if (url.includes('/groups-suggest')) {
+        const q = new URL(url).searchParams.get('q') ?? ''
+        suggestQueries.push(q)
+        return json([{ sid: q === 'амортизатор' ? '87' : '7870', name: q }])
+      }
+      if (url.includes('/schemas')) {
+        // Схема есть только у названия из второго прохода (sid 87).
+        return json(new URL(url).searchParams.get('partNameIds') === '87' ? SCHEMAS : { list: [] })
+      }
+      if (url.includes('/parts2')) return json(PARTS2)
+      return new Response('', { status: 404 })
+    })
+
+    const parts = await provider.searchParts(vehicle, 'амортизатор передний')
+
+    expect(suggestQueries).toEqual(['амортизатор передний', 'амортизатор'])
+    expect(parts).toHaveLength(1)
+  })
+
+  test('проходов не больше двух: третий укороченный запрос уже не делается', async () => {
+    const suggestQueries: string[] = []
+    const provider = providerWith((url) => {
+      if (url.includes('/groups-suggest')) {
+        suggestQueries.push(new URL(url).searchParams.get('q') ?? '')
+        return json([{ sid: '999', name: 'Никогда не находится' }])
+      }
+      if (url.includes('/schemas')) return json({ list: [] })
+      return new Response('', { status: 404 })
+    })
+
+    expect(await provider.searchParts(vehicle, 'фильтр масляный двигателя')).toEqual([])
+    expect(suggestQueries).toEqual(['фильтр масляный двигателя', 'фильтр масляный'])
+  })
+
+  test('нелокализованный узел: колодки находятся по английскому названию', async () => {
+    // Живой Subaru (сент 2026): «Колодки тормозные дисковые» из универсального
+    // дерева ведут только на ЗАДНИЙ тормоз, а передние колодки лежат в схеме
+    // переднего тормоза без nameId и с английским названием. Фильтр только по
+    // nameId отдавал задние — и «колодки передние» превращались в «не найдено».
+    const provider = providerWith((url) => {
+      if (url.includes('/groups-suggest')) return json([{ sid: '289', name: 'Колодки тормозные дисковые' }])
+      if (url.includes('/schemas')) {
+        return json({
+          list: [
+            { groupId: 'REAR', name: 'Задний тормоз', img: '//img.test/rear.png' },
+            { groupId: 'FRONT', name: 'Передний тормоз', img: '//img.test/front.png' },
+          ],
+        })
+      }
+      if (url.includes('/parts2')) {
+        const groupId = new URL(url).searchParams.get('groupId')
+        return json({
+          partGroups: [
+            {
+              parts:
+                groupId === 'REAR'
+                  ? [{ number: '26696AL020', nameId: '289', name: 'Колодки тормозные дисковые' }]
+                  : [
+                      { number: '26296FL030', nameId: null, name: 'PAD KIT-FRONT DISK BRAKE' },
+                      { number: '26231FE011', nameId: null, name: 'BOLT-DISK BRAKE' },
+                    ],
+            },
+          ],
+        })
+      }
+      return new Response('', { status: 404 })
+    })
+
+    const parts = await provider.searchParts(vehicle, 'колодки тормозные')
+
+    // Крепёж узла («BOLT-DISK BRAKE») не прошёл: термина запроса в нём нет.
+    expect(parts.map((part) => part.oemNumber)).toEqual(['26696AL020', '26296FL030'])
+    expect(parts.map((part) => part.category)).toEqual(['Задний тормоз', 'Передний тормоз'])
   })
 
   test('пустой запрос → [] без обращений к API', async () => {
@@ -335,16 +416,17 @@ describe('mapVehicle', () => {
 })
 
 describe('collectParts', () => {
-  const ctx = () => ({
+  const ctx = (englishTerms: string[] = ['oil filter']) => ({
     category: 'Узел',
     imageUrl: null as string | null,
     brand: 'Skoda',
     sidSet: new Set(['87']),
+    englishTerms,
     seen: new Set<string>(),
     out: [] as Part[],
   })
 
-  test('деталь без nameId отбрасывается (живьём это крепёж/мелочь узла)', () => {
+  test('', () => {
     const c = ctx()
     collectParts(
       {
@@ -368,6 +450,44 @@ describe('collectParts', () => {
         imageUrl: null,
       },
     ])
+  })
+
+  test('деталь без nameId проходит по английскому названию (нелокализованная ветка)', () => {
+    // Живой Subaru: у передних колодок nameId нет и название осталось английским —
+    // без этой ветки поиск «колодки передние» отвечал «ничего не найдено».
+    const c = ctx(['pad', 'brake shoe'])
+    collectParts(
+      {
+        partGroups: [
+          {
+            parts: [
+              { number: '26296FL030', nameId: null, name: 'PAD KIT-FRONT DISK BRAKE' },
+              { number: '26231FE011', nameId: null, name: 'BOLT-DISK BRAKE' },
+            ],
+          },
+        ],
+      },
+      c,
+    )
+    expect(c.out.map((part) => part.oemNumber)).toEqual(['26296FL030'])
+  })
+
+  test('точные попадания по nameId идут перед совпадениями по названию', () => {
+    const c = ctx(['pad'])
+    collectParts(
+      {
+        partGroups: [
+          {
+            parts: [
+              { number: 'N1', nameId: null, name: 'PAD CLIP-FRONT BRAKE' },
+              { number: 'N2', nameId: '87', name: 'Колодки тормозные дисковые' },
+            ],
+          },
+        ],
+      },
+      c,
+    )
+    expect(c.out.map((part) => part.oemNumber)).toEqual(['N2', 'N1'])
   })
 
   test('дубли (номер+название) и записи без номера/названия пропускаются', () => {

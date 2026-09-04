@@ -4,7 +4,7 @@ import type { Part, Vehicle } from '@web-app-demo/contracts'
 
 import { AppError } from '../http/errors'
 import { asArray, int, isRecord, str } from './parse-utils'
-import { translatePartQuery } from './part-query-zh'
+import { translatePartQuery } from './part-terms'
 import { requestProviderJson } from './provider-http'
 import type { CatalogProvider } from './providers'
 
@@ -76,7 +76,7 @@ export class Vin17CatalogProvider implements CatalogProvider {
    * Поиск по названию детали (оп. 5107, нечёткое совпадение). Названия в базе
    * 17vin — формальный китайский EPC-язык и частично английский, поэтому язык
    * запроса решает всё (проверено живьём):
-   *   • русский → переводится словарём part-query-zh в EPC-термин; без перевода
+   *   • русский → переводится словарём part-terms в EPC-термин; без перевода
    *     запрос НЕ отправляется — сырой русский возвращает весь каталог (4470
    *     записей шума), честное «пусто» лучше;
    *   • китайский → как есть (точная выдача);

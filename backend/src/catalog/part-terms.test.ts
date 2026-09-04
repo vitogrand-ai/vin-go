@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { translatePartQuery } from './part-query-zh'
+import { englishPartTerms, translatePartQuery } from './part-terms'
 
 describe('translatePartQuery', () => {
   test('русская морфология и порядок слов не мешают сработке стемов', () => {
@@ -50,5 +50,20 @@ describe('translatePartQuery', () => {
     expect(translatePartQuery('тормозная жидкость')).toBeNull()
     expect(translatePartQuery('какая-то штука')).toBeNull()
     expect(translatePartQuery('')).toBeNull()
+  })
+})
+
+describe('englishPartTerms', () => {
+  test('термины ищут нелокализованное название детали и не ловят соседей', () => {
+    const terms = englishPartTerms('колодки тормозные передние')
+    expect(terms).toContain('pad')
+    // Так их использует parts-catalogs: подстрока в названии детали.
+    expect(terms.some((t) => 'PAD KIT-FRONT DISK BRAKE'.toLowerCase().includes(t))).toBe(true)
+    expect(terms.some((t) => 'BOLT-DISK BRAKE'.toLowerCase().includes(t))).toBe(false)
+  })
+
+  test('неизвестный запрос → пусто (остаётся точное совпадение по nameId)', () => {
+    expect(englishPartTerms('тормозная жидкость')).toEqual([])
+    expect(englishPartTerms('')).toEqual([])
   })
 })
