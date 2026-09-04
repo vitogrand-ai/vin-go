@@ -428,4 +428,30 @@ describe('shortenQuery / normalizeImageUrl', () => {
     ])
     expect(vehicle?.year).toBeNull()
   })
+
+  test('модель берётся из modelName, код модификации уходит в raw (живой Mercedes с прода)', () => {
+    const vehicle = mapVehicle('WDD1770871V030773', [
+      {
+        brand: 'Mercedes',
+        title: '177.087     (A 200)',
+        modelName: 'A-class',
+        catalogId: 'mercedes',
+        carId: 'car-1',
+        criteria: '36*WDD1770871V030773!c16f6b53',
+        parameters: [{ key: 'body', name: 'Тип кузова', value: 'A 200' }],
+      },
+    ])
+    expect(vehicle?.model).toBe('A-class')
+    expect(vehicle?.raw?.modification).toBe('177.087     (A 200)')
+    // Координаты каталога на месте — по ним идёт поиск деталей.
+    expect(vehicle?.raw?.carId).toBe('car-1')
+  })
+
+  test('когда modelName совпадает с title, модификация в raw не дублируется', () => {
+    const vehicle = mapVehicle('X', [
+      { brand: 'Citroen', title: 'C4', modelName: 'C4', catalogId: 'citroen', carId: 'c2' },
+    ])
+    expect(vehicle?.model).toBe('C4')
+    expect(vehicle?.raw?.modification).toBeUndefined()
+  })
 })

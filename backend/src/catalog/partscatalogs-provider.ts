@@ -187,7 +187,11 @@ export function mapVehicle(vinOrFrame: string, data: unknown): Vehicle | null {
   if (!car) return null
 
   const make = str(car, ['brand'])
-  const model = str(car, ['title', 'modelName', 'name'])
+  // `modelName` — читаемое имя модели («C4», «A-class»), а `title` у части
+  // каталогов содержит код модификации («177.087     (A 200)») — показывать
+  // его мастеру как модель нельзя. Полный title сохраняем в raw.
+  const model = str(car, ['modelName', 'title', 'name'])
+  const modification = str(car, ['title'])
   if (!make && !model) return null
 
   const yearParam = paramValue(car, ['year'], ['год', 'year'])
@@ -198,8 +202,12 @@ export function mapVehicle(vinOrFrame: string, data: unknown): Vehicle | null {
     year: (yearParam ? Number.parseInt(yearParam, 10) : null) ?? parseYear(car),
     engine: paramValue(car, ['spec_engine', 'engine'], ['двигатель', 'engine', 'мотор']),
     bodyType: paramValue(car, ['body', 'body_type'], ['кузов', 'body']),
-    // Только координаты каталога — они нужны searchParts; полный ответ не тащим.
-    raw: carRefToRaw(carRefFromCar(car)),
+    // Только координаты каталога (нужны searchParts) и модификация; полный
+    // ответ не тащим.
+    raw: {
+      ...carRefToRaw(carRefFromCar(car)),
+      ...(modification && modification !== model ? { modification } : {}),
+    },
   }
 }
 
