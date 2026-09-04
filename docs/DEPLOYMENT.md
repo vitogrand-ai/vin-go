@@ -92,6 +92,8 @@ export DO_BACKEND_CRON_TIME_ZONE=UTC
 bun run deploy:do:specs backend-final
 ```
 
+Catalog mapper changes invalidate the VIN cache. `vin_decodes` stores the decoded vehicle card for 60 days, so a release that changes how a provider response maps to the vehicle card must clear it, otherwise users keep seeing the old card: `sudo -u postgres psql -d vingo -c "DELETE FROM vin_decodes"`. Catalog coordinates (`carId`, `criteria`) live in that same row, so a partial cleanup is not worth the complexity — the table refills on the next search.
+
 Housekeeping cron — schedule `auth:cleanup` once a day (`DO_BACKEND_CRON_TASK=auth:cleanup`, `DO_BACKEND_CRON_SCHEDULE="20 3 * * *"`): it deletes revoked/expired auth sessions, expired Telegram link codes, expired rows of the VIN decode cache and bot chat sessions idle for 30 days. On the AdminVPS deployment use a systemd timer that runs `bun run start:cron -- auth:cleanup` from `/opt/vingo/app/backend`.
 
 Fiscalization (54-ФЗ): set `YOOKASSA_VAT_CODE` only when an online cash register / ОФД is connected in ЛК ЮKassa. When set, every payment and refund carries a receipt built from order items and the customer email. If a cash register is connected but no VAT code is configured, ЮKassa will reject payments for a missing receipt.
