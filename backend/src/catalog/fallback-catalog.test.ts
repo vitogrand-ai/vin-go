@@ -157,6 +157,107 @@ describe('FallbackCatalogProvider.searchParts', () => {
   })
 })
 
+describe('FallbackCatalogProvider.searchParts: схемы узлов', () => {
+  const vin17Parts: Part[] = [
+    { oemNumber: '26296-AA060', name: 'колодки', category: '', brand: null },
+    { oemNumber: '26296AA070', name: 'колодки (вариант)', category: '', brand: null },
+    { oemNumber: 'X-NOMATCH', name: 'без пары', category: '', brand: null },
+  ]
+  const pcParts: Part[] = [
+    { oemNumber: '26296AA060', name: 'PAD KIT', category: 'Тормоза', brand: null, imageUrl: 'https://img/1.png' },
+    { oemNumber: '26296-AA070', name: 'PAD KIT', category: 'Тормоза', brand: null, imageUrl: 'https://img/2.png' },
+  ]
+
+  test('выдача без картинок → схемы добираются у источника-иллюстратора по OEM', async () => {
+    const order: string[] = []
+    const fb = new FallbackCatalogProvider([
+      {
+        name: 'partscatalogs',
+        provider: fakeProvider({ parts: pcParts, onSearch: () => order.push('partscatalogs') }),
+        providesImages: true,
+      },
+      {
+        name: 'vin17',
+        provider: fakeProvider({ parts: vin17Parts, onSearch: () => order.push('vin17') }),
+      },
+    ])
+
+    const vehicle: Vehicle = { ...baseVehicle, raw: { [CATALOG_SOURCE_KEY]: 'vin17' } }
+    const parts = await fb.searchParts(vehicle, 'колодки')
+
+    expect(order).toEqual(['vin17', 'partscatalogs'])
+    // Состав и порядок выдачи — от нашедшего источника; картинки — по номеру.
+    expect(parts.map((p) => [p.oemNumber, p.name, p.imageUrl ?? null])).toEqual([
+      ['26296-AA060', 'колодки', 'https://img/1.png'],
+      ['26296AA070', 'колодки (вариант)', 'https://img/2.png'],
+      ['X-NOMATCH', 'без пары', null],
+    ])
+  })
+
+  test('иллюстратор уже отвечал «пусто» в этом поиске → второй раз не спрашиваем', async () => {
+    const order: string[] = []
+    const fb = new FallbackCatalogProvider([
+      {
+        name: 'partscatalogs',
+        provider: fakeProvider({ parts: [], onSearch: () => order.push('partscatalogs') }),
+        providesImages: true,
+      },
+      {
+        name: 'vin17',
+        provider: fakeProvider({ parts: vin17Parts, onSearch: () => order.push('vin17') }),
+      },
+    ])
+
+    const vehicle: Vehicle = { ...baseVehicle, raw: { [CATALOG_SOURCE_KEY]: 'partscatalogs' } }
+    const parts = await fb.searchParts(vehicle, 'колодки')
+
+    expect(order).toEqual(['partscatalogs', 'vin17'])
+    expect(parts).toEqual(vin17Parts)
+  })
+
+  test('у выдачи уже есть схема → иллюстратора не трогаем', async () => {
+    let donorSearched = false
+    const withImage: Part[] = [{ ...vin17Parts[0]!, imageUrl: 'https://img/own.png' }]
+    const fb = new FallbackCatalogProvider([
+      {
+        name: 'partscatalogs',
+        provider: fakeProvider({ parts: pcParts, onSearch: () => (donorSearched = true) }),
+        providesImages: true,
+      },
+      { name: 'vin17', provider: fakeProvider({ parts: withImage }) },
+    ])
+
+    const vehicle: Vehicle = { ...baseVehicle, raw: { [CATALOG_SOURCE_KEY]: 'vin17' } }
+    const parts = await fb.searchParts(vehicle, 'колодки')
+
+    expect(parts).toEqual(withImage)
+    expect(donorSearched).toBe(false)
+  })
+
+  test('сбой иллюстратора не ломает выдачу — детали уходят без схемы', async () => {
+    const fb = new FallbackCatalogProvider([
+      {
+        name: 'partscatalogs',
+        provider: {
+          async decodeVin() {
+            return null
+          },
+          async searchParts() {
+            throw new Error('partscatalogs down')
+          },
+        },
+        providesImages: true,
+      },
+      { name: 'vin17', provider: fakeProvider({ parts: vin17Parts }) },
+    ])
+
+    const vehicle: Vehicle = { ...baseVehicle, raw: { [CATALOG_SOURCE_KEY]: 'vin17' } }
+    const parts = await fb.searchParts(vehicle, 'колодки')
+
+    expect(parts).toEqual(vin17Parts)
+  })
+})
+
 describe('FallbackCatalogProvider: маршрутизация по формату', () => {
   test('frame-номер идёт сначала в JDM-источник (framePriority)', async () => {
     const order: string[] = []

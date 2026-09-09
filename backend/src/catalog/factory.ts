@@ -203,6 +203,8 @@ function createCatalogProvider(env: AppEnv): AssembledSources<CatalogProvider> {
   // квоту по числу VIN, поэтому после подписочных источников, но перед 17vin:
   // покрытие мировое, а у 17vin сильная сторона — только китайцы. Имя источника
   // 'partscatalogs' захардкожено и в адаптере (проверка доверия к vehicle.raw).
+  // Единственный источник со схемами узлов: когда деталь нашёл другой каталог,
+  // FallbackCatalogProvider добирает картинки здесь (это ещё один VIN в квоте).
   if (env.PARTSCATALOGS_API_KEY) {
     sources.push({
       name: 'partscatalogs',
@@ -210,6 +212,7 @@ function createCatalogProvider(env: AppEnv): AssembledSources<CatalogProvider> {
         apiKey: env.PARTSCATALOGS_API_KEY,
         baseUrl: env.PARTSCATALOGS_BASE_URL ?? PARTSCATALOGS_DEFAULT_BASE_URL,
       }),
+      providesImages: true,
     })
   }
 
