@@ -200,17 +200,22 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
       `/catalogs/${encodeURIComponent(ref.catalogId)}/schemas?${params}`,
     )
 
-    // Узлы, отвечающие позиции из запроса, — вперёд, и только потом лимит.
-    // Отсекать в порядке каталога нельзя: у колодок схем больше трёх, и
-    // передний тормоз в них не попадал (см. `positionRank`).
+    // Узлы, отвечающие позиции из запроса, — вперёд, и только потом лимит;
+    // узлы ПРОТИВОПОЛОЖНОЙ стороны отбрасываются совсем.
+    //
+    // Иначе поиск залипает на негодном названии: живьём у Subaru передние
+    // колодки лежат под «Колодки тормозные (ремкомплект)», а первым подсказка
+    // отдаёт «Колодки тормозные дисковые», у которых узел только задний.
+    // Перебор названий останавливался на нём, фильтр позиции в сервисе вырезал
+    // всю выдачу, и мастер видел «не найдено» при живых колодках. Отбросив
+    // заведомо чужой узел, перебор доходит до нужного названия.
     const groups = new Map<string, { category: string; imageUrl: string | null }>()
     for (const schema of rankByPosition(firstArray(data, ['list']) ?? [], query)) {
       const groupId = str(schema, ['groupId', 'id'])
+      const category = str(schema, ['name']) ?? ''
       if (!groupId || groups.has(groupId)) continue
-      groups.set(groupId, {
-        category: str(schema, ['name']) ?? '',
-        imageUrl: normalizeImageUrl(str(schema, ['img'])),
-      })
+      if (positionRank(category, query) < 0) continue // узел другой стороны
+      groups.set(groupId, { category, imageUrl: normalizeImageUrl(str(schema, ['img'])) })
       if (groups.size >= MAX_GROUPS_PER_NAME) break
     }
 

@@ -454,6 +454,47 @@ describe('PartsCatalogsCatalogProvider.searchParts', () => {
     expect(parts.map((part) => part.category)).toContain('Передний тормоз')
   })
 
+  test('название с узлом чужой стороны не останавливает перебор', async () => {
+    // Живой Subaru: передние колодки лежат под «Колодки тормозные
+    // (ремкомплект)», а подсказка первым отдаёт «...дисковые» с одним лишь
+    // задним узлом. Раньше поиск залипал на нём и отвечал «не найдено».
+    const opened: string[] = []
+    const provider = providerWith((url) => {
+      if (url.includes('/groups-suggest')) {
+        return json([
+          { sid: '289', name: 'Колодки тормозные дисковые' },
+          { sid: '1109', name: 'Колодки тормозные (ремкомплект)' },
+        ])
+      }
+      if (url.includes('/schemas')) {
+        const sid = new URL(url).searchParams.get('partNameIds')
+        return json({
+          list:
+            sid === '289'
+              ? [{ groupId: 'REAR', name: 'Задний тормоз' }]
+              : [
+                  { groupId: 'REAR', name: 'Задний тормоз' },
+                  { groupId: 'FRONT', name: 'Передний тормоз', img: '//img.test/front.png' },
+                ],
+        })
+      }
+      if (url.includes('/parts2')) {
+        const groupId = new URL(url).searchParams.get('groupId') ?? ''
+        opened.push(groupId)
+        return json({
+          partGroups: [{ parts: [{ number: `OEM-${groupId}`, nameId: '1109', name: 'Колодки тормозные' }] }],
+        })
+      }
+      return new Response('', { status: 404 })
+    })
+
+    const parts = await provider.searchParts(vehicle, 'колодки тормозные передние')
+
+    // Задний узел не открывался вовсе — ни у одного из названий.
+    expect(opened).toEqual(['FRONT'])
+    expect(parts.map((part) => part.category)).toEqual(['Передний тормоз'])
+  })
+
   test('пустой запрос → [] без обращений к API', async () => {
     const calls: { url: string; headers: Record<string, string> }[] = []
     const provider = providerWith(() => json([]), calls)
