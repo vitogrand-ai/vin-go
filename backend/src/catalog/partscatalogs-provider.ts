@@ -160,17 +160,23 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
     // доходила. Теперь каждое название получает свой шанс, а поиск
     // останавливается на первом, которое дало детали.
     const seen = new Set<string>()
+    // Узлы запрашиваются по одному названию, а внутри узла годится деталь ЛЮБОГО
+    // из названий запроса: подсказка на «коленвал» отдаёт и «Датчик положения
+    // коленвала», и «Сальник коленвала», и они лежат в одном узле — сузить отбор
+    // до одного названия значило бы потерять половину выдачи.
+    const sidSet = new Set(sids)
     for (const sid of sids) {
-      const parts = await this.collectForName(ref, sid, brand, englishTerms, seen)
+      const parts = await this.collectForName(ref, sid, sidSet, brand, englishTerms, seen)
       if (parts.length > 0) return parts
     }
     return []
   }
 
-  /** Узлы и детали одного названия из справочника каталога. */
+  /** Узлы одного названия из справочника; детали — по всем названиям запроса. */
   private async collectForName(
     ref: CarRef,
     sid: string,
+    sidSet: Set<string>,
     brand: string | null,
     englishTerms: string[],
     seen: Set<string>,
@@ -192,7 +198,6 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
       if (groups.size >= MAX_GROUPS_PER_NAME) break
     }
 
-    const sidSet = new Set([sid])
     const parts: Part[] = []
     for (const [groupId, group] of groups) {
       if (parts.length >= PARTSCATALOGS_MAX_PARTS) break
