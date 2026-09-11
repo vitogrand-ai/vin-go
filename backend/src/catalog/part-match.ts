@@ -22,18 +22,31 @@ import { englishPartTerms } from './part-terms'
 export const NAME_MATCH = 0.6
 
 /**
- * Имена детали, которыми сверяется выдача каталога: запрос, его синонимический
- * ряд из словаря и английские термины.
+ * Имена детали из словаря: сам запрос и его синонимический ряд. Ими адаптер
+ * отбирает детали внутри узла и ранжирует подсказки справочника.
+ */
+export function queryNames(query: string): Set<string>[] {
+  return toKeySets([query, ...partSynonyms(query)])
+}
+
+/**
+ * То же плюс английские термины — для сортировки готовой выдачи.
  *
  * Английские нужны там, где каталог отдаёт оригинальные названия: у Lexus,
  * который знает только 17vin, узел приходит как «COVER SUB-ASSY, CYLINDER
  * HEAD», «BOLT(FOR CYLINDER HEAD COVER)», «GASKET, CYLINDER HEAD COVER» —
- * русскому ряду они не отвечают ничем.
+ * русскому ряду они не отвечают ничем, и сама крышка оказывалась третьей.
+ *
+ * В выбор УЗЛА эти термины не пускаются намеренно: они широки («pad» ловит и
+ * «brake shoe»), и живьём на Jetta сдвигали поиск с дисковых передних колодок
+ * на барабанные задние. Порядок готовой выдачи они улучшают, состав — портят.
  */
-export function queryNames(query: string): Set<string>[] {
-  return [query, ...partSynonyms(query), ...englishPartTerms(query)]
-    .map(wordKeys)
-    .filter((keys) => keys.size > 0)
+export function queryNamesForOrder(query: string): Set<string>[] {
+  return toKeySets([query, ...partSynonyms(query), ...englishPartTerms(query)])
+}
+
+function toKeySets(names: string[]): Set<string>[] {
+  return names.map(wordKeys).filter((keys) => keys.size > 0)
 }
 
 /** Насколько название подошло к ближайшему имени детали. */

@@ -12,7 +12,7 @@ import { AppError } from '../http/errors'
 import { MOCK_PROVIDERS_META, type CatalogProvidersMeta } from './factory'
 import { MockCatalogProvider, MockPlateProvider, MockSupplierProvider } from './mock-providers'
 import { expandPartQuery } from './part-jargon'
-import { closeness, queryNames } from './part-match'
+import { closeness, queryNamesForOrder } from './part-match'
 import { filterByPosition } from './position-filter'
 import type { CatalogProvider, PlateProvider, SupplierProvider } from './providers'
 import { selectTiers } from './tiering'
@@ -118,7 +118,7 @@ export class CatalogService {
  * порядке каталога — он осмысленный (позиции на схеме узла идут подряд).
  */
 function orderByRelevance(parts: Part[], query: string): Part[] {
-  const names = queryNames(query)
+  const names = queryNamesForOrder(query)
   if (names.length === 0) return parts
   return parts
     .map((part, order) => ({ part, order, score: closeness(part.name, names) }))
