@@ -41,10 +41,10 @@ export async function requestProviderJson(opts: {
     })
   } catch (cause) {
     if (isTimeout(cause)) {
-      console.error(`[${provider}] таймаут запроса (${timeoutMs} мс)`, url)
+      console.error(`[${provider}] таймаут запроса (${timeoutMs} мс)`, safeUrl(url))
       throw unavailable(provider, `нет ответа за ${timeoutMs} мс`)
     }
-    console.error(`[${provider}] сетевой сбой запроса`, url, cause)
+    console.error(`[${provider}] сетевой сбой запроса`, safeUrl(url), cause)
     throw unavailable(provider, 'сеть недоступна')
   }
 
@@ -52,7 +52,7 @@ export async function requestProviderJson(opts: {
   if (response.status === 404) return null
 
   if (!response.ok) {
-    console.error(`[${provider}] неуспешный ответ`, url, response.status)
+    console.error(`[${provider}] неуспешный ответ`, safeUrl(url), response.status)
     throw unavailable(provider, `HTTP ${response.status}`)
   }
 
@@ -64,10 +64,10 @@ export async function requestProviderJson(opts: {
     text = await response.text()
   } catch (cause) {
     if (isTimeout(cause)) {
-      console.error(`[${provider}] таймаут чтения ответа (${timeoutMs} мс)`, url)
+      console.error(`[${provider}] таймаут чтения ответа (${timeoutMs} мс)`, safeUrl(url))
       throw unavailable(provider, `тело ответа не дочитано за ${timeoutMs} мс`)
     }
-    console.error(`[${provider}] обрыв чтения ответа`, url, cause)
+    console.error(`[${provider}] обрыв чтения ответа`, safeUrl(url), cause)
     throw unavailable(provider, 'обрыв при чтении ответа')
   }
   if (!text.trim()) return null
@@ -75,7 +75,7 @@ export async function requestProviderJson(opts: {
   try {
     return JSON.parse(text) as unknown
   } catch (cause) {
-    console.error(`[${provider}] некорректный JSON`, url, cause)
+    console.error(`[${provider}] некорректный JSON`, safeUrl(url), cause)
     throw unavailable(provider, 'некорректный JSON в ответе')
   }
 }
@@ -90,6 +90,37 @@ function unavailable(provider: string, reason: string): AppError {
  * AbortError). DOMException не во всех рантаймах наследует Error, поэтому
  * проверяем по name, а не по instanceof.
  */
+/**
+ * URL без секретов — для журнала.
+ *
+ * Часть провайдеров носит доступ прямо в query: `key` у PartsAPI, `user`+`token`
+ * у 17vin. Логирование URL целиком уже приводило к утечке: токен Telegram-бота
+ * так попал в journald боевого сервера. Значения чувствительных параметров
+ * заменяются, остальной адрес остаётся читаемым — по нему и чинят.
+ */
+const SECRET_PARAMS = new Set([
+  'key', 'token', 'apikey', 'api_key', 'access_token',
+  'password', 'pass', 'secret', 'user', 'login', 'sign', 'signature',
+])
+
+export function safeUrl(raw: string): string {
+  try {
+    const parsed = new URL(raw)
+    let masked = false
+    for (const name of [...parsed.searchParams.keys()]) {
+      if (!SECRET_PARAMS.has(name.toLowerCase())) continue
+      parsed.searchParams.set(name, '***')
+      masked = true
+    }
+    // Токен в пути (Telegram: /bot<token>/method) — адрес наружу не отдаём вовсе.
+    if (!masked && /\/bot\d+:/.test(parsed.pathname)) return `${parsed.origin}/***`
+    return parsed.toString()
+  } catch {
+    // Неразобранный адрес мог бы содержать что угодно — наружу только хост-заглушка.
+    return '<адрес скрыт>'
+  }
+}
+
 function isTimeout(cause: unknown): boolean {
   if (typeof cause !== 'object' || cause === null) return false
   const name = (cause as { name?: unknown }).name

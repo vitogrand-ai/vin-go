@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { AppError } from '../http/errors'
-import { requestProviderJson } from './provider-http'
+import { requestProviderJson, safeUrl } from './provider-http'
 
 describe('requestProviderJson: таймаут', () => {
   test('срабатывание таймаута → AppError(502) с внятной причиной', async () => {
@@ -60,5 +60,40 @@ describe('requestProviderJson: таймаут', () => {
       timeoutMs: 1000,
     })
     expect(data).toEqual({ ok: true })
+  })
+})
+
+
+/**
+ * Ключи части провайдеров лежат прямо в query (`key` у PartsAPI, `user`+`token`
+ * у 17vin), а при сбое модуль пишет адрес в журнал. Так уже утекал токен бота —
+ * тест держит границу.
+ */
+describe('safeUrl: секреты не уходят в журнал', () => {
+  test('значения ключей и логинов заменяются', () => {
+    const masked = safeUrl('https://api.partsapi.ru/?method=VINdecode&key=SECRET123&vin=WVW')
+    expect(masked).not.toContain('SECRET123')
+    expect(masked).toContain('key=***')
+    expect(masked).toContain('method=VINdecode') // остальное читаемо — по нему чинят
+
+    const vin17 = safeUrl('http://api.17vin.com:8080/toyota?action=search&user=alice&token=abc123')
+    expect(vin17).not.toContain('abc123')
+    expect(vin17).not.toContain('alice')
+    expect(vin17).toContain('action=search')
+  })
+
+  test('адрес без секретов не портится', () => {
+    const plain = 'https://api.parts-catalogs.com/v1/car/info?q=WVWZZZ1JZ3W386752'
+    expect(safeUrl(plain)).toBe(plain)
+  })
+
+  test('токен в пути (Telegram) убирает весь путь', () => {
+    expect(safeUrl('https://api.telegram.org/bot123456:AAsecret/sendMessage')).toBe(
+      'https://api.telegram.org/***',
+    )
+  })
+
+  test('неразобранный адрес наружу не отдаётся', () => {
+    expect(safeUrl('не-адрес-с-секретом')).toBe('<адрес скрыт>')
   })
 })
