@@ -84,9 +84,18 @@ export const PART_JARGON: Record<string, string> = {
   'вкладыш': 'Вкладыш',
   'сальник': 'Сальник',
   'клапан': 'Клапан',
-  'клапанная крышка': 'Крышка клапанная',
-  'крышка клапанов': 'Крышка клапанная',
-  'крышка двигателя': 'Крышка клапанная',
+  // Каталог зовёт её «Крышка ГБЦ» — «Крышка клапанная» в его справочнике не
+  // существует, и подсказка сваливалась на общее слово «крышка», отдавая
+  // расширительный бачок (живой случай: Citroen C4, сент 2026).
+  'клапанная крышка': 'Крышка ГБЦ',
+  'крышка клапанная': 'Крышка ГБЦ',
+  'крышка клапанов': 'Крышка ГБЦ',
+  'крышка двигателя': 'Крышка ГБЦ',
+  'крышка гбц': 'Крышка ГБЦ',
+  'крышка головки': 'Крышка ГБЦ',
+  'крышка головки блока': 'Крышка ГБЦ',
+  'крышка головки цилиндров': 'Крышка ГБЦ',
+  'крышка головки блока цилиндров': 'Крышка ГБЦ',
   'маслозаливная крышка': 'Крышка маслозаливной горловины',
   'крышка маслозаливной': 'Крышка маслозаливной горловины',
   'крышка маслозаливной горловины': 'Крышка маслозаливной горловины',
@@ -101,6 +110,11 @@ export const PART_JARGON: Record<string, string> = {
   'крышка лючка бензобака': 'Крышка топливного бака',
   'гбц': 'Головка блока цилиндров',
   'головка': 'Головка блока цилиндров',
+  // Фраза целиком — иначе пословная замена «головка» → «головка блока
+  // цилиндров» дописывает канон к уже написанному: «головка блока цилиндров
+  // блока цилиндров».
+  'головка блока': 'Головка блока цилиндров',
+  'головка блока цилиндров': 'Головка блока цилиндров',
   'блок': 'Блок цилиндров',
   'прокладка гбц': 'Прокладка головки цилиндра',
   'прокладка': 'Прокладка',
@@ -397,8 +411,9 @@ export const PART_JARGON: Record<string, string> = {
   'поддон картера': 'Поддон картера',
   'поддон': 'Поддон картера',
   'прокладка поддона': 'Прокладка поддона картера',
-  'прокладка клапанной': 'Прокладка клапанной крышки',
-  'прокладка клапанной крышки': 'Прокладка клапанной крышки',
+  'прокладка клапанной': 'Прокладка крышки ГБЦ',
+  'прокладка клапанной крышки': 'Прокладка крышки ГБЦ',
+  'прокладка крышки гбц': 'Прокладка крышки ГБЦ',
   'прокладка впуска': 'Прокладка впускного коллектора',
   'прокладка впускного коллектора': 'Прокладка впускного коллектора',
   'прокладка выпуска': 'Прокладка выпускного коллектора',
@@ -1188,18 +1203,38 @@ export function normalizePartQuery(text: string): string {
   const exact = JARGON_WITH_YO_VARIANTS[lowered]
   if (exact) return exact
 
+  // Канон многословного жаргонизма прячется за метку до конца разбора. Иначе
+  // пословный проход дотягивается до слов ГОТОВОГО канона и переписывает их:
+  // «клапанная крышка» → «крышка гбц» → «крышка головка блока цилиндров»,
+  // потому что «гбц» сам по себе — это головка блока.
+  const locked: string[] = []
   let out = lowered
   for (const key of MULTI_WORD_KEYS) {
-    if (out.includes(key)) {
-      out = out.split(key).join(JARGON_WITH_YO_VARIANTS[key]!.toLowerCase())
-    }
+    if (!out.includes(key)) continue
+    out = out.split(key).join(lockMark(locked.length))
+    locked.push(JARGON_WITH_YO_VARIANTS[key]!.toLowerCase())
   }
 
   const replaced = out.replace(TOKEN_RE, (token) => {
     const canonical = JARGON_WITH_YO_VARIANTS[token]
     return canonical ? canonical.toLowerCase() : token
   })
-  return collapseRepeatedWords(replaced)
+  return collapseRepeatedWords(unlock(replaced, locked))
+}
+
+/**
+ * Метка спрятанного канона. Символ вне TOKEN_RE, поэтому пословный проход
+ * метку не видит и не разрушает.
+ */
+function lockMark(index: number): string {
+  return ` ${index} `
+}
+
+/** Возвращает спрятанные каноны на место. */
+function unlock(text: string, locked: string[]): string {
+  return locked.length === 0
+    ? text
+    : text.replace(/ (\d+) /g, (match, index) => locked[Number(index)] ?? match)
 }
 
 /**
@@ -1218,6 +1253,84 @@ function collapseRepeatedWords(text: string): string {
 }
 
 /**
+ * Обратный индекс словаря: канон → все формы, которые к нему ведут.
+ *
+ * Словарь уже хранит синонимические ряды («клапанная крышка», «крышка
+ * клапанов», «крышка гбц» — одна деталь), но нормализация оставляла от ряда
+ * одно имя, канон, и весь ряд пропадал. А каталоги зовут деталь по-разному:
+ * parts-catalogs — «Крышка ГБЦ», 17vin — иероглифами, нелокализованный узел —
+ * «Cylinder head cover». Угадать, какое имя знает конкретный каталог, нельзя,
+ * поэтому наружу отдаётся ряд целиком: поиск сверяет с ним выдачу каталога.
+ */
+const { FORMS_BY_CANONICAL, CANONICAL_BY_FORM } = (() => {
+  const forms = new Map<string, string[]>()
+  const canonicalBy = new Map<string, string>()
+
+  for (const [form, canonical] of Object.entries(JARGON_WITH_YO_VARIANTS)) {
+    const key = canonical.toLowerCase()
+    const list = forms.get(key) ?? [key] // канон — тоже имя детали, и самое частое
+    if (!list.includes(form)) list.push(form)
+    forms.set(key, list)
+    canonicalBy.set(form, key)
+    canonicalBy.set(key, key)
+  }
+
+  // Многословные формы вперёд: «крышка головки блока цилиндров» описывает
+  // деталь однозначно, а односложное «жабка» — чистый жаргон, каталогу он
+  // ничего не скажет. Канон остаётся первым.
+  for (const [key, list] of forms) {
+    const [canonical, ...rest] = list
+    rest.sort((a, b) => wordCount(b) - wordCount(a) || b.length - a.length)
+    forms.set(key, [canonical!, ...rest])
+  }
+
+  return { FORMS_BY_CANONICAL: forms, CANONICAL_BY_FORM: canonicalBy }
+})()
+
+function wordCount(text: string): number {
+  return text.split(/\s+/).filter(Boolean).length
+}
+
+/**
+ * Все известные названия детали из запроса — от канона к более редким формам.
+ * Пусто, если деталь словарю незнакома.
+ *
+ * Деталь опознаётся по нормализованному запросу, по исходному тексту и, если
+ * оба мимо, по самому длинному жаргонизму внутри фразы: «колодки тормозные
+ * передние» целиком словарю неизвестны, но «колодки» в них есть.
+ */
+export function partSynonyms(text: string): string[] {
+  if (!text) return []
+  const candidates = [normalizePartQuery(text).toLowerCase(), text.toLowerCase().trim()]
+  for (const candidate of candidates) {
+    const canonical = CANONICAL_BY_FORM.get(candidate)
+    if (canonical) return FORMS_BY_CANONICAL.get(canonical) ?? []
+  }
+  // Деталь в запросе названа ПЕРВОЙ, уточнение идёт следом: «сальник
+  // коленвала» — это сальник, «пыльник шруса» — пыльник. Берём жаргонизм,
+  // который начинается раньше всех, а не самый длинный: иначе «коленвал»
+  // (длиннее «сальника») уводил ряд к коленчатому валу.
+  const lowered = text.toLowerCase().trim()
+  const [found] = jargonReplacements(text)
+    .map((item) => ({ ...item, at: position(lowered, item.jargon) }))
+    .sort((a, b) => a.at - b.at || b.jargon.length - a.jargon.length)
+  return found ? (FORMS_BY_CANONICAL.get(found.canonical.toLowerCase()) ?? []) : []
+}
+
+/** Где жаргонизм начинается в запросе; не нашёлся — в самый конец очереди. */
+function position(text: string, jargon: string): number {
+  const at = text.indexOf(jargon)
+  return at === -1 ? Number.MAX_SAFE_INTEGER : at
+}
+
+/**
+ * Сколько ДОПОЛНИТЕЛЬНЫХ имён детали уходит в поиск, если основные варианты
+ * ничего не нашли. Каждое — это обращения к каталогу, поэтому берутся только
+ * многословные формы: односложный жаргон каталог всё равно не знает.
+ */
+const MAX_SYNONYM_VARIANTS = 3
+
+/**
  * Варианты запроса для поиска, от самого «чистого» к исходному. Провайдер
  * пробует их по очереди: точный термин без мусора обычно даёт лучшую выдачу,
  * но если каталог его не знает — остаётся шанс у исходной формулировки.
@@ -1227,11 +1340,18 @@ export function expandPartQuery(text: string): string[] {
   const base = text.trim()
   if (!base) return []
   const normalized = normalizePartQuery(base)
+  // Хвост — другие имена той же детали: если каталог не знает канон, у ряда
+  // остаётся шанс. Порядок не меняется, поэтому на удачном поиске (а он
+  // заканчивается на первом непустом варианте) лишних обращений не появляется.
+  const alternatives = partSynonyms(base)
+    .filter((form) => wordCount(form) > 1)
+    .slice(0, MAX_SYNONYM_VARIANTS + 1)
   const candidates = [
     stripStopwords(normalized),
     normalized,
     stripStopwords(base),
     base,
+    ...alternatives,
   ]
 
   const out: string[] = []

@@ -88,6 +88,7 @@ export class CatalogService {
       return { vehicle, parts, resolvedQuery, source: this.meta.catalog }
     }
 
+    logSearchMiss(vehicle, query, variants, this.meta.catalog)
     return { vehicle, parts: [], source: this.meta.catalog }
   }
 
@@ -101,6 +102,35 @@ export class CatalogService {
       source: this.meta.suppliers,
     }
   }
+}
+
+/** Метка промаха в журнале — по ней собираются запросы для словаря. */
+export const SEARCH_MISS_TAG = '[catalog:miss]'
+
+/**
+ * Запрос, по которому каталог не дал ничего, — в журнал.
+ *
+ * Это единственный источник, из которого словарь жаргона пополняется реальными
+ * словами мастеров, а не догадками: как деталь называют на практике, видно
+ * только по живым промахам. Пишется здесь, а не в боте, потому что промах
+ * одинаково важен для веба, Telegram и мобильного.
+ *
+ * Одной строкой и с устойчивой меткой — чтобы на сервере собиралось грепом
+ * (`journalctl -u vingo-bot | grep '[catalog:miss]'`). Печатаются и варианты
+ * запроса: по ним видно, что именно ушло в каталог, — сам по себе исходный
+ * текст не говорит, промахнулся словарь или каталог.
+ */
+function logSearchMiss(
+  vehicle: SearchPartsResponse['vehicle'],
+  query: string,
+  variants: string[],
+  source: CatalogProvidersMeta['catalog'],
+): void {
+  const car = [vehicle.make, vehicle.model, vehicle.year].filter(Boolean).join(' ')
+  console.warn(
+    `${SEARCH_MISS_TAG} ${vehicle.vin} ${car} | запрос: «${query.trim()}» | ` +
+      `искали: ${variants.join(', ')} | каталог: ${source.names.join('+') || 'нет'}`,
+  )
 }
 
 /**

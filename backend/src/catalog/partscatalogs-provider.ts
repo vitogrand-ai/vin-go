@@ -3,6 +3,7 @@ import type { Part, Vehicle } from '@web-app-demo/contracts'
 import { AppError } from '../http/errors'
 import { CATALOG_SOURCE_KEY } from './fallback-catalog'
 import { asArray, firstArray, int, isRecord, str } from './parse-utils'
+import { partSynonyms } from './part-jargon'
 import { englishPartTerms } from './part-terms'
 import { requestProviderJson } from './provider-http'
 import type { CatalogProvider } from './providers'
@@ -45,9 +46,10 @@ export const PARTSCATALOGS_DEFAULT_BASE_URL = 'https://api.parts-catalogs.com/v1
 export const PARTSCATALOGS_MAX_PARTS = 100
 
 /**
- * Сколько первых подсказок groups-suggest (sid) раскрываем в схемы. Пять, а не
- * три: живьём на Subaru «колодки тормозные» подсказка отдаёт четыре названия, и
- * нужное («Диски тормозные с колодками (комплект)») стоит последним.
+ * Сколько подсказок groups-suggest (sid) раскрываем в схемы — после
+ * ранжирования (см. `rankSuggestions`). Пять, а не три: живьём на Subaru
+ * «колодки тормозные» подсказка отдаёт четыре названия, и нужное («Диски
+ * тормозные с колодками (комплект)») стоит последним.
  */
 const MAX_PART_NAMES = 5
 
@@ -74,6 +76,9 @@ export type PartsCatalogsConfig = {
 
 /** Координаты авто в каталоге — сохраняются в raw при decodeVin, нужны поиску. */
 type CarRef = { catalogId: string; carId: string; criteria: string | null }
+
+/** Название детали из справочника каталога (ответ groups-suggest). */
+export type Suggestion = { sid: string; name: string }
 
 export class PartsCatalogsCatalogProvider implements CatalogProvider {
   private readonly apiKey: string
@@ -122,7 +127,10 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
     const englishTerms = englishPartTerms(q)
     let passes = 0
     for (const attempt of shortenQuery(q)) {
-      const sids = await this.suggestPartNames(ref.catalogId, attempt)
+      // Ранжируем по ИСХОДНОМУ запросу, а не по укороченному: на втором проходе
+      // от «Крышка ГБЦ» остаётся «Крышка», и по ней любая крышка каталога
+      // выглядит одинаково подходящей.
+      const sids = rankSuggestions(await this.suggestPartNames(ref.catalogId, attempt), q)
       if (sids.length === 0) continue // подсказка не знает фразы — она ничего не стоила
 
       const parts = await this.collectFromSchemas(ref, sids, vehicle.make, englishTerms)
@@ -132,15 +140,17 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
     return []
   }
 
-  /** Шаг 1: текст запроса → sid названий деталей (русский работает напрямую). */
-  private async suggestPartNames(catalogId: string, query: string): Promise<string[]> {
+  /** Шаг 1: текст запроса → названия деталей справочника (русский работает напрямую). */
+  private async suggestPartNames(catalogId: string, query: string): Promise<Suggestion[]> {
     const suggested = await this.request(
       `/catalogs/${encodeURIComponent(catalogId)}/groups-suggest?${new URLSearchParams({ q: query })}`,
     )
-    return (asArray(suggested) ?? [])
-      .map((item) => str(item, ['sid', 'id']))
-      .filter((sid): sid is string => sid !== null)
-      .slice(0, MAX_PART_NAMES)
+    const out: Suggestion[] = []
+    for (const item of asArray(suggested) ?? []) {
+      const sid = str(item, ['sid', 'id'])
+      if (sid !== null) out.push({ sid, name: str(item, ['name']) ?? '' })
+    }
+    return out
   }
 
   /**
@@ -423,6 +433,94 @@ function matchesTerms(name: string, terms: string[]): boolean {
 /** Слова названия: EPC разделяет их дефисами, запятыми и слэшами, не только пробелом. */
 function splitWords(value: string): string[] {
   return value.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
+}
+
+/**
+ * Подсказки справочника, отсортированные по близости к детали из запроса.
+ *
+ * Подсказка нечёткая: справочнику хватает одного общего слова, поэтому на
+ * «Крышка ГБЦ» он отдаёт и «Крышка расширительного бачка системы охлаждения».
+ * Раньше выигрывало название, которое каталог поставил первым, и мастеру
+ * уезжала схема чужого узла (живьём: Citroen C4, «клапанная крышка» →
+ * расширительный бачок).
+ *
+ * Сверяемся не с одним написанием запроса, а со ВСЕМ синонимическим рядом
+ * детали (`partSynonyms`): каждый каталог зовёт деталь по-своему, и заранее
+ * неизвестно, какое из имён ряда он использует. Побеждает название, ближе
+ * всего подошедшее хоть к одному имени ряда, и только потом список режется до
+ * MAX_PART_NAMES — точное попадание не должно отсечься лимитом.
+ *
+ * Названия без общих слов НЕ выбрасываются: у каталогов без русского
+ * универсального дерева справочник английский, и пустым оказался бы весь
+ * список. Порядок каталога сохраняется внутри равных — сортировка стабильная.
+ */
+export function rankSuggestions(suggestions: Suggestion[], query: string): string[] {
+  const names = [query, ...partSynonyms(query)]
+    .map(wordKeys)
+    .filter((keys) => keys.size > 0)
+
+  return suggestions
+    .map((suggestion, order) => ({
+      sid: suggestion.sid,
+      order,
+      score: closeness(suggestion.name, names),
+    }))
+    .sort((a, b) => b.score - a.score || a.order - b.order)
+    .slice(0, MAX_PART_NAMES)
+    .map((ranked) => ranked.sid)
+}
+
+/** Насколько название подошло к ближайшему имени детали. */
+function closeness(name: string, names: Set<string>[]): number {
+  const words = wordList(name)
+  const keys = new Set(words)
+  let best = 0
+  for (const candidate of names) {
+    best = Math.max(best, similarity(words[0], keys, candidate))
+  }
+  return best
+}
+
+/**
+ * Схожесть названия из справочника с одним из имён детали.
+ *
+ * Справочник пишет деталь ГЛАВНЫМ СЛОВОМ ВПЕРЁД, а уточнения — после:
+ * «Подшипник генератора» — это подшипник, «Генератор озоновый» — генератор,
+ * «Крышка ГБЦ» — крышка. Поэтому совпадение первого слова решает: с ним
+ * схожесть лежит в верхней половине шкалы, без него — в нижней, и никакой
+ * сосед по узлу не обойдёт саму деталь. Внутри половины порядок задаёт доля
+ * общих слов (мера Жаккара): она отделяет «Крышка ГБЦ» от «Крышка
+ * расширительного бачка системы охлаждения», у которых главное слово одно.
+ *
+ * Одной долей общих слов обойтись нельзя: она штрафует название за каждое
+ * уточнение, и короткий чужой сосед обгонял точную, но подробную деталь.
+ */
+function similarity(head: string | undefined, keys: Set<string>, candidate: Set<string>): number {
+  let common = 0
+  for (const key of candidate) {
+    if (keys.has(key)) common += 1
+  }
+  if (common === 0) return 0
+  const jaccard = common / (keys.size + candidate.size - common)
+  return head !== undefined && candidate.has(head) ? (1 + jaccard) / 2 : jaccard / 2
+}
+
+/**
+ * Слова строки по порядку, огрублённые до пятибуквенного начала: так «головки»
+ * и «головка» считаются одним словом, и русская морфология не мешает сравнению
+ * без настоящего стемминга. Порядок важен — первое слово несёт саму деталь.
+ */
+function wordList(value: string): string[] {
+  return value
+    .toLowerCase()
+    .replaceAll('ё', 'е')
+    .split(/[^a-zа-я0-9]+/)
+    .filter(Boolean)
+    .map((word) => word.slice(0, 5))
+}
+
+function wordKeys(value: string): Set<string> {
+  return new Set(wordList(value))
 }
 
 /**

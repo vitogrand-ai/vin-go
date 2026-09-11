@@ -46,6 +46,11 @@ describe('translatePartQuery', () => {
     expect(translatePartQuery('крышка')).toBeNull()
   })
 
+  test('канон «крышка гбц» ведёт туда же, что и «клапанная крышка»', () => {
+    expect(translatePartQuery('крышка гбц')).toBe('气缸盖罩')
+    expect(englishPartTerms('крышка гбц')).toContain('cylinder head cover')
+  })
+
   test('неизвестный запрос → null (сырьё для пополнения словаря)', () => {
     expect(translatePartQuery('тормозная жидкость')).toBeNull()
     expect(translatePartQuery('какая-то штука')).toBeNull()

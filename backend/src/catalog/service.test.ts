@@ -3,7 +3,7 @@ import type { Part, Vehicle } from '@web-app-demo/contracts'
 
 import { MockPlateProvider, MockSupplierProvider } from './mock-providers'
 import type { CatalogProvider } from './providers'
-import { CatalogService, createMockCatalogService } from './service'
+import { CatalogService, SEARCH_MISS_TAG, createMockCatalogService } from './service'
 
 const VEHICLE: Vehicle = {
   vin: 'WVWZZZ1JZ3W386752',
@@ -87,6 +87,41 @@ describe('CatalogService.searchParts — понимание жаргона', () 
     expect(result.parts).toEqual([])
     expect(result.vehicle).toEqual(VEHICLE)
     expect(catalog.asked.length).toBeGreaterThan(1)
+  })
+
+  test('промах уходит в журнал: по нему пополняется словарь', async () => {
+    const warnings: string[] = []
+    const warn = console.warn
+    console.warn = (...args: unknown[]) => void warnings.push(args.join(' '))
+    try {
+      await serviceWith(new CanonicalOnlyCatalog('такого-термина-нет')).searchParts(
+        VEHICLE.vin,
+        'жужжалка',
+      )
+    } finally {
+      console.warn = warn
+    }
+
+    const miss = warnings.find((line) => line.includes(SEARCH_MISS_TAG))
+    expect(miss).toBeDefined()
+    // В строке должно быть всё, чем потом чинят словарь: машина, что спросили
+    // и что реально ушло в каталог.
+    expect(miss).toContain(VEHICLE.vin)
+    expect(miss).toContain('жужжалка')
+    expect(miss).toContain('Volkswagen Golf')
+  })
+
+  test('находка в журнал промахов не попадает', async () => {
+    const warnings: string[] = []
+    const warn = console.warn
+    console.warn = (...args: unknown[]) => void warnings.push(args.join(' '))
+    try {
+      await serviceWith(new CanonicalOnlyCatalog('шрус')).searchParts(VEHICLE.vin, 'гранатка')
+    } finally {
+      console.warn = warn
+    }
+
+    expect(warnings.some((line) => line.includes(SEARCH_MISS_TAG))).toBe(false)
   })
 
   test('дубли по OEM-номеру схлопываются, картинка добирается из дубля', async () => {

@@ -126,7 +126,10 @@ const DICT: DictEntry[] = [
   // NB: у части моторов (BMW B47) отдельной детали нет — он в клапанной крышке.
   { stems: ['маслоотделител'], zh: '分离器', en: ['separator'] }, // 2
   { stems: ['сепаратор'], zh: '分离器', en: ['separator'] },
-  { stems: ['клапанн', 'крышк'], zh: '气缸盖罩', en: ['rocker cover', 'valve cover'] }, // 2 (BMW, живьём)
+  // Крышка ГБЦ, она же клапанная. `cylinder head cover` — как деталь
+  // подписана в справочнике parts-catalogs; обе формы запроса ведут сюда.
+  { stems: ['клапанн', 'крышк'], zh: '气缸盖罩', en: ['cylinder head cover', 'rocker cover', 'valve cover'] }, // 2 (BMW, живьём)
+  { stems: ['гбц', 'крышк'], zh: '气缸盖罩', en: ['cylinder head cover', 'rocker cover', 'valve cover'] },
 
   // — Кузов, свет, салон —
   { stems: ['бампер'], zh: '保险杠', en: ['bumper'] }, // 61

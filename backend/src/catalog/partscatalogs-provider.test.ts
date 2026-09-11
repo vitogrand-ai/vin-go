@@ -10,6 +10,7 @@ import {
   collectParts,
   mapVehicle,
   normalizeImageUrl,
+  rankSuggestions,
   shortenQuery,
 } from './partscatalogs-provider'
 
@@ -386,6 +387,39 @@ describe('PartsCatalogsCatalogProvider.searchParts', () => {
     expect(parts.map((part) => part.category)).toEqual(['Задний тормоз', 'Передний тормоз'])
   })
 
+  test('нечёткая подсказка: схема берётся у названия, похожего на запрос', async () => {
+    // Живой баг (Citroen C4, сент 2026): на «Крышка ГБЦ» справочник отдаёт
+    // первой «Крышку расширительного бачка» — общего слова «крышка» ему
+    // достаточно. Раньше побеждала первая подсказка, и мастер получал схему
+    // бачка вместо клапанной крышки.
+    const schemaCalls: string[] = []
+    const provider = providerWith((url) => {
+      if (url.includes('/groups-suggest')) {
+        return json([
+          { sid: '407', name: 'Крышка расширительного бачка системы охлаждения' },
+          { sid: '1167', name: 'Крышка маслозаливной горловины' },
+          { sid: '323', name: 'Крышка ГБЦ' },
+        ])
+      }
+      if (url.includes('/schemas')) {
+        schemaCalls.push(new URL(url).searchParams.get('partNameIds') ?? '')
+        return json(SCHEMAS)
+      }
+      if (url.includes('/parts2')) {
+        return json({
+          partGroups: [{ parts: [{ number: '0248.L6', nameId: '323', name: 'Крышка ГБЦ' }] }],
+        })
+      }
+      return new Response('', { status: 404 })
+    })
+
+    const parts = await provider.searchParts(vehicle, 'Крышка ГБЦ')
+
+    // Схема спрашивается сразу у нужного названия — до бачка очередь не доходит.
+    expect(schemaCalls[0]).toBe('323')
+    expect(parts.map((part) => part.name)).toEqual(['Крышка ГБЦ'])
+  })
+
   test('пустой запрос → [] без обращений к API', async () => {
     const calls: { url: string; headers: Record<string, string> }[] = []
     const provider = providerWith(() => json([]), calls)
@@ -622,5 +656,66 @@ describe('shortenQuery / normalizeImageUrl', () => {
     ])
     expect(vehicle?.model).toBe('C4')
     expect(vehicle?.raw?.modification).toBeUndefined()
+  })
+})
+
+describe('rankSuggestions', () => {
+  const suggestions = [
+    { sid: '407', name: 'Крышка расширительного бачка системы охлаждения' },
+    { sid: '323', name: 'Крышка ГБЦ' },
+    { sid: '1167', name: 'Крышка маслозаливной горловины' },
+  ]
+
+  test('вперёд идёт название, ближайшее к детали из запроса', () => {
+    expect(rankSuggestions(suggestions, 'Крышка ГБЦ')[0]).toBe('323')
+  })
+
+  test('каталог зовёт деталь другим именем — выручает синонимический ряд', () => {
+    // Ключевой случай: слова «клапанная» нет НИ В ОДНОМ названии справочника,
+    // сравнивать с самим запросом бесполезно. Но словарь знает, что это та же
+    // деталь, что и «крышка гбц», — по ряду она и находится.
+    expect(rankSuggestions(suggestions, 'клапанная крышка')[0]).toBe('323')
+    expect(rankSuggestions(suggestions, 'крышка клапанов')[0]).toBe('323')
+  })
+
+  test('главное слово названия решает: сосед по узлу не обходит саму деталь', () => {
+    // Справочник пишет деталь первым словом: «Подшипник генератора» — это
+    // подшипник. Раньше он выигрывал у самого генератора, потому что был короче.
+    const generator = [
+      { sid: '1', name: 'Подшипник генератора' },
+      { sid: '2', name: 'Шкив генератора' },
+      { sid: '3', name: 'Генератор переменного тока' },
+    ]
+    expect(rankSuggestions(generator, 'генератор')[0]).toBe('3')
+  })
+
+  test('общее слово не перевешивает: у длинного чужого названия схожесть ниже', () => {
+    // «Крышка расширительного бачка» содержит «крышку» ровно так же, как
+    // «Крышка ГБЦ», и раньше выигрывала просто потому, что стояла первой.
+    expect(rankSuggestions(suggestions, 'крышка гбц')[0]).not.toBe('407')
+  })
+
+  test('морфология не мешает: «головки» и «головка» — одно слово', () => {
+    const byMorphology = [
+      { sid: '1', name: 'Прокладка поддона картера' },
+      { sid: '171', name: 'Головка блока цилиндров' },
+    ]
+    expect(rankSuggestions(byMorphology, 'головки блока цилиндров')[0]).toBe('171')
+  })
+
+  test('ни одного общего слова → порядок каталога сохраняется', () => {
+    // Справочник без русского дерева: обнулять такую выдачу нельзя.
+    const english = [
+      { sid: '87', name: 'Engine oil filter' },
+      { sid: '433', name: 'Engine oil' },
+    ]
+    expect(rankSuggestions(english, 'фильтр масляный')).toEqual(['87', '433'])
+  })
+
+  test('длинная выдача режется до пяти УЖЕ после сортировки', () => {
+    const many = Array.from({ length: 8 }, (_, index) => ({ sid: String(index), name: 'Крышка чужая' }))
+    const ranked = rankSuggestions([...many, { sid: 'target', name: 'Крышка ГБЦ' }], 'Крышка ГБЦ')
+    expect(ranked).toHaveLength(5)
+    expect(ranked[0]).toBe('target')
   })
 })
