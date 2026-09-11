@@ -10,6 +10,7 @@ import {
   collectParts,
   mapVehicle,
   normalizeImageUrl,
+  rankByPosition,
   rankSuggestions,
   shortenQuery,
 } from './partscatalogs-provider'
@@ -420,6 +421,39 @@ describe('PartsCatalogsCatalogProvider.searchParts', () => {
     expect(parts.map((part) => part.name)).toEqual(['Крышка ГБЦ'])
   })
 
+  test('уточнение позиции выбирает узел: передний тормоз обходит лимит схем', async () => {
+    // Живой Subaru: у «Колодки тормозные дисковые» схем больше, чем провайдер
+    // раскрывает, и передний тормоз стоял в каталоге четвёртым — лимит резал
+    // его, фильтр позиции вырезал остальное, мастер видел «не найдено».
+    const opened: string[] = []
+    const provider = providerWith((url) => {
+      if (url.includes('/groups-suggest')) return json([{ sid: '289', name: 'Колодки тормозные дисковые' }])
+      if (url.includes('/schemas')) {
+        return json({
+          list: [
+            { groupId: 'REAR-1', name: 'Задний тормоз' },
+            { groupId: 'REAR-2', name: 'Тормоз задний дисковый' },
+            { groupId: 'HAND', name: 'Тормоз стояночный' },
+            { groupId: 'FRONT', name: 'Передний тормоз', img: '//img.test/front.png' },
+          ],
+        })
+      }
+      if (url.includes('/parts2')) {
+        const groupId = new URL(url).searchParams.get('groupId') ?? ''
+        opened.push(groupId)
+        return json({
+          partGroups: [{ parts: [{ number: `OEM-${groupId}`, nameId: '289', name: 'Колодки тормозные дисковые' }] }],
+        })
+      }
+      return new Response('', { status: 404 })
+    })
+
+    const parts = await provider.searchParts(vehicle, 'колодки тормозные передние')
+
+    expect(opened[0]).toBe('FRONT')
+    expect(parts.map((part) => part.category)).toContain('Передний тормоз')
+  })
+
   test('пустой запрос → [] без обращений к API', async () => {
     const calls: { url: string; headers: Record<string, string> }[] = []
     const provider = providerWith(() => json([]), calls)
@@ -717,5 +751,21 @@ describe('rankSuggestions', () => {
     const ranked = rankSuggestions([...many, { sid: 'target', name: 'Крышка ГБЦ' }], 'Крышка ГБЦ')
     expect(ranked).toHaveLength(5)
     expect(ranked[0]).toBe('target')
+  })
+})
+
+describe('rankByPosition', () => {
+  const schemas = [
+    { groupId: 'R', name: 'Задний тормоз' },
+    { groupId: 'F', name: 'Передний тормоз' },
+    { groupId: 'X', name: 'Тормоз стояночный' },
+  ]
+
+  test('узел нужной стороны вперёд, противоположной — назад', () => {
+    expect(rankByPosition(schemas, 'колодки передние').map((s) => s['groupId'])).toEqual(['F', 'X', 'R'])
+  })
+
+  test('запрос без позиции порядок каталога не меняет', () => {
+    expect(rankByPosition(schemas, 'колодки тормозные').map((s) => s['groupId'])).toEqual(['R', 'F', 'X'])
   })
 })

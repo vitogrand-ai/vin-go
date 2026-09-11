@@ -50,6 +50,32 @@ function mentions(text: string, side: SideMatcher): boolean {
 }
 
 /**
+ * Насколько текст отвечает позиции из запроса: +1 за каждую ось (перед/зад,
+ * лево/право), где текст назван ТОЙ ЖЕ стороной, что и запрос, -1 — если
+ * противоположной, 0 — если сторона не упомянута.
+ *
+ * Нужна провайдеру для выбора узла: у популярной детали схем больше, чем он
+ * успевает раскрыть, и лимит отсекал их в порядке каталога. Живьём на Subaru
+ * «колодки передние» так уходили в узел заднего тормоза, а фильтр ниже потом
+ * вырезал всю выдачу — мастер видел «не найдено» при живых колодках.
+ */
+export function positionRank(text: string, query: string): number {
+  let rank = 0
+  for (const axis of AXES) {
+    const [first, second] = axis.sides
+    const wantsFirst = mentions(query, first)
+    const wantsSecond = mentions(query, second)
+    if (wantsFirst === wantsSecond) continue // сторона не названа или названы обе
+
+    const wanted = wantsFirst ? first : second
+    const opposite = wantsFirst ? second : first
+    if (mentions(text, wanted)) rank += 1
+    else if (mentions(text, opposite)) rank -= 1
+  }
+  return rank
+}
+
+/**
  * Оставляет детали, не противоречащие позиции из запроса. Для каждой оси
  * (перед/зад, лево/право), где запрос называет ровно одну сторону, деталь
  * отбрасывается, только если её название/категория упоминает противоположную

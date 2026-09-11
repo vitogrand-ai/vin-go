@@ -4,6 +4,7 @@ import { AppError } from '../http/errors'
 import { CATALOG_SOURCE_KEY } from './fallback-catalog'
 import { asArray, firstArray, int, isRecord, str } from './parse-utils'
 import { partSynonyms } from './part-jargon'
+import { positionRank } from './position-filter'
 import { englishPartTerms } from './part-terms'
 import { requestProviderJson } from './provider-http'
 import type { CatalogProvider } from './providers'
@@ -133,7 +134,7 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
       const sids = rankSuggestions(await this.suggestPartNames(ref.catalogId, attempt), q)
       if (sids.length === 0) continue // подсказка не знает фразы — она ничего не стоила
 
-      const parts = await this.collectFromSchemas(ref, sids, vehicle.make, englishTerms)
+      const parts = await this.collectFromSchemas(ref, sids, vehicle.make, englishTerms, q)
       if (parts.length > 0) return parts
       if (++passes >= MAX_SEARCH_PASSES) break
     }
@@ -162,6 +163,7 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
     sids: string[],
     brand: string | null,
     englishTerms: string[],
+    query: string,
   ): Promise<Part[]> {
     // Кандидаты обходятся ПО ОДНОМУ, а не общим списком: подсказка ставит первым
     // не обязательно то, что спрашивали («блок цилиндров» → сперва «Прокладка
@@ -176,7 +178,7 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
     // до одного названия значило бы потерять половину выдачи.
     const sidSet = new Set(sids)
     for (const sid of sids) {
-      const parts = await this.collectForName(ref, sid, sidSet, brand, englishTerms, seen)
+      const parts = await this.collectForName(ref, sid, sidSet, brand, englishTerms, seen, query)
       if (parts.length > 0) return parts
     }
     return []
@@ -190,6 +192,7 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
     brand: string | null,
     englishTerms: string[],
     seen: Set<string>,
+    query: string,
   ): Promise<Part[]> {
     const params = new URLSearchParams({ carId: ref.carId, partNameIds: sid })
     if (ref.criteria) params.set('criteria', ref.criteria)
@@ -197,8 +200,11 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
       `/catalogs/${encodeURIComponent(ref.catalogId)}/schemas?${params}`,
     )
 
+    // Узлы, отвечающие позиции из запроса, — вперёд, и только потом лимит.
+    // Отсекать в порядке каталога нельзя: у колодок схем больше трёх, и
+    // передний тормоз в них не попадал (см. `positionRank`).
     const groups = new Map<string, { category: string; imageUrl: string | null }>()
-    for (const schema of firstArray(data, ['list']) ?? []) {
+    for (const schema of rankByPosition(firstArray(data, ['list']) ?? [], query)) {
       const groupId = str(schema, ['groupId', 'id'])
       if (!groupId || groups.has(groupId)) continue
       groups.set(groupId, {
@@ -433,6 +439,17 @@ function matchesTerms(name: string, terms: string[]): boolean {
 /** Слова названия: EPC разделяет их дефисами, запятыми и слэшами, не только пробелом. */
 function splitWords(value: string): string[] {
   return value.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
+}
+
+/**
+ * Схемы узлов в порядке соответствия позиции из запроса; порядок каталога
+ * сохраняется внутри равных. Запрос без позиции ничего не меняет.
+ */
+export function rankByPosition(schemas: Record<string, unknown>[], query: string): Record<string, unknown>[] {
+  return schemas
+    .map((schema, order) => ({ schema, order, rank: positionRank(str(schema, ['name']) ?? '', query) }))
+    .sort((a, b) => b.rank - a.rank || a.order - b.order)
+    .map((ranked) => ranked.schema)
 }
 
 /**
