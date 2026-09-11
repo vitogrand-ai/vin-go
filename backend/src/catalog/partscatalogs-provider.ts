@@ -51,8 +51,13 @@ export const PARTSCATALOGS_MAX_PARTS = 100
  */
 const MAX_PART_NAMES = 5
 
-/** Потолок вызовов parts2 на один поиск — у популярных запросов схем десятки. */
-const MAX_GROUPS = 6
+/**
+ * Потолок вызовов parts2 на ОДНО название из подсказки — у популярных запросов
+ * схем десятки. Названий перебирается до MAX_PART_NAMES, но перебор
+ * останавливается на первом, которое дало детали, поэтому в типичном поиске
+ * лишних вызовов не прибавляется.
+ */
+const MAX_GROUPS_PER_NAME = 3
 
 /** Сколько раз повторяем поиск укороченным запросом, если деталей не нашлось. */
 const MAX_SEARCH_PASSES = 2
@@ -148,28 +153,47 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
     brand: string | null,
     englishTerms: string[],
   ): Promise<Part[]> {
-    const sidSet = new Set(sids)
-    const groups = new Map<string, { category: string; imageUrl: string | null }>()
+    // Кандидаты обходятся ПО ОДНОМУ, а не общим списком: подсказка ставит первым
+    // не обязательно то, что спрашивали («блок цилиндров» → сперва «Прокладка
+    // передней крышки блока цилиндров»), и раньше такой кандидат выбирал общий
+    // лимит узлов, а до подходящего («Головка блока цилиндров») очередь уже не
+    // доходила. Теперь каждое название получает свой шанс, а поиск
+    // останавливается на первом, которое дало детали.
+    const seen = new Set<string>()
     for (const sid of sids) {
-      if (groups.size >= MAX_GROUPS) break
-      const params = new URLSearchParams({ carId: ref.carId, partNameIds: sid })
-      if (ref.criteria) params.set('criteria', ref.criteria)
-      const data = await this.request(
-        `/catalogs/${encodeURIComponent(ref.catalogId)}/schemas?${params}`,
-      )
-      for (const schema of firstArray(data, ['list']) ?? []) {
-        const groupId = str(schema, ['groupId', 'id'])
-        if (!groupId || groups.has(groupId)) continue
-        groups.set(groupId, {
-          category: str(schema, ['name']) ?? '',
-          imageUrl: normalizeImageUrl(str(schema, ['img'])),
-        })
-        if (groups.size >= MAX_GROUPS) break
-      }
+      const parts = await this.collectForName(ref, sid, brand, englishTerms, seen)
+      if (parts.length > 0) return parts
+    }
+    return []
+  }
+
+  /** Узлы и детали одного названия из справочника каталога. */
+  private async collectForName(
+    ref: CarRef,
+    sid: string,
+    brand: string | null,
+    englishTerms: string[],
+    seen: Set<string>,
+  ): Promise<Part[]> {
+    const params = new URLSearchParams({ carId: ref.carId, partNameIds: sid })
+    if (ref.criteria) params.set('criteria', ref.criteria)
+    const data = await this.request(
+      `/catalogs/${encodeURIComponent(ref.catalogId)}/schemas?${params}`,
+    )
+
+    const groups = new Map<string, { category: string; imageUrl: string | null }>()
+    for (const schema of firstArray(data, ['list']) ?? []) {
+      const groupId = str(schema, ['groupId', 'id'])
+      if (!groupId || groups.has(groupId)) continue
+      groups.set(groupId, {
+        category: str(schema, ['name']) ?? '',
+        imageUrl: normalizeImageUrl(str(schema, ['img'])),
+      })
+      if (groups.size >= MAX_GROUPS_PER_NAME) break
     }
 
+    const sidSet = new Set([sid])
     const parts: Part[] = []
-    const seen = new Set<string>()
     for (const [groupId, group] of groups) {
       if (parts.length >= PARTSCATALOGS_MAX_PARTS) break
       const params = new URLSearchParams({ carId: ref.carId, groupId })
@@ -373,11 +397,27 @@ export function collectParts(
   }
 }
 
-/** Название детали отвечает запросу, если содержит любой из его терминов. */
+/**
+ * Название детали отвечает запросу, если содержит любой из его терминов.
+ *
+ * Сравнение пословное, а не подстрочное: EPC пишет название в своём порядке и
+ * со служебными вставками — «COIL ASSY-IGNITION» у катушки зажигания, «JOINT
+ * ASSY-UNIVERSAL» у ШРУСа (живьём, Hyundai). Подстрока «ignition coil» такое
+ * название не ловит, хотя это ровно то, что спрашивали. Слова термина должны
+ * найтись в названии целиком — «pad» не совпадёт с «padding».
+ */
 function matchesTerms(name: string, terms: string[]): boolean {
   if (terms.length === 0) return false
-  const lowered = name.toLowerCase()
-  return terms.some((term) => lowered.includes(term))
+  const nameWords = new Set(splitWords(name))
+  return terms.some((term) => {
+    const termWords = splitWords(term)
+    return termWords.length > 0 && termWords.every((word) => nameWords.has(word))
+  })
+}
+
+/** Слова названия: EPC разделяет их дефисами, запятыми и слэшами, не только пробелом. */
+function splitWords(value: string): string[] {
+  return value.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
 }
 
 /**

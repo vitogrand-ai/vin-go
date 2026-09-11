@@ -472,6 +472,36 @@ describe('collectParts', () => {
     expect(c.out.map((part) => part.oemNumber)).toEqual(['26296FL030'])
   })
 
+  test('порядок слов в названии EPC не мешает отбору', () => {
+    // Живые названия Hyundai: «COIL ASSY-IGNITION», «JOINT ASSY-UNIVERSAL». Подстрочное
+    // сравнение их не ловило — слова идут в другом порядке и через дефис.
+    const c = ctx(['ignition coil'])
+    collectParts(
+      {
+        partGroups: [
+          {
+            parts: [
+              { number: '27301-2B010', nameId: null, name: 'COIL ASSY-IGNITION' },
+              { number: '27350-2B000', nameId: null, name: 'BRACKET-COIL' },
+            ],
+          },
+        ],
+      },
+      c,
+    )
+    expect(c.out.map((part) => part.oemNumber)).toEqual(['27301-2B010'])
+  })
+
+  test('частичное слово не считается совпадением', () => {
+    // «pad» не должен ловить «PADDING»: иначе в выдачу попадают соседи по узлу.
+    const c = ctx(['pad'])
+    collectParts(
+      { partGroups: [{ parts: [{ number: 'X1', nameId: null, name: 'PADDING-DOOR TRIM' }] }] },
+      c,
+    )
+    expect(c.out).toEqual([])
+  })
+
   test('точные попадания по nameId идут перед совпадениями по названию', () => {
     const c = ctx(['pad'])
     collectParts(
