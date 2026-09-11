@@ -61,13 +61,19 @@ export type SendPhotoOptions = SendMessageOptions & {
   caption?: string
 }
 
+/** Лимит Bot API на загрузку фото файлом. Схемы узлов — десятки килобайт. */
+const MAX_PHOTO_BYTES = 10 * 1024 * 1024
+/** Картинка не должна задерживать long-polling, если CDN каталога подвис. */
+const PHOTO_TIMEOUT_MS = 15_000
+
 /** Абстракция клиента — для подмены фейком в тестах. */
 export interface TelegramClient {
   getUpdates(offset: number, timeoutSeconds: number): Promise<TgUpdate[]>
   sendMessage(chatId: number, text: string, options?: SendMessageOptions): Promise<void>
   /**
-   * Отправка фото по URL: картинку скачивает сам Telegram. Ошибка (битый URL,
-   * недоступный хост) пробрасывается — вызывающая сторона шлёт текстовый фолбэк.
+   * Отправка фото по URL. Картинку скачивает КЛИЕНТ и загружает файлом (см.
+   * `HttpTelegramClient.sendPhoto`). Ошибка (недоступная картинка, отказ
+   * Telegram) пробрасывается — вызывающая сторона шлёт текстовый фолбэк.
    */
   sendPhoto(chatId: number, photoUrl: string, options?: SendPhotoOptions): Promise<void>
   answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void>
@@ -106,6 +112,11 @@ export class HttpTelegramClient implements TelegramClient {
       // Сетевую ошибку не пробрасываем как есть: см. describeNetworkError.
       throw new Error(`Telegram ${method}: ${describeNetworkError(error)}`)
     }
+    return this.parseResult<T>(method, response)
+  }
+
+  /** Разбор конверта Bot API: `ok: false` — отказ метода, а не сетевой сбой. */
+  private async parseResult<T>(method: string, response: Response): Promise<T> {
     const data = (await response.json()) as { ok: boolean; result?: T; description?: string }
     if (!data.ok) {
       throw new Error(`Telegram ${method}: ${data.description ?? response.status}`)
@@ -130,14 +141,65 @@ export class HttpTelegramClient implements TelegramClient {
     })
   }
 
+  /**
+   * Фото уходит ФАЙЛОМ, а не ссылкой.
+   *
+   * По ссылке картинку качает сам Telegram, и на схемах узлов parts-catalogs он
+   * отвечал «Bad Request: failed to get HTTP URL content» (живой бот,
+   * 11.09.2026): CDN каталога не отдаёт файл его серверам, хотя нам отдаёт
+   * (HTTP 200 и с VPS, и снаружи). Скачиваем сами — доставка схемы зависит
+   * только от нашего доступа к каталогу, а не от маршрута Telegram к чужому CDN.
+   */
   async sendPhoto(chatId: number, photoUrl: string, options?: SendPhotoOptions): Promise<void> {
-    await this.call('sendPhoto', {
-      chat_id: chatId,
-      photo: photoUrl,
-      caption: options?.caption,
-      parse_mode: options?.parseMode,
-      reply_markup: options?.replyMarkup,
-    })
+    const photo = await this.fetchPhoto(photoUrl)
+
+    const form = new FormData()
+    form.set('chat_id', String(chatId))
+    form.set('photo', photo, fileNameFromUrl(photoUrl))
+    if (options?.caption !== undefined) form.set('caption', options.caption)
+    if (options?.parseMode !== undefined) form.set('parse_mode', options.parseMode)
+    if (options?.replyMarkup !== undefined) {
+      form.set('reply_markup', JSON.stringify(options.replyMarkup))
+    }
+
+    let response: Response
+    try {
+      // Content-Type не ставим руками: fetch сам добавит boundary multipart.
+      response = await this.fetchImpl(this.url('sendPhoto'), { method: 'POST', body: form })
+    } catch (error) {
+      throw new Error(`Telegram sendPhoto: ${describeNetworkError(error)}`)
+    }
+    await this.parseResult('sendPhoto', response)
+  }
+
+  /**
+   * Забирает картинку у каталога. Любой отказ — обычная ошибка: у вызывающей
+   * стороны есть текстовый фолбэк, схема не критична для выдачи.
+   */
+  private async fetchPhoto(photoUrl: string): Promise<Blob> {
+    let response: Response
+    try {
+      response = await this.fetchImpl(photoUrl, { signal: AbortSignal.timeout(PHOTO_TIMEOUT_MS) })
+    } catch (error) {
+      throw new Error(`Telegram sendPhoto: картинка не скачана (${describeNetworkError(error)})`)
+    }
+    if (!response.ok) {
+      throw new Error(`Telegram sendPhoto: картинка не скачана (HTTP ${response.status})`)
+    }
+
+    // Ошибку CDN, отданную страницей с кодом 200, ловим до загрузки в Telegram —
+    // иначе он ответит невнятным Bad Request.
+    const type = response.headers.get('content-type')
+    if (type && !type.startsWith('image/')) {
+      throw new Error(`Telegram sendPhoto: вместо картинки пришёл ${type}`)
+    }
+
+    const blob = await response.blob()
+    if (blob.size === 0) throw new Error('Telegram sendPhoto: картинка пустая')
+    if (blob.size > MAX_PHOTO_BYTES) {
+      throw new Error(`Telegram sendPhoto: картинка ${blob.size} Б больше лимита Bot API`)
+    }
+    return blob
   }
 
   async answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void> {
@@ -166,6 +228,15 @@ export class HttpTelegramClient implements TelegramClient {
       return null
     }
   }
+}
+
+/**
+ * Имя файла для multipart. Telegram определяет формат по содержимому, имя лишь
+ * попадает в свойства сообщения — поэтому неожиданное расширение заменяем.
+ */
+function fileNameFromUrl(photoUrl: string): string {
+  const name = photoUrl.split('?')[0]?.split('/').pop()
+  return name && /\.(png|jpe?g|webp)$/i.test(name) ? name : 'scheme.png'
 }
 
 /**

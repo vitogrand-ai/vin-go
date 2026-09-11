@@ -112,3 +112,118 @@ describe('describeNetworkError', () => {
     expect(describeNetworkError('строка')).toBe('сетевая ошибка')
   })
 })
+
+/**
+ * Схема узла раньше уходила ссылкой, и Telegram отвечал «failed to get HTTP URL
+ * content»: CDN каталога не отдаёт файл его серверам. Теперь картинку качает
+ * клиент и грузит файлом — тесты держат это поведение.
+ */
+describe('HttpTelegramClient.sendPhoto: картинка уходит файлом', () => {
+  const PHOTO_URL = 'https://ru.img.parts-catalogs.com/r/300x430/subaru/S14-262-01.png'
+  /** Сигнатура PNG — этого хватает, чтобы отличить байты картинки от подмены. */
+  const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+
+  /** Стаб с журналом вызовов: важно не только что ответили, но и куда ходили. */
+  function recordingFetch(handler: (url: string) => Response) {
+    const calls: { url: string; init?: RequestInit }[] = []
+    const impl = (async (input: unknown, init?: RequestInit) => {
+      calls.push({ url: String(input), init })
+      return handler(String(input))
+    }) as unknown as typeof fetch
+    return { impl, calls }
+  }
+
+  function catalogAndTelegram(photo: () => Response) {
+    return recordingFetch((url) =>
+      url.startsWith('https://api.telegram.org')
+        ? new Response(JSON.stringify({ ok: true, result: {} }), { status: 200 })
+        : photo(),
+    )
+  }
+
+  function okPhoto() {
+    return new Response(PNG, { status: 200, headers: { 'content-type': 'image/png' } })
+  }
+
+  test('скачивает картинку сама и шлёт её multipart-ом, а не ссылкой', async () => {
+    const { impl, calls } = catalogAndTelegram(okPhoto)
+    const client = new HttpTelegramClient(TOKEN, impl)
+
+    await client.sendPhoto(42, PHOTO_URL, {
+      caption: 'Колодки',
+      parseMode: 'HTML',
+      replyMarkup: { inline_keyboard: [[{ text: 'Эконом', callback_data: 'oem:1' }]] },
+    })
+
+    // Сначала каталог, потом Telegram — именно в этом порядке.
+    expect(calls).toHaveLength(2)
+    expect(calls[0]!.url).toBe(PHOTO_URL)
+    expect(calls[1]!.url).toContain('/sendPhoto')
+
+    const form = calls[1]!.init?.body as FormData
+    expect(form).toBeInstanceOf(FormData)
+    expect(form.get('chat_id')).toBe('42')
+    expect(form.get('caption')).toBe('Колодки')
+    expect(form.get('parse_mode')).toBe('HTML')
+    // Клавиатура переживает multipart только строкой JSON.
+    expect(JSON.parse(String(form.get('reply_markup')))).toEqual({
+      inline_keyboard: [[{ text: 'Эконом', callback_data: 'oem:1' }]],
+    })
+
+    // В поле photo — байты картинки, а не её адрес.
+    const sent = form.get('photo') as Blob
+    expect(sent).toBeInstanceOf(Blob)
+    expect(new Uint8Array(await sent.arrayBuffer())).toEqual(PNG)
+    expect(String(form.get('photo'))).not.toContain('parts-catalogs')
+  })
+
+  test('недоступную картинку не несёт в Telegram — сбой виден сразу', async () => {
+    const { impl, calls } = catalogAndTelegram(() => new Response('', { status: 404 }))
+    const client = new HttpTelegramClient(TOKEN, impl)
+
+    const error = await caught(client.sendPhoto(42, PHOTO_URL))
+
+    expect(error.message).toContain('404')
+    expect(error.message).not.toContain(TOKEN)
+    // Единственный вызов — к каталогу: зря дёргать Bot API незачем.
+    expect(calls).toHaveLength(1)
+  })
+
+  test('страницу-ошибку CDN с кодом 200 отличает от картинки', async () => {
+    const { impl, calls } = catalogAndTelegram(
+      () => new Response('<html>error</html>', { status: 200, headers: { 'content-type': 'text/html' } }),
+    )
+    const client = new HttpTelegramClient(TOKEN, impl)
+
+    const error = await caught(client.sendPhoto(42, PHOTO_URL))
+
+    expect(error.message).toContain('text/html')
+    expect(calls).toHaveLength(1)
+  })
+
+  test('отказ Bot API остаётся читаемым и без токена', async () => {
+    const { impl } = recordingFetch((url) =>
+      url.startsWith('https://api.telegram.org')
+        ? new Response(JSON.stringify({ ok: false, description: 'PHOTO_INVALID_DIMENSIONS' }), {
+            status: 400,
+          })
+        : okPhoto(),
+    )
+    const client = new HttpTelegramClient(TOKEN, impl)
+
+    const error = await caught(client.sendPhoto(42, PHOTO_URL))
+
+    expect(error.message).toContain('PHOTO_INVALID_DIMENSIONS')
+    expect(error.message).not.toContain(TOKEN)
+  })
+
+  test('сетевой сбой при скачивании не выносит наружу токен', async () => {
+    const client = new HttpTelegramClient(TOKEN, failingFetch())
+
+    const error = await caught(client.sendPhoto(42, PHOTO_URL))
+
+    expect(error.message).toContain('ConnectionRefused')
+    expect(error.message).not.toContain(TOKEN)
+    expect(JSON.stringify(error, Object.getOwnPropertyNames(error))).not.toContain(TOKEN)
+  })
+})
