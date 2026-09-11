@@ -81,6 +81,20 @@ type CarRef = { catalogId: string; carId: string; criteria: string | null }
 /** Название детали из справочника каталога (ответ groups-suggest). */
 export type Suggestion = { sid: string; name: string }
 
+/** Чем сверяется деталь узла и куда складывается: один пакет на весь поиск. */
+type SearchCtx = {
+  ref: CarRef
+  brand: string | null
+  /** Запрос в том виде, в каком ушёл в каталог: из него читается позиция. */
+  query: string
+  /** sid названий подсказки — точное попадание в универсальное дерево. */
+  sidSet: Set<string>
+  englishTerms: string[]
+  /** Имена детали из словаря, огрублённые до слов (см. `queryNames`). */
+  names: Set<string>[]
+  seen: Set<string>
+}
+
 export class PartsCatalogsCatalogProvider implements CatalogProvider {
   private readonly apiKey: string
   private readonly baseUrl: string
@@ -126,6 +140,7 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
     // укороченным запросом (слова отбрасываются с конца). Проходов не больше
     // MAX_SEARCH_PASSES: каждый — это вызовы schemas/parts2.
     const englishTerms = englishPartTerms(q)
+    const names = queryNames(q)
     let passes = 0
     for (const attempt of shortenQuery(q)) {
       // Ранжируем по ИСХОДНОМУ запросу, а не по укороченному: на втором проходе
@@ -134,7 +149,10 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
       const sids = rankSuggestions(await this.suggestPartNames(ref.catalogId, attempt), q)
       if (sids.length === 0) continue // подсказка не знает фразы — она ничего не стоила
 
-      const parts = await this.collectFromSchemas(ref, sids, vehicle.make, englishTerms, q)
+      const parts = await this.collectFromSchemas(
+        { ref, brand: vehicle.make, query: q, sidSet: new Set(sids), englishTerms, names, seen: new Set() },
+        sids,
+      )
       if (parts.length > 0) return parts
       if (++passes >= MAX_SEARCH_PASSES) break
     }
@@ -158,42 +176,27 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
    * Шаги 2-3: sid → схемы узлов (groupId + название + картинка) → детали узла,
    * прореженные до того, что спрашивали (см. `collectParts`).
    */
-  private async collectFromSchemas(
-    ref: CarRef,
-    sids: string[],
-    brand: string | null,
-    englishTerms: string[],
-    query: string,
-  ): Promise<Part[]> {
+  private async collectFromSchemas(ctx: SearchCtx, sids: string[]): Promise<Part[]> {
     // Кандидаты обходятся ПО ОДНОМУ, а не общим списком: подсказка ставит первым
     // не обязательно то, что спрашивали («блок цилиндров» → сперва «Прокладка
     // передней крышки блока цилиндров»), и раньше такой кандидат выбирал общий
     // лимит узлов, а до подходящего («Головка блока цилиндров») очередь уже не
     // доходила. Теперь каждое название получает свой шанс, а поиск
     // останавливается на первом, которое дало детали.
-    const seen = new Set<string>()
     // Узлы запрашиваются по одному названию, а внутри узла годится деталь ЛЮБОГО
     // из названий запроса: подсказка на «коленвал» отдаёт и «Датчик положения
     // коленвала», и «Сальник коленвала», и они лежат в одном узле — сузить отбор
     // до одного названия значило бы потерять половину выдачи.
-    const sidSet = new Set(sids)
     for (const sid of sids) {
-      const parts = await this.collectForName(ref, sid, sidSet, brand, englishTerms, seen, query)
+      const parts = await this.collectForName(ctx, sid)
       if (parts.length > 0) return parts
     }
     return []
   }
 
   /** Узлы одного названия из справочника; детали — по всем названиям запроса. */
-  private async collectForName(
-    ref: CarRef,
-    sid: string,
-    sidSet: Set<string>,
-    brand: string | null,
-    englishTerms: string[],
-    seen: Set<string>,
-    query: string,
-  ): Promise<Part[]> {
+  private async collectForName(ctx: SearchCtx, sid: string): Promise<Part[]> {
+    const { ref, query } = ctx
     const params = new URLSearchParams({ carId: ref.carId, partNameIds: sid })
     if (ref.criteria) params.set('criteria', ref.criteria)
     const data = await this.request(
@@ -230,15 +233,7 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
       if (data === null) continue
       // У parts2 своя копия картинки схемы — берём её, если в списке схем пусто.
       const imageUrl = group.imageUrl ?? (isRecord(data) ? normalizeImageUrl(str(data, ['img'])) : null)
-      collectParts(data, {
-        category: group.category,
-        imageUrl,
-        brand,
-        sidSet,
-        englishTerms,
-        seen,
-        out: parts,
-      })
+      collectParts(data, { ...ctx, category: group.category, imageUrl, out: parts })
     }
     return parts
   }
@@ -370,13 +365,17 @@ function carRefFromRaw(raw: Record<string, unknown> | undefined): CarRef | null 
  *
  *   1. `nameId` — один из искомых sid. Точное попадание каталога: деталь есть в
  *      его универсальном дереве, название уже локализовано.
- *   2. Название содержит английский термин запроса. Обязательный второй путь:
- *      локализованное дерево неполное (у subaru `hasUniTree: false`), и деталь
- *      без nameId приходит с оригинальным английским названием — именно так
- *      живьём выглядят передние колодки («PAD KIT-FRONT DISK BRAKE», nameId
- *      null), из-за чего один только признак (1) отвечал «ничего не найдено».
+ *   2. Название близко к одному из имён детали в словаре (`queryNames`).
+ *      Деталь без nameId приходит ОРИГИНАЛЬНЫМ названием каталога, и оно
+ *      бывает русским: живьём у Citroen сама клапанная крышка лежит как
+ *      «КРЫШКА ГОЛОВКИ ЦИЛИНДРОВ» без nameId, тогда как nameId есть у её
+ *      ПРОКЛАДКИ — без этого признака мастер получал прокладку вместо крышки.
+ *   3. Название содержит английский термин запроса — для каталогов, где
+ *      оригинальные названия английские (у subaru `hasUniTree: false`, и
+ *      передние колодки лежат как «PAD KIT-FRONT DISK BRAKE», nameId null).
  *
- * Точные попадания идут первыми — они называются так, как спрашивал мастер.
+ * Порядок — по близости названия к запросу, при равенстве точное попадание в
+ * дерево вперёд: мастер должен увидеть то, что спрашивал, первой строкой.
  * Записи без номера/названия и дубли (номер+название) пропускаются; общий
  * потолок — PARTSCATALOGS_MAX_PARTS.
  */
@@ -390,14 +389,15 @@ export function collectParts(
     sidSet: Set<string>
     /** Английские термины запроса, см. `englishPartTerms`. */
     englishTerms: string[]
+    /** Имена детали из словаря, см. `queryNames`. */
+    names: Set<string>[]
     seen: Set<string>
     out: Part[]
   },
 ): void {
   if (!isRecord(data)) return
 
-  const exact: Part[] = []
-  const byName: Part[] = []
+  const picked: { part: Part; score: number; exact: boolean; order: number }[] = []
   for (const group of asArray(data['partGroups']) ?? []) {
     for (const part of asArray(group['parts']) ?? []) {
       const oemNumber = str(part, ['number', 'id'])
@@ -405,19 +405,21 @@ export function collectParts(
       if (!oemNumber || !name) continue
 
       const nameId = str(part, ['nameId'])
-      const isExact = nameId !== null && ctx.sidSet.has(nameId)
-      if (!isExact && !matchesTerms(name, ctx.englishTerms)) continue // сосед по узлу
+      const exact = nameId !== null && ctx.sidSet.has(nameId)
+      const score = closeness(name, ctx.names)
+      if (!exact && score < NAME_MATCH && !matchesTerms(name, ctx.englishTerms)) continue // сосед по узлу
 
       const key = `${oemNumber}|${name}`
       if (ctx.seen.has(key)) continue
       ctx.seen.add(key)
 
       const entry = { oemNumber, name, category: ctx.category, brand: ctx.brand, imageUrl: ctx.imageUrl }
-      ;(isExact ? exact : byName).push(entry)
+      picked.push({ part: entry, score, exact, order: picked.length })
     }
   }
 
-  for (const part of [...exact, ...byName]) {
+  picked.sort((a, b) => b.score - a.score || Number(b.exact) - Number(a.exact) || a.order - b.order)
+  for (const { part } of picked) {
     if (ctx.out.length >= PARTSCATALOGS_MAX_PARTS) return
     ctx.out.push(part)
   }
@@ -477,10 +479,7 @@ export function rankByPosition(schemas: Record<string, unknown>[], query: string
  * список. Порядок каталога сохраняется внутри равных — сортировка стабильная.
  */
 export function rankSuggestions(suggestions: Suggestion[], query: string): string[] {
-  const names = [query, ...partSynonyms(query)]
-    .map(wordKeys)
-    .filter((keys) => keys.size > 0)
-
+  const names = queryNames(query)
   return suggestions
     .map((suggestion, order) => ({
       sid: suggestion.sid,
@@ -490,6 +489,20 @@ export function rankSuggestions(suggestions: Suggestion[], query: string): strin
     .sort((a, b) => b.score - a.score || a.order - b.order)
     .slice(0, MAX_PART_NAMES)
     .map((ranked) => ranked.sid)
+}
+
+/**
+ * Насколько близко название должно подойти к имени детали, чтобы считаться ею.
+ * Подобрано по живой выдаче: «КРЫШКА ГОЛОВКИ ЦИЛИНДРОВ» против «крышка головки
+ * цилиндров» из словаря даёт 1.0, а соседи по узлу («ШАЙБА БОЛТА ГОЛОВКИ
+ * ЦИЛИНДРОВ», «ПРОБКА ЗАЛИВА МАСЛА») не дотягивают и до половины — у них другое
+ * главное слово.
+ */
+const NAME_MATCH = 0.6
+
+/** Имена детали, которыми сверяется выдача каталога: запрос и его ряд из словаря. */
+export function queryNames(query: string): Set<string>[] {
+  return [query, ...partSynonyms(query)].map(wordKeys).filter((keys) => keys.size > 0)
 }
 
 /** Насколько название подошло к ближайшему имени детали. */

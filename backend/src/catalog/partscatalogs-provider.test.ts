@@ -10,6 +10,7 @@ import {
   collectParts,
   mapVehicle,
   normalizeImageUrl,
+  queryNames,
   rankByPosition,
   rankSuggestions,
   shortenQuery,
@@ -525,14 +526,40 @@ describe('mapVehicle', () => {
 })
 
 describe('collectParts', () => {
-  const ctx = (englishTerms: string[] = ['oil filter']) => ({
+  const ctx = (englishTerms: string[] = ['oil filter'], query = 'масляный фильтр') => ({
     category: 'Узел',
     imageUrl: null as string | null,
     brand: 'Skoda',
     sidSet: new Set(['87']),
     englishTerms,
+    names: queryNames(query),
     seen: new Set<string>(),
     out: [] as Part[],
+  })
+
+  test('деталь без nameId находится по русскому названию из словаря', () => {
+    // Живой Citroen: сама клапанная крышка лежит без nameId и с оригинальным
+    // РУССКИМ названием, а nameId есть у её прокладки. Раньше проходила только
+    // прокладка — мастер получал не ту деталь.
+    const c = ctx([], 'крышка гбц')
+    collectParts(
+      {
+        partGroups: [
+          {
+            parts: [
+              { number: '0249 E6', nameId: '697', name: 'Прокладка крышки ГБЦ' },
+              { number: 'V7598862 80', nameId: null, name: 'КРЫШКА ГОЛОВКИ ЦИЛИНДРОВ' },
+              { number: '16087379 80', nameId: null, name: 'ШАЙБА БОЛТА ГОЛОВКИ ЦИЛИНДРОВ' },
+              { number: 'V7572848 80', nameId: null, name: 'ПРОБКА ЗАЛИВА МАСЛА В ДВИГАТ.' },
+            ],
+          },
+        ],
+      },
+      { ...c, sidSet: new Set(['697']) },
+    )
+
+    // Крышка — первой: её спрашивали. Шайба и пробка — соседи по узлу, мимо.
+    expect(c.out.map((part) => part.oemNumber)).toEqual(['V7598862 80', '0249 E6'])
   })
 
   test('', () => {
