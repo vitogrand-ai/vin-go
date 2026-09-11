@@ -54,14 +54,16 @@ export function SchemeViewer({ imageUrl, partName }: SchemeViewerProps) {
           alt={`Схема узла: ${partName}`}
           loading="lazy"
           className={cn(
-            'max-h-72 w-full object-contain',
+            'max-h-96 w-full object-contain p-2',
             'transition-transform duration-200 ease-out group-hover:scale-[1.02]',
           )}
         />
+        {/* Подсказка видна всегда: на телефоне наведения нет, а без неё не
+            догадаться, что схему можно открыть крупнее. */}
         <span
           className={cn(
-            'pointer-events-none absolute right-2 bottom-2 rounded-md bg-foreground/75 px-2 py-1',
-            'text-xs text-background opacity-0 transition-opacity duration-200 ease-out',
+            'pointer-events-none absolute right-2 bottom-2 rounded-md bg-foreground/70 px-2 py-1',
+            'text-xs text-background opacity-80 transition-opacity duration-200 ease-out',
             'group-hover:opacity-100 group-focus-visible:opacity-100',
           )}
         >
