@@ -76,6 +76,11 @@ export interface TelegramClient {
    * Telegram) пробрасывается — вызывающая сторона шлёт текстовый фолбэк.
    */
   sendPhoto(chatId: number, photoUrl: string, options?: SendPhotoOptions): Promise<void>
+  /**
+   * Тот же файл документом — Telegram его не пережимает. Нужен для схемы узла
+   * в исходном разрешении: у фото номера позиций теряются при сжатии.
+   */
+  sendDocument(chatId: number, fileUrl: string, options?: SendPhotoOptions): Promise<void>
   answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void>
   /**
    * Скачивает вложение по file_id. Возвращает null, если файл недоступен
@@ -151,11 +156,31 @@ export class HttpTelegramClient implements TelegramClient {
    * только от нашего доступа к каталогу, а не от маршрута Telegram к чужому CDN.
    */
   async sendPhoto(chatId: number, photoUrl: string, options?: SendPhotoOptions): Promise<void> {
-    const photo = await this.fetchPhoto(photoUrl)
+    await this.sendFile('sendPhoto', 'photo', chatId, photoUrl, options)
+  }
+
+  /**
+   * Та же картинка, но документом: фото Telegram пережимает в JPEG и на схеме
+   * узла расплываются номера позиций — ради них мастер её и открывает. Документ
+   * доходит байт в байт, поэтому кнопка «схема крупнее» шлёт именно его.
+   */
+  async sendDocument(chatId: number, fileUrl: string, options?: SendPhotoOptions): Promise<void> {
+    await this.sendFile('sendDocument', 'document', chatId, fileUrl, options)
+  }
+
+  /** Общая отправка файла: качаем сами (см. `sendPhoto`) и грузим multipart-ом. */
+  private async sendFile(
+    method: 'sendPhoto' | 'sendDocument',
+    field: 'photo' | 'document',
+    chatId: number,
+    fileUrl: string,
+    options?: SendPhotoOptions,
+  ): Promise<void> {
+    const file = await this.fetchPhoto(method, fileUrl)
 
     const form = new FormData()
     form.set('chat_id', String(chatId))
-    form.set('photo', photo, fileNameFromUrl(photoUrl))
+    form.set(field, file, fileNameFromUrl(fileUrl))
     if (options?.caption !== undefined) form.set('caption', options.caption)
     if (options?.parseMode !== undefined) form.set('parse_mode', options.parseMode)
     if (options?.replyMarkup !== undefined) {
@@ -165,39 +190,39 @@ export class HttpTelegramClient implements TelegramClient {
     let response: Response
     try {
       // Content-Type не ставим руками: fetch сам добавит boundary multipart.
-      response = await this.fetchImpl(this.url('sendPhoto'), { method: 'POST', body: form })
+      response = await this.fetchImpl(this.url(method), { method: 'POST', body: form })
     } catch (error) {
-      throw new Error(`Telegram sendPhoto: ${describeNetworkError(error)}`)
+      throw new Error(`Telegram ${method}: ${describeNetworkError(error)}`)
     }
-    await this.parseResult('sendPhoto', response)
+    await this.parseResult(method, response)
   }
 
   /**
    * Забирает картинку у каталога. Любой отказ — обычная ошибка: у вызывающей
    * стороны есть текстовый фолбэк, схема не критична для выдачи.
    */
-  private async fetchPhoto(photoUrl: string): Promise<Blob> {
+  private async fetchPhoto(method: string, photoUrl: string): Promise<Blob> {
     let response: Response
     try {
       response = await this.fetchImpl(photoUrl, { signal: AbortSignal.timeout(PHOTO_TIMEOUT_MS) })
     } catch (error) {
-      throw new Error(`Telegram sendPhoto: картинка не скачана (${describeNetworkError(error)})`)
+      throw new Error(`Telegram ${method}: картинка не скачана (${describeNetworkError(error)})`)
     }
     if (!response.ok) {
-      throw new Error(`Telegram sendPhoto: картинка не скачана (HTTP ${response.status})`)
+      throw new Error(`Telegram ${method}: картинка не скачана (HTTP ${response.status})`)
     }
 
     // Ошибку CDN, отданную страницей с кодом 200, ловим до загрузки в Telegram —
     // иначе он ответит невнятным Bad Request.
     const type = response.headers.get('content-type')
     if (type && !type.startsWith('image/')) {
-      throw new Error(`Telegram sendPhoto: вместо картинки пришёл ${type}`)
+      throw new Error(`Telegram ${method}: вместо картинки пришёл ${type}`)
     }
 
     const blob = await response.blob()
-    if (blob.size === 0) throw new Error('Telegram sendPhoto: картинка пустая')
+    if (blob.size === 0) throw new Error(`Telegram ${method}: картинка пустая`)
     if (blob.size > MAX_PHOTO_BYTES) {
-      throw new Error(`Telegram sendPhoto: картинка ${blob.size} Б больше лимита Bot API`)
+      throw new Error(`Telegram ${method}: картинка ${blob.size} Б больше лимита Bot API`)
     }
     return blob
   }

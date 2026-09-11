@@ -397,12 +397,31 @@ export function shortenQuery(query: string): string[] {
 /**
  * Картинки схем приходят протокол-относительными («//ru.img.parts-catalogs.com/…»)
  * или с шаблонным плейсхолдером «{IMG_URL}» (пустая схема) — приводим к https
- * либо отбрасываем.
+ * либо отбрасываем. Уменьшенную копию заменяем оригиналом (см. `toOriginalSize`).
  */
 export function normalizeImageUrl(raw: string | null): string | null {
   if (!raw) return null
   const value = raw.trim()
-  if (value.startsWith('//')) return `https:${value}`
-  if (value.startsWith('http://') || value.startsWith('https://')) return value
+  if (value.startsWith('//')) return toOriginalSize(`https:${value}`)
+  if (value.startsWith('http://') || value.startsWith('https://')) return toOriginalSize(value)
   return null
+}
+
+/**
+ * Список схем отдаёт превью — путь с сегментом размера («/r/300x430/…», реально
+ * 300×410). На схеме узла подписаны номера позиций, и в таком масштабе мастер их
+ * не прочитает. Оригинал лежит по тому же адресу без этого сегмента и оказывается
+ * крупнее (787×1076) и при этом легче (80 КБ против 91 КБ: превью отдаётся
+ * интерлейсным). Больший запрошенный размер каталог не апскейлит — отдаёт тот же
+ * оригинал, поэтому просто убираем сегмент.
+ */
+function toOriginalSize(url: string): string {
+  try {
+    const parsed = new URL(url)
+    parsed.pathname = parsed.pathname.replace(/^\/r\/\d+x\d+\//, '/')
+    return parsed.toString()
+  } catch {
+    // Адрес не разобрался — отдаём как есть: превью лучше, чем ничего.
+    return url
+  }
 }

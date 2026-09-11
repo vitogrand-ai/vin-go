@@ -100,6 +100,7 @@ export function garageMessage(vehicles: SavedVehicle[]): { text: string; keyboar
 export function partsMessage(
   parts: Part[],
   resolvedQuery?: string,
+  options?: { hasScheme?: boolean },
 ): { text: string; keyboard: InlineKeyboard } {
   // Если искали не тем словом, что прислал мастер, — говорим об этом прямо,
   // иначе выдача по «гранатке» выглядит как ошибка бота.
@@ -109,16 +110,21 @@ export function partsMessage(
     parts.length > shown.length
       ? `\nПоказаны первые ${shown.length} — уточните запрос, чтобы сузить список.`
       : ''
+  const partButtons = shown.map((part) => [
+    {
+      text: truncate(`${part.name} (${part.oemNumber})`, 60),
+      callback_data: `oem:${part.oemNumber}`,
+    },
+  ])
+  // Схема приходит сжатым фото: номера позиций на ней читаются плохо. Кнопка
+  // присылает ту же схему файлом — Telegram документы не пережимает.
+  const schemeButton = options?.hasScheme
+    ? [[{ text: '🔍 Схема крупнее', callback_data: 'scheme' }]]
+    : []
+
   return {
     text: `${hint}Найдено запчастей: ${parts.length}. Выберите нужную:${overflow}`,
-    keyboard: {
-      inline_keyboard: shown.map((part) => [
-        {
-          text: truncate(`${part.name} (${part.oemNumber})`, 60),
-          callback_data: `oem:${part.oemNumber}`,
-        },
-      ]),
-    },
+    keyboard: { inline_keyboard: [...partButtons, ...schemeButton] },
   }
 }
 

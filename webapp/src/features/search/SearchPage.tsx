@@ -18,6 +18,7 @@ import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
 import { Typography } from '@/components/ui/typography'
 import { useAddCartItem, useCreateExpertRequest } from '@/features/cabinet/queries'
+import { SchemeViewer } from '@/features/search/SchemeViewer'
 import { ApiRequestError } from '@/lib/api'
 import { describeApiError } from '@/lib/errors'
 import { formatDelivery, formatMoney, TIER_META } from '@/lib/format'
@@ -524,14 +525,7 @@ function OffersPanel({ part, vehicleVin }: { part: Part; vehicleVin?: string }) 
 
       {source?.demo ? <DemoPricesNotice /> : null}
 
-      {part.imageUrl ? (
-        <img
-          src={part.imageUrl}
-          alt={`Схема узла: ${part.name}`}
-          loading="lazy"
-          className="max-h-72 w-full rounded-lg border bg-white object-contain"
-        />
-      ) : null}
+      {part.imageUrl ? <SchemeViewer imageUrl={part.imageUrl} partName={part.name} /> : null}
 
       <div className="grid gap-4 lg:grid-cols-3">
         {picks.map((pick) => (

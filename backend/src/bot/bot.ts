@@ -36,6 +36,11 @@ export type ChatSession = {
   offers?: Record<string, { oemNumber: string; partName: string; picks: TierPick[] }>
   /** Последний запрос детали — уходит эксперту по кнопке «Спросить эксперта». */
   lastQuery?: string
+  /**
+   * Схема узла из последней выдачи. Хранится здесь, а не в callback_data:
+   * там лимит 64 байта, в который адрес картинки не помещается.
+   */
+  scheme?: string
 }
 
 /** Сервисы кабинета — доступны боту, когда аккаунт привязан. */
@@ -367,12 +372,14 @@ export class TelegramBot {
     }
 
     session.parts = Object.fromEntries(parts.map((part) => [part.oemNumber, part.name]))
-    const { text, keyboard } = partsMessage(parts, resolvedQuery)
 
     // Схема узла из каталога — мастеру видно, ту ли деталь он выбирает.
     // Фото не критично: любой сбой (битый URL, недоступный хост картинок) —
     // и выдача уходит обычным текстом.
     const imageUrl = parts.find((part) => part.imageUrl)?.imageUrl
+    session.scheme = imageUrl ?? undefined
+    const { text, keyboard } = partsMessage(parts, resolvedQuery, { hasScheme: Boolean(imageUrl) })
+
     if (imageUrl) {
       try {
         await this.client.sendPhoto(chatId, imageUrl, {
@@ -402,6 +409,10 @@ export class TelegramBot {
       await this.askExpert(chatId, callback.from.id)
       return
     }
+    if (data === 'scheme') {
+      await this.sendFullScheme(chatId)
+      return
+    }
     if (data.startsWith('car:')) {
       await this.pickGarageCar(chatId, callback.from.id, data.slice('car:'.length))
       return
@@ -414,6 +425,29 @@ export class TelegramBot {
       const tier = separator === -1 ? rest : rest.slice(0, separator)
       const oemNumber = separator === -1 ? undefined : rest.slice(separator + 1)
       await this.addToCart(chatId, callback.from.id, tier, oemNumber)
+    }
+  }
+
+  /**
+   * Схема узла файлом. Фото в Telegram пережимается, и номера позиций на схеме
+   * плывут — а мастер открывает её именно ради них. Документ доходит без
+   * пережатия, в исходном разрешении каталога.
+   */
+  private async sendFullScheme(chatId: number): Promise<void> {
+    const scheme = this.session(chatId).scheme
+    if (!scheme) {
+      // Сессия могла истечь или бот перезапускался — просим повторить поиск.
+      await this.client.sendMessage(chatId, 'Схема не найдена — повторите поиск запчасти.')
+      return
+    }
+
+    try {
+      await this.client.sendDocument(chatId, scheme, {
+        caption: 'Схема узла в исходном размере — откройте файл, чтобы увеличить.',
+      })
+    } catch (error) {
+      console.warn('[bot] схема файлом не отправилась', error)
+      await this.client.sendMessage(chatId, 'Не удалось прислать схему файлом. Попробуйте ещё раз.')
     }
   }
 

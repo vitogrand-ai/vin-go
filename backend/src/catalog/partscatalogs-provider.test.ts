@@ -542,6 +542,25 @@ describe('shortenQuery / normalizeImageUrl', () => {
     expect(normalizeImageUrl(null)).toBeNull()
   })
 
+  test('превью схемы заменяется оригиналом: номера позиций должны читаться', () => {
+    // Живой ответ /schemas: превью 300×410, оригинал по тому же пути — 787×1076.
+    expect(normalizeImageUrl('//ru.img.parts-catalogs.com/r/300x430/hyundai_2021_09/61292.png')).toBe(
+      'https://ru.img.parts-catalogs.com/hyundai_2021_09/61292.png',
+    )
+    // Вложенный путь каталога (Subaru отдаёт ещё и подпапку руля) не теряется.
+    expect(
+      normalizeImageUrl('https://ru.img.parts-catalogs.com/r/300x430/subaru_2021_09/lhd/S14-263-01.png'),
+    ).toBe('https://ru.img.parts-catalogs.com/subaru_2021_09/lhd/S14-263-01.png')
+    // Адрес уже без сегмента размера (так отдаёт parts2) остаётся нетронутым.
+    expect(normalizeImageUrl('//ru.img.parts-catalogs.com/subaru_2021_09/lhd/S14-263-01.png')).toBe(
+      'https://ru.img.parts-catalogs.com/subaru_2021_09/lhd/S14-263-01.png',
+    )
+    // Сегмент размера режется только в начале пути — папка «r» внутри адреса цела.
+    expect(normalizeImageUrl('https://img.example.com/catalog/r/300x430/x.png')).toBe(
+      'https://img.example.com/catalog/r/300x430/x.png',
+    )
+  })
+
   test('без параметра year, criteria и description год = null, а не 0', () => {
     const vehicle = mapVehicle('WDD1770871V030773', [
       { brand: 'Mercedes-Benz', title: 'A200', catalogId: 'mercedes', carId: 'c1' },
