@@ -12,6 +12,7 @@ import { AppError } from '../http/errors'
 import { MOCK_PROVIDERS_META, type CatalogProvidersMeta } from './factory'
 import { MockCatalogProvider, MockPlateProvider, MockSupplierProvider } from './mock-providers'
 import { expandPartQuery } from './part-jargon'
+import { closeness, queryNames } from './part-match'
 import { filterByPosition } from './position-filter'
 import type { CatalogProvider, PlateProvider, SupplierProvider } from './providers'
 import { selectTiers } from './tiering'
@@ -80,7 +81,7 @@ export class CatalogService {
       // нечёткий поиск теряет уточнение позиции — чистим выдачу здесь, чтобы
       // веб, бот и мобильное видели одно и то же. Фильтр по позиции идёт от
       // ИСХОДНОГО запроса: канонизация жаргона позицию не меняет.
-      const parts = filterByPosition(dedupeByOem(found), query)
+      const parts = orderByRelevance(filterByPosition(dedupeByOem(found), query), query)
       if (parts.length === 0) continue
 
       // Подсказку отдаём, только если искали не тем, что ввёл пользователь.
@@ -102,6 +103,27 @@ export class CatalogService {
       source: this.meta.suppliers,
     }
   }
+}
+
+/**
+ * Выдача в порядке близости названия к запросу — самое похожее первой строкой.
+ *
+ * Каталог кладёт деталь в узел вместе с соседями и отдаёт их в своём порядке:
+ * на «крышку ГБЦ» у Lexus первыми приходили два БОЛТА крышки, а сама крышка
+ * третьей — мастер жал первую кнопку и получал не ту деталь. Порядок наводится
+ * здесь, а не в адаптере, потому что касается любого источника: у 17vin своей
+ * сортировки нет вовсе.
+ *
+ * Сортировка стабильная: детали, одинаково отвечающие запросу, остаются в
+ * порядке каталога — он осмысленный (позиции на схеме узла идут подряд).
+ */
+function orderByRelevance(parts: Part[], query: string): Part[] {
+  const names = queryNames(query)
+  if (names.length === 0) return parts
+  return parts
+    .map((part, order) => ({ part, order, score: closeness(part.name, names) }))
+    .sort((a, b) => b.score - a.score || a.order - b.order)
+    .map((ranked) => ranked.part)
 }
 
 /** Метка промаха в журнале — по ней собираются запросы для словаря. */

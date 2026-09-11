@@ -3,8 +3,8 @@ import type { Part, Vehicle } from '@web-app-demo/contracts'
 import { AppError } from '../http/errors'
 import { CATALOG_SOURCE_KEY } from './fallback-catalog'
 import { asArray, firstArray, int, isRecord, str } from './parse-utils'
-import { partSynonyms } from './part-jargon'
 import { positionRank } from './position-filter'
+import { NAME_MATCH, closeness, queryNames, wordKeys } from './part-match'
 import { englishPartTerms } from './part-terms'
 import { requestProviderJson } from './provider-http'
 import type { CatalogProvider } from './providers'
@@ -489,73 +489,6 @@ export function rankSuggestions(suggestions: Suggestion[], query: string): strin
     .sort((a, b) => b.score - a.score || a.order - b.order)
     .slice(0, MAX_PART_NAMES)
     .map((ranked) => ranked.sid)
-}
-
-/**
- * Насколько близко название должно подойти к имени детали, чтобы считаться ею.
- * Подобрано по живой выдаче: «КРЫШКА ГОЛОВКИ ЦИЛИНДРОВ» против «крышка головки
- * цилиндров» из словаря даёт 1.0, а соседи по узлу («ШАЙБА БОЛТА ГОЛОВКИ
- * ЦИЛИНДРОВ», «ПРОБКА ЗАЛИВА МАСЛА») не дотягивают и до половины — у них другое
- * главное слово.
- */
-const NAME_MATCH = 0.6
-
-/** Имена детали, которыми сверяется выдача каталога: запрос и его ряд из словаря. */
-export function queryNames(query: string): Set<string>[] {
-  return [query, ...partSynonyms(query)].map(wordKeys).filter((keys) => keys.size > 0)
-}
-
-/** Насколько название подошло к ближайшему имени детали. */
-function closeness(name: string, names: Set<string>[]): number {
-  const words = wordList(name)
-  const keys = new Set(words)
-  let best = 0
-  for (const candidate of names) {
-    best = Math.max(best, similarity(words[0], keys, candidate))
-  }
-  return best
-}
-
-/**
- * Схожесть названия из справочника с одним из имён детали.
- *
- * Справочник пишет деталь ГЛАВНЫМ СЛОВОМ ВПЕРЁД, а уточнения — после:
- * «Подшипник генератора» — это подшипник, «Генератор озоновый» — генератор,
- * «Крышка ГБЦ» — крышка. Поэтому совпадение первого слова решает: с ним
- * схожесть лежит в верхней половине шкалы, без него — в нижней, и никакой
- * сосед по узлу не обойдёт саму деталь. Внутри половины порядок задаёт доля
- * общих слов (мера Жаккара): она отделяет «Крышка ГБЦ» от «Крышка
- * расширительного бачка системы охлаждения», у которых главное слово одно.
- *
- * Одной долей общих слов обойтись нельзя: она штрафует название за каждое
- * уточнение, и короткий чужой сосед обгонял точную, но подробную деталь.
- */
-function similarity(head: string | undefined, keys: Set<string>, candidate: Set<string>): number {
-  let common = 0
-  for (const key of candidate) {
-    if (keys.has(key)) common += 1
-  }
-  if (common === 0) return 0
-  const jaccard = common / (keys.size + candidate.size - common)
-  return head !== undefined && candidate.has(head) ? (1 + jaccard) / 2 : jaccard / 2
-}
-
-/**
- * Слова строки по порядку, огрублённые до пятибуквенного начала: так «головки»
- * и «головка» считаются одним словом, и русская морфология не мешает сравнению
- * без настоящего стемминга. Порядок важен — первое слово несёт саму деталь.
- */
-function wordList(value: string): string[] {
-  return value
-    .toLowerCase()
-    .replaceAll('ё', 'е')
-    .split(/[^a-zа-я0-9]+/)
-    .filter(Boolean)
-    .map((word) => word.slice(0, 5))
-}
-
-function wordKeys(value: string): Set<string> {
-  return new Set(wordList(value))
 }
 
 /**

@@ -89,6 +89,32 @@ describe('CatalogService.searchParts — понимание жаргона', () 
     expect(catalog.asked.length).toBeGreaterThan(1)
   })
 
+  test('спрошенная деталь идёт первой, соседи по узлу — следом', async () => {
+    // Живой Lexus (17vin): на «крышка гбц» узел приходит в своём порядке —
+    // сперва два болта крышки, сама крышка третьей. Мастер жал первую кнопку
+    // и получал болт.
+    const node = [
+      { oemNumber: '9010506359', name: 'BOLT(FOR CYLINDER HEAD COVER)', category: 'ГБЦ', brand: null },
+      { oemNumber: '9010906384', name: 'BOLT(FOR CYLINDER HEAD COVER)', category: 'ГБЦ', brand: null },
+      { oemNumber: '1120125032', name: 'COVER SUB-ASSY, CYLINDER HEAD', category: 'ГБЦ', brand: null },
+      { oemNumber: '1121325020', name: 'GASKET, CYLINDER HEAD COVER', category: 'ГБЦ', brand: null },
+    ]
+    const catalog: CatalogProvider = {
+      async decodeVin() {
+        return VEHICLE
+      },
+      async searchParts() {
+        return node
+      },
+    }
+
+    const result = await serviceWith(catalog).searchParts(VEHICLE.vin, 'крышка гбц')
+
+    expect(result.parts[0]!.oemNumber).toBe('1120125032')
+    // Болты не выкинуты — они из того же узла и мастеру могут понадобиться.
+    expect(result.parts).toHaveLength(4)
+  })
+
   test('промах уходит в журнал: по нему пополняется словарь', async () => {
     const warnings: string[] = []
     const warn = console.warn

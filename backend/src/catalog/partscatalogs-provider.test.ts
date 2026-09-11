@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import type { Part, Vehicle } from '@web-app-demo/contracts'
 
 import { AppError } from '../http/errors'
+import { queryNames } from './part-match'
 import { CATALOG_SOURCE_KEY } from './fallback-catalog'
 import {
   PARTSCATALOGS_MAX_PARTS,
@@ -10,7 +11,6 @@ import {
   collectParts,
   mapVehicle,
   normalizeImageUrl,
-  queryNames,
   rankByPosition,
   rankSuggestions,
   shortenQuery,
