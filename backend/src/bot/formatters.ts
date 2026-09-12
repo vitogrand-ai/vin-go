@@ -121,9 +121,14 @@ export function partsMessage(
   const schemeButton = options?.hasScheme
     ? [[{ text: '🔍 Схема крупнее', callback_data: 'scheme' }]]
     : []
+  // Половины деталей узла в списке нет — они не отвечают запросу. Но на схеме
+  // они подписаны номерами, и номер работает как выбор детали.
+  const byNumber = options?.hasScheme
+    ? '\nНужной детали нет в списке? Пришлите её <b>номер со схемы</b> — например <code>9</code>.'
+    : ''
 
   return {
-    text: `${hint}Найдено запчастей: ${parts.length}. Выберите нужную:${overflow}`,
+    text: `${hint}Найдено запчастей: ${parts.length}. Выберите нужную:${overflow}${byNumber}`,
     keyboard: { inline_keyboard: [...partButtons, ...schemeButton] },
   }
 }

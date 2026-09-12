@@ -120,17 +120,8 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
     const q = query.trim()
     if (!q) return []
 
-    // Координаты каталога кладутся в raw при decodeVin. Если авто определял
-    // ДРУГОЙ каталог (best-effort ветка FallbackCatalogProvider), raw чужой —
-    // его catalogId/carId имели бы чужую семантику, поэтому декодируем заново.
-    const source = vehicle.raw?.[CATALOG_SOURCE_KEY]
-    let ref = source === undefined || source === SOURCE_NAME ? carRefFromRaw(vehicle.raw) : null
-    if (!ref) {
-      const vin = vehicle.vin.trim().toUpperCase()
-      const data = await this.request(`/car/info?q=${encodeURIComponent(vin)}`)
-      ref = data === null ? null : carRefFromCarInfo(vin, data)
-      if (!ref) return []
-    }
+    const ref = await this.resolveRef(vehicle)
+    if (!ref) return []
 
     // Запрос отрабатывается целиком, а не по одному шагу: подсказка ищет по
     // ВСЕМУ справочнику названий каталога, а не по этой машине, поэтому на
@@ -157,6 +148,64 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
       if (++passes >= MAX_SEARCH_PASSES) break
     }
     return []
+  }
+
+  /**
+   * Весь узел по его идентификатору: мастер смотрит на схему и называет номер
+   * позиции. Отбора по названию здесь нет — на схеме фары под номером 9 стоит
+   * «Жгут проводов освещения», которого мастер словами и не спросил бы.
+   */
+  async schemeParts(vehicle: Vehicle, schemeId: string): Promise<Part[]> {
+    const ref = await this.resolveRef(vehicle)
+    if (!ref) return []
+
+    const params = new URLSearchParams({ carId: ref.carId, groupId: schemeId })
+    if (ref.criteria) params.set('criteria', ref.criteria)
+    const data = await this.request(
+      `/catalogs/${encodeURIComponent(ref.catalogId)}/parts2?${params}`,
+    )
+    if (!isRecord(data)) return []
+
+    const imageUrl = normalizeImageUrl(str(data, ['img']))
+    const parts: Part[] = []
+    const seen = new Set<string>()
+    for (const group of asArray(data['partGroups']) ?? []) {
+      for (const part of asArray(group['parts']) ?? []) {
+        if (parts.length >= PARTSCATALOGS_MAX_PARTS) return parts
+        const oemNumber = str(part, ['number', 'id'])
+        const name = str(part, ['name', 'notice'])
+        if (!oemNumber || !name) continue
+        const key = `${oemNumber}|${name}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        parts.push({
+          oemNumber,
+          name,
+          category: str(group, ['name']) ?? '',
+          brand: vehicle.make,
+          imageUrl,
+          position: str(part, ['positionNumber']),
+          schemeId,
+        })
+      }
+    }
+    return parts
+  }
+
+  /**
+   * Координаты машины в каталоге. Кладутся в raw при decodeVin; если авто
+   * определял ДРУГОЙ каталог (best-effort ветка FallbackCatalogProvider), raw
+   * чужой — его catalogId/carId имели бы чужую семантику, поэтому декодируем
+   * заново.
+   */
+  private async resolveRef(vehicle: Vehicle): Promise<CarRef | null> {
+    const source = vehicle.raw?.[CATALOG_SOURCE_KEY]
+    const own = source === undefined || source === SOURCE_NAME ? carRefFromRaw(vehicle.raw) : null
+    if (own) return own
+
+    const vin = vehicle.vin.trim().toUpperCase()
+    const data = await this.request(`/car/info?q=${encodeURIComponent(vin)}`)
+    return data === null ? null : carRefFromCarInfo(vin, data)
   }
 
   /** Шаг 1: текст запроса → названия деталей справочника (русский работает напрямую). */
@@ -233,7 +282,7 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
       if (data === null) continue
       // У parts2 своя копия картинки схемы — берём её, если в списке схем пусто.
       const imageUrl = group.imageUrl ?? (isRecord(data) ? normalizeImageUrl(str(data, ['img'])) : null)
-      collectParts(data, { ...ctx, category: group.category, imageUrl, out: parts })
+      collectParts(data, { ...ctx, category: group.category, imageUrl, schemeId: groupId, out: parts })
     }
     return parts
   }
@@ -425,6 +474,8 @@ export function collectParts(
     category: string
     /** Картинка схемы узла — общая для всех деталей этой группы. */
     imageUrl: string | null
+    /** Идентификатор узла: по нему потом открывается вся схема по номерам. */
+    schemeId?: string
     brand: string | null
     sidSet: Set<string>
     /** Английские термины запроса, см. `englishPartTerms`. */
@@ -453,7 +504,15 @@ export function collectParts(
       if (ctx.seen.has(key)) continue
       ctx.seen.add(key)
 
-      const entry = { oemNumber, name, category: ctx.category, brand: ctx.brand, imageUrl: ctx.imageUrl }
+      const entry = {
+        oemNumber,
+        name,
+        category: ctx.category,
+        brand: ctx.brand,
+        imageUrl: ctx.imageUrl,
+        position: str(part, ['positionNumber']),
+        schemeId: ctx.schemeId ?? null,
+      }
       picked.push({ part: entry, score, exact, order: picked.length })
     }
   }

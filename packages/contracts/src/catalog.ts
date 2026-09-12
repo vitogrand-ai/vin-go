@@ -105,6 +105,13 @@ export const partSchema = z.object({
   brand: z.string().nullable(),
   /** URL схемы узла (иллюстрация каталога), если провайдер её отдаёт. */
   imageUrl: z.string().nullable().optional(),
+  /** Номер детали на схеме узла: на картинке он стоит выноской («9»). */
+  position: z.string().nullable().optional(),
+  /**
+   * Идентификатор узла в каталоге. По нему открывается весь узел — так мастер
+   * выбирает деталь номером с картинки, а не названием.
+   */
+  schemeId: z.string().nullable().optional(),
 })
 
 export const offerSchema = z.object({

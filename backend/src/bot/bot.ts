@@ -41,6 +41,11 @@ export type ChatSession = {
    * там лимит 64 байта, в который адрес картинки не помещается.
    */
   scheme?: string
+  /**
+   * Идентификатор того же узла в каталоге. По нему открывается деталь, номер
+   * которой мастер прочитал на картинке: «9» — жгут проводов освещения.
+   */
+  schemeId?: string
 }
 
 /** Сервисы кабинета — доступны боту, когда аккаунт привязан. */
@@ -67,6 +72,9 @@ export type BotMedia = {
 
 /** Больше 20 МБ Bot API не отдаёт — не тратим вызов getFile впустую. */
 const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
+
+/** Как часто обновляется «печатает…»: Telegram гасит статус через ~5 секунд. */
+const TYPING_REFRESH_MS = 4000
 
 /**
  * Telegram-бот: поиск по VIN/госномеру + кабинет (корзина, заказы) после
@@ -294,6 +302,15 @@ export class TelegramBot {
       return
     }
 
+    // Номер с картинки вместо названия: после схемы узла «9» — это выноска на
+    // ней, а не поисковый запрос. Названия деталей числами не бывают, так что
+    // спутать не с чем; без показанной схемы число уходит в обычный поиск.
+    const position = parseSchemePosition(text)
+    if (position !== null && this.session(chatId).schemeId) {
+      await this.handleSchemePosition(chatId, position)
+      return
+    }
+
     await this.handlePartQuery(chatId, text)
   }
 
@@ -340,7 +357,9 @@ export class TelegramBot {
     let parts: Part[]
     let resolvedQuery: string | undefined
     try {
-      ;({ parts, resolvedQuery } = await this.catalog.searchParts(session.vin, query))
+      ;({ parts, resolvedQuery } = await this.withTyping(chatId, () =>
+        this.catalog.searchParts(session.vin!, query),
+      ))
     } catch (error) {
       // Без этого ответа сбой источника выглядит как молчание бота.
       console.error('[bot] поиск запчасти упал:', error)
@@ -376,8 +395,11 @@ export class TelegramBot {
     // Схема узла из каталога — мастеру видно, ту ли деталь он выбирает.
     // Фото не критично: любой сбой (битый URL, недоступный хост картинок) —
     // и выдача уходит обычным текстом.
-    const imageUrl = parts.find((part) => part.imageUrl)?.imageUrl
+    const withScheme = parts.find((part) => part.imageUrl)
+    const imageUrl = withScheme?.imageUrl
     session.scheme = imageUrl ?? undefined
+    // Узел показанной схемы — по нему разбирается номер выноски с картинки.
+    session.schemeId = withScheme?.schemeId ?? undefined
     const { text, keyboard } = partsMessage(parts, resolvedQuery, { hasScheme: Boolean(imageUrl) })
 
     if (imageUrl) {
@@ -393,6 +415,68 @@ export class TelegramBot {
       }
     }
     await this.client.sendMessage(chatId, text, { parseMode: 'HTML', replyMarkup: keyboard })
+  }
+
+  /**
+   * Деталь по номеру выноски на показанной схеме.
+   *
+   * Мастер держит перед глазами картинку узла: там жгут проводов подписан
+   * цифрой 9, а не словами — назвать его текстом он не может. Номер разбирается
+   * по тому же узлу, схему которого бот только что прислал.
+   */
+  private async handleSchemePosition(chatId: number, position: string): Promise<void> {
+    const session = this.session(chatId)
+    if (!session.vin || !session.schemeId) return
+
+    let parts: Part[]
+    try {
+      parts = (
+        await this.withTyping(chatId, () =>
+          this.catalog.schemeParts(session.vin!, session.schemeId!, position),
+        )
+      ).parts
+    } catch (error) {
+      console.error('[bot] узел по схеме не открылся:', error)
+      await this.client.sendMessage(
+        chatId,
+        'Каталог сейчас недоступен. Попробуйте ещё раз через пару минут.',
+      )
+      return
+    }
+
+    if (parts.length === 0) {
+      await this.client.sendMessage(
+        chatId,
+        `На схеме нет позиции ${position}. Проверьте номер на картинке ` +
+          '(кнопка «🔍 Схема крупнее») или пришлите название запчасти.',
+      )
+      return
+    }
+
+    session.parts = Object.fromEntries(parts.map((part) => [part.oemNumber, part.name]))
+    const { text, keyboard } = partsMessage(parts, undefined, { hasScheme: Boolean(session.scheme) })
+    await this.client.sendMessage(chatId, `📍 Позиция ${position} на схеме.\n${text}`, {
+      parseMode: 'HTML',
+      replyMarkup: keyboard,
+    })
+  }
+
+  /**
+   * «Бот печатает…» на время долгого запроса. Поиск по каталогу — это цепочка
+   * вызовов внешних API (живьём до 20 секунд), и без индикатора бот выглядит
+   * умершим: мастер шлёт запрос ещё раз, очередь растёт. Статус живёт ~5 секунд,
+   * поэтому обновляем его, пока идёт работа.
+   */
+  private async withTyping<T>(chatId: number, work: () => Promise<T>): Promise<T> {
+    void this.client.sendChatAction(chatId, 'typing').catch(() => undefined)
+    const timer = setInterval(() => {
+      void this.client.sendChatAction(chatId, 'typing').catch(() => undefined)
+    }, TYPING_REFRESH_MS)
+    try {
+      return await work()
+    } finally {
+      clearInterval(timer)
+    }
   }
 
   private async handleCallback(callback: TgCallbackQuery): Promise<void> {
@@ -640,6 +724,16 @@ export class TelegramBot {
       }
     }
   }
+}
+
+/**
+ * Номер выноски на схеме: короткое целое число и ничего больше. Три знака —
+ * потолок нумерации узлов каталога; длинные числа (пробег, артикул) сюда не
+ * попадают.
+ */
+export function parseSchemePosition(text: string): string | null {
+  const match = /^(\d{1,3})$/.exec(text.trim())
+  return match ? String(Number.parseInt(match[1]!, 10)) : null
 }
 
 /**

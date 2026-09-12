@@ -236,6 +236,8 @@ describe('PartsCatalogsCatalogProvider.searchParts', () => {
         category: 'Lubricat.syst.-oil filter, heat exchanger',
         brand: 'Skoda',
         imageUrl: 'https://ru.img.parts-catalogs.com/bmw_2020_01/data/JPG/502704.png',
+        position: '01',
+        schemeId: 'GROUP-OIL',
       },
     ])
 
@@ -526,6 +528,53 @@ describe('mapVehicle', () => {
   })
 })
 
+describe('PartsCatalogsCatalogProvider.schemeParts', () => {
+  const vehicle: Vehicle = {
+    vin: VIN,
+    make: 'Skoda',
+    model: 'Octavia',
+    year: 2018,
+    engine: null,
+    bodyType: null,
+    raw: {
+      catalogId: 'skoda',
+      carId: 'b6f1737ecdb825af838af2c9aee89486',
+      criteria: 'b4*XW8AN2NE3JH035743(2018!aebbed60',
+      [CATALOG_SOURCE_KEY]: 'partscatalogs',
+    },
+  }
+
+  test('узел отдаётся целиком, с номерами позиций и без отбора по запросу', async () => {
+    // Ключевое отличие от поиска: «Heat exchanger» к «масляному фильтру»
+    // отношения не имеет, но на схеме он стоит под номером — значит нужен.
+    const calls: { url: string; headers: Record<string, string> }[] = []
+    const provider = providerWith(() => json(PARTS2), calls)
+
+    const parts = await provider.schemeParts(vehicle, 'GROUP-OIL')
+
+    expect(parts.map((part) => [part.position, part.oemNumber])).toEqual([
+      ['01', '11422469721'],
+      ['02', '17217533476'],
+    ])
+    expect(parts[0]?.schemeId).toBe('GROUP-OIL')
+    expect(parts[0]?.imageUrl).toBe(
+      'https://ru.img.parts-catalogs.com/bmw_2020_01/data/JPG/502704.png',
+    )
+
+    // Координаты машины взяты из raw — лишнего /car/info (и квоты VIN) нет.
+    expect(calls).toHaveLength(1)
+    const url = new URL(calls[0]!.url)
+    expect(url.pathname).toBe('/v1/catalogs/skoda/parts2')
+    expect(url.searchParams.get('groupId')).toBe('GROUP-OIL')
+    expect(url.searchParams.get('criteria')).toBe('b4*XW8AN2NE3JH035743(2018!aebbed60')
+  })
+
+  test('каталог не знает такого узла → пусто, а не падение', async () => {
+    const provider = providerWith(() => new Response('', { status: 404 }))
+    expect(await provider.schemeParts(vehicle, 'GROUP-MISSING')).toEqual([])
+  })
+})
+
 describe('collectParts', () => {
   const ctx = (englishTerms: string[] = ['oil filter'], query = 'масляный фильтр') => ({
     category: 'Узел',
@@ -585,6 +634,8 @@ describe('collectParts', () => {
         category: 'Узел',
         brand: 'Skoda',
         imageUrl: null,
+        position: null,
+        schemeId: null,
       },
     ])
   })

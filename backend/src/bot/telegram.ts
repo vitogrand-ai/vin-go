@@ -81,6 +81,11 @@ export interface TelegramClient {
    * в исходном разрешении: у фото номера позиций теряются при сжатии.
    */
   sendDocument(chatId: number, fileUrl: string, options?: SendPhotoOptions): Promise<void>
+  /**
+   * Статус «печатает…» в чате. Держится около пяти секунд, поэтому на долгой
+   * работе его шлют повторно.
+   */
+  sendChatAction(chatId: number, action: 'typing'): Promise<void>
   answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void>
   /**
    * Скачивает вложение по file_id. Возвращает null, если файл недоступен
@@ -225,6 +230,10 @@ export class HttpTelegramClient implements TelegramClient {
       throw new Error(`Telegram ${method}: картинка ${blob.size} Б больше лимита Bot API`)
     }
     return blob
+  }
+
+  async sendChatAction(chatId: number, action: 'typing'): Promise<void> {
+    await this.call('sendChatAction', { chat_id: chatId, action })
   }
 
   async answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void> {

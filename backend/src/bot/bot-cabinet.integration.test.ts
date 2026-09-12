@@ -32,6 +32,9 @@ class FakeTelegramClient implements TelegramClient {
   async sendDocument(chatId: number, _fileUrl: string): Promise<void> {
     this.sent.push({ chatId, text: '[файл]' })
   }
+  /** «Печатает…» на время долгого поиска — в утверждениях тестов не участвует. */
+  async sendChatAction(): Promise<void> {}
+
   async answerCallbackQuery(): Promise<void> {}
   /** Вложения в сценариях кабинета не используются. */
   async downloadFile(): Promise<Uint8Array | null> {

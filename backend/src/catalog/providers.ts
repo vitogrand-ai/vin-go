@@ -9,6 +9,13 @@ export interface CatalogProvider {
   decodeVin(vin: string): Promise<Vehicle | null>
   /** Ищет запчасти для автомобиля по текстовому запросу. */
   searchParts(vehicle: Vehicle, query: string): Promise<Part[]>
+  /**
+   * Все детали узла по его идентификатору (`Part.schemeId`) — без отбора по
+   * запросу, с номерами позиций со схемы. Мастер смотрит на картинку и называет
+   * номер: на схеме фары «9» — это жгут проводов, названия которого он не знает.
+   * Метод необязательный: схемы отдаёт не каждый каталог.
+   */
+  schemeParts?(vehicle: Vehicle, schemeId: string): Promise<Part[]>
 }
 
 /**

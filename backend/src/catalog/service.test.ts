@@ -236,3 +236,44 @@ describe('CatalogService — источник данных в ответах', (
     expect(search.source?.names).toEqual(['acat', 'vin17'])
   })
 })
+
+describe('CatalogService.schemeParts', () => {
+  const node: Part[] = [
+    { oemNumber: '566941015F', name: 'Фара головного света', category: 'Фары', brand: 'Skoda', imageUrl: null, position: '1', schemeId: 'G1' },
+    { oemNumber: '565941813F', name: 'Жгут проводов освещения', category: 'Отдельные детали', brand: 'Skoda', imageUrl: null, position: '9', schemeId: 'G1' },
+    { oemNumber: '565941813G', name: 'Жгут проводов освещения', category: 'Отдельные детали', brand: 'Skoda', imageUrl: null, position: '9', schemeId: 'G1' },
+    // Та же деталь второй строкой применимости — в выдаче должна быть одна.
+    { oemNumber: '565941813G', name: 'Жгут проводов освещения', category: 'Отдельные детали', brand: 'Skoda', imageUrl: null, position: '9', schemeId: 'G1' },
+  ]
+
+  function serviceWithNode(): CatalogService {
+    return new CatalogService(
+      {
+        decodeVin: async () => VEHICLE,
+        searchParts: async () => [],
+        schemeParts: async () => node,
+      },
+      new MockSupplierProvider(),
+      new MockPlateProvider(),
+    )
+  }
+
+  test('номер позиции выбирает детали этой выноски, дубли применимости схлопываются', async () => {
+    const found = await serviceWithNode().schemeParts(VEHICLE.vin, 'G1', '9')
+    expect(found.parts.map((part) => part.oemNumber)).toEqual(['565941813F', '565941813G'])
+  })
+
+  test('позиции нет на схеме → пустая выдача, а не чужая деталь', async () => {
+    const found = await serviceWithNode().schemeParts(VEHICLE.vin, 'G1', '77')
+    expect(found.parts).toEqual([])
+  })
+
+  test('каталог не умеет открывать узлы → пусто, без падения', async () => {
+    const service = new CatalogService(
+      { decodeVin: async () => VEHICLE, searchParts: async () => [] },
+      new MockSupplierProvider(),
+      new MockPlateProvider(),
+    )
+    expect((await service.schemeParts(VEHICLE.vin, 'G1', '9')).parts).toEqual([])
+  })
+})

@@ -23,7 +23,16 @@ export class TranslatingCatalogProvider implements CatalogProvider {
   }
 
   async searchParts(vehicle: Vehicle, query: string): Promise<Part[]> {
-    const parts = await this.inner.searchParts(vehicle, query)
+    return this.translateParts(await this.inner.searchParts(vehicle, query))
+  }
+
+  /** Узел по схеме идёт тем же путём: мастер видит те же русские названия. */
+  async schemeParts(vehicle: Vehicle, schemeId: string): Promise<Part[]> {
+    if (!this.inner.schemeParts) return []
+    return this.translateParts(await this.inner.schemeParts(vehicle, schemeId))
+  }
+
+  private async translateParts(parts: Part[]): Promise<Part[]> {
     if (parts.length === 0) return parts
 
     const translations = await this.translator.translate(

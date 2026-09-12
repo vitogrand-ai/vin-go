@@ -34,6 +34,9 @@ class FakeTelegramClient implements TelegramClient {
     this.sentDocuments.push({ chatId, fileUrl, options })
   }
 
+  /** «Печатает…» на время долгого поиска — в утверждениях тестов не участвует. */
+  async sendChatAction(): Promise<void> {}
+
   async answerCallbackQuery(callbackQueryId: string): Promise<void> {
     this.answered.push(callbackQueryId)
   }
@@ -205,6 +208,94 @@ describe('TelegramBot', () => {
     const document = client.sentDocuments.at(-1)
     expect(document?.fileUrl).toBe('https://img.example.com/schema.png')
     expect(document?.options?.caption).toContain('исходном размере')
+  })
+
+  /**
+   * Живой случай пилота: мастер ищет «фара», получает схему узла и видит на ней
+   * нужный жгут проводов под номером 9. Названия жгута он не знает — присылает
+   * номер.
+   */
+  describe('номер с картинки вместо названия', () => {
+    const vehicle: Vehicle = {
+      vin: DEMO_VIN,
+      make: 'Skoda',
+      model: 'Kodiaq',
+      year: 2020,
+      engine: null,
+      bodyType: null,
+    }
+    const headlight: Part = {
+      oemNumber: '566941015F',
+      name: 'Фара головного света',
+      category: 'Светодиодные фары',
+      brand: 'Skoda',
+      imageUrl: 'https://img.example.com/schema.png',
+      position: '1',
+      schemeId: 'GROUP-LIGHT',
+    }
+    const harness: Part = {
+      oemNumber: '565941813F',
+      name: 'Жгут проводов освещения',
+      category: 'Отдельные детали',
+      brand: 'Skoda',
+      imageUrl: 'https://img.example.com/schema.png',
+      position: '9',
+      schemeId: 'GROUP-LIGHT',
+    }
+
+    function botWithScheme(schemeParts: () => Promise<Part[]>) {
+      const catalog = new CatalogService(
+        {
+          decodeVin: async () => vehicle,
+          searchParts: async () => [headlight],
+          schemeParts: async () => schemeParts(),
+        },
+        new MockSupplierProvider(),
+        new MockPlateProvider(),
+      )
+      return new TelegramBot(client, catalog)
+    }
+
+    test('«9» после схемы открывает деталь этой позиции', async () => {
+      const numberBot = botWithScheme(async () => [headlight, harness])
+
+      await numberBot.handleUpdate(messageUpdate(DEMO_VIN))
+      await numberBot.handleUpdate(messageUpdate('фара'))
+      await numberBot.handleUpdate(messageUpdate('9'))
+
+      const last = client.sent.at(-1)
+      expect(last?.text).toContain('Позиция 9')
+      const keyboard = last?.options?.replyMarkup?.inline_keyboard
+      expect(keyboard?.[0]?.[0]?.text).toContain('Жгут проводов освещения')
+      expect(keyboard?.[0]?.[0]?.callback_data).toBe('oem:565941813F')
+    })
+
+    test('такой позиции на схеме нет — говорим об этом, а не «ничего не найдено»', async () => {
+      const numberBot = botWithScheme(async () => [headlight, harness])
+
+      await numberBot.handleUpdate(messageUpdate(DEMO_VIN))
+      await numberBot.handleUpdate(messageUpdate('фара'))
+      await numberBot.handleUpdate(messageUpdate('77'))
+
+      expect(client.sent.at(-1)?.text).toContain('нет позиции 77')
+    })
+
+    test('в выдаче со схемой бот подсказывает, что можно прислать номер', async () => {
+      const numberBot = botWithScheme(async () => [])
+
+      await numberBot.handleUpdate(messageUpdate(DEMO_VIN))
+      await numberBot.handleUpdate(messageUpdate('фара'))
+
+      expect(client.sentPhotos.at(-1)?.options?.caption).toContain('номер со схемы')
+    })
+
+    test('без показанной схемы число идёт в обычный поиск', async () => {
+      await bot.handleUpdate(messageUpdate(DEMO_VIN))
+      await bot.handleUpdate(messageUpdate('9'))
+
+      // Мок-каталог по «9» ничего не знает — это обычная выдача поиска.
+      expect(client.sent.at(-1)?.text).toContain('ничего не найдено')
+    })
   })
 
   test('без схемы в выдаче кнопки нет, а нажатие после перезапуска не падает', async () => {

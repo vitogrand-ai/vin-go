@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { createMockCatalogService } from '../catalog/service'
-import { parseServiceCommand, TelegramBot } from './bot'
+import { parseSchemePosition, parseServiceCommand, TelegramBot } from './bot'
 import type { SendMessageOptions, TelegramClient, TgUpdate } from './telegram'
 import { detectImageMediaType, parseVinAnswer, type VinOcrProvider, type VinPhoto } from './vin-ocr'
 import { MAX_AUDIO_BYTES, WhisperVoiceTranscriber, type VoiceTranscriber } from './voice-transcribe'
@@ -30,6 +30,9 @@ class FakeTelegramClient implements TelegramClient {
   async sendDocument(chatId: number, _fileUrl: string): Promise<void> {
     this.sent.push({ chatId, text: '[файл]', options: undefined })
   }
+  /** «Печатает…» на время долгого поиска — в утверждениях тестов не участвует. */
+  async sendChatAction(): Promise<void> {}
+
   async answerCallbackQuery(): Promise<void> {}
   async downloadFile(fileId: string): Promise<Uint8Array | null> {
     this.downloaded.push(fileId)
@@ -375,5 +378,21 @@ describe('TelegramBot — регламент ТО', () => {
     })
 
     expect(client.texts()).toContain('Укажите пробег')
+  })
+})
+
+describe('parseSchemePosition', () => {
+  test('короткое число — это номер выноски на схеме', () => {
+    expect(parseSchemePosition('9')).toBe('9')
+    expect(parseSchemePosition(' 14 ')).toBe('14')
+    // Каталог пишет позиции с нулём впереди («01») — сравниваем по числу.
+    expect(parseSchemePosition('09')).toBe('9')
+  })
+
+  test('всё остальное номером позиции не считается', () => {
+    expect(parseSchemePosition('колодки')).toBeNull()
+    expect(parseSchemePosition('145000')).toBeNull() // пробег
+    expect(parseSchemePosition('1J0698151')).toBeNull() // артикул
+    expect(parseSchemePosition('9 фара')).toBeNull()
   })
 })

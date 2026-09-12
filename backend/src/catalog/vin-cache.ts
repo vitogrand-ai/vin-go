@@ -46,6 +46,11 @@ export class CachingCatalogProvider implements CatalogProvider {
     return this.inner.searchParts(vehicle, query)
   }
 
+  /** Кэшируется только расшифровка VIN — узел по схеме идёт в каталог как есть. */
+  schemeParts(vehicle: Vehicle, schemeId: string): Promise<Part[]> {
+    return this.inner.schemeParts?.(vehicle, schemeId) ?? Promise.resolve([])
+  }
+
   private async read(vin: string): Promise<Vehicle | null> {
     let record: { vehicle: unknown; expiresAt: Date } | null
     try {

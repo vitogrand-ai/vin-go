@@ -157,6 +157,29 @@ export class FallbackCatalogProvider implements CatalogProvider {
   }
 
   /**
+   * Весь узел по идентификатору схемы. Спрашиваем источник, который эту схему
+   * и прислал (`Part.schemeId` каталог-специфичен, чужому он ничего не значит):
+   * это тот же источник, что определил авто, либо единственный со схемами.
+   */
+  async schemeParts(vehicle: Vehicle, schemeId: string): Promise<Part[]> {
+    const source = readSource(vehicle)
+    const ordered = [
+      ...this.providers.filter((p) => p.name === source),
+      ...this.providers.filter((p) => p.name !== source && p.providesImages),
+    ]
+    for (const { name, provider } of ordered) {
+      if (!provider.schemeParts) continue
+      try {
+        const parts = await provider.schemeParts(vehicle, schemeId)
+        if (parts.length > 0) return parts
+      } catch (error) {
+        console.error(`[catalog:${name}] узел по схеме не открылся`, error)
+      }
+    }
+    return []
+  }
+
+  /**
    * Добор схем узлов. Схему отдаёт не каждый каталог (17vin — никогда), а
    * мастеру она нужна, чтобы увидеть, ту ли деталь он выбирает. Если в выдаче
    * нет ни одной картинки, спрашиваем тот же запрос у источников с
