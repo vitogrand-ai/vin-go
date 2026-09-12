@@ -53,11 +53,34 @@ function toKeySets(names: string[]): Set<string>[] {
 export function closeness(name: string, names: Set<string>[]): number {
   const words = wordList(name)
   const keys = new Set(words)
+  const head = headWord(words)
   let best = 0
   for (const candidate of names) {
-    best = Math.max(best, similarity(words[0], keys, candidate))
+    best = Math.max(best, similarity(head, keys, candidate))
   }
   return best
+}
+
+/**
+ * Служебные слова, с которых каталог начинает название, не назвав саму деталь:
+ * «1 set of brake pads for disk brake» (VW/Audi), «KIT, DISC BRAKE» (Toyota),
+ * «Комплект тормозных колодок». Деталь здесь — не «1» и не «комплект».
+ */
+const HEAD_SKIP = new Set(['set', 'of', 'for', 'and', 'the', 'with', 'kit', 'компл', 'набор', 'пара'])
+
+/**
+ * Главное слово названия — первое значащее. Живьём на переднем тормозе Audi
+ * колодки приходят как «1 set of brake pads for disk brake»: главным словом
+ * оказывалась цифра «1», совпадения не было ни с чем, и мастер получал первой
+ * строкой «caliper without brake pads» — суппорт, у которого колодки только
+ * упомянуты.
+ */
+function headWord(words: string[]): string | undefined {
+  for (const word of words) {
+    if (/^[0-9]+$/.test(word) || HEAD_SKIP.has(word)) continue
+    return word
+  }
+  return words[0]
 }
 
 /**
@@ -74,6 +97,9 @@ export function closeness(name: string, names: Set<string>[]): number {
  *
  * Одной долей общих слов обойтись нельзя: она штрафует название за каждое
  * уточнение, и короткий чужой сосед обгонял точную, но подробную деталь.
+ *
+ * Главное слово выбирает headWord: служебное начало («1 set of…», «KIT,…»)
+ * деталь не называет.
  */
 function similarity(head: string | undefined, keys: Set<string>, candidate: Set<string>): number {
   let common = 0
@@ -96,7 +122,17 @@ function wordList(value: string): string[] {
     .replaceAll('ё', 'е')
     .split(/[^a-zа-я0-9]+/)
     .filter(Boolean)
-    .map((word) => word.slice(0, 5))
+    .map(normalizeWord)
+}
+
+/**
+ * Обрезка до пяти букв огрубляет русскую морфологию, но не латинскую: «pads» и
+ * «pad» остаются разными словами, и колодки не узнавались по английскому ряду.
+ * Поэтому у латинского слова снимается окончание множественного числа.
+ */
+function normalizeWord(word: string): string {
+  const single = /^[a-z]{3,}s$/.test(word) ? word.slice(0, -1) : word
+  return single.slice(0, 5)
 }
 
 export function wordKeys(value: string): Set<string> {
