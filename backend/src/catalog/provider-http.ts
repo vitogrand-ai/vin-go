@@ -101,6 +101,9 @@ function unavailable(provider: string, reason: string): AppError {
 const SECRET_PARAMS = new Set([
   'key', 'token', 'apikey', 'api_key', 'access_token',
   'password', 'pass', 'secret', 'user', 'login', 'sign', 'signature',
+  // Каждый провайдер зовёт доступ по-своему: ABCP — userlogin/userpsw,
+  // VINqu — siteHash/accessHash. Список пополняет тест provider-secrets.
+  'userlogin', 'userpsw', 'sitehash', 'accesshash', 'authorization',
 ])
 
 export function safeUrl(raw: string): string {

@@ -62,6 +62,38 @@
 - Prefer a monolithic backend. Do not split into microservices unless the product has a concrete operational need.
 - For real-time infrastructure decisions, follow `docs/ARCHITECTURE.md` and `docs/DEPLOYMENT.md`.
 
+## Lessons From The Pilot
+
+Distilled from every complaint the customer and the pilot shop reported between 2026-08-25 and
+2026-09-12, with the real root cause of each. Full write-up: `docs/POSTMORTEM.md`.
+
+- Done means the mechanic's path was walked live — web search or the Telegram bot — not that
+  tests passed, a `curl` answered, or a deploy finished. After deploying, check `/health`, the
+  page through Caddy, and a real bot answer.
+- Any change to catalog search must pass the live case basket before commit:
+  `bun run --cwd backend catalog:cases` (runs on the VPS; the parts-catalogs key is IP-bound).
+  Fixing search one reported car at a time is what repeatedly broke the previous car.
+- Fixed a complaint? Add it to that basket as a case with VIN, query, and the expected result.
+  Cases are never deleted, including ones that "have worked for ages".
+- Fix the owning layer, then verify the symptom is gone on the other providers and cars too.
+  A general symptom patched inside one provider adapter is the wrong layer.
+- Provider credentials reach the network only through `safeUrl`. Credentials in logs has already
+  bitten three times (bot token, PartsAPI key, ABCP/VINqu). `provider-secrets.test.ts` guards it.
+- Every new test file must be registered in `test:unit` or in `scripts/test-integration.mjs`;
+  `test-registry.test.ts` fails otherwise. A test nobody runs is not coverage.
+- Open what the user gave you first — supplier links, logs, screenshots — before hypothesising.
+- Look for existing work (neighbouring projects, git history, `docs/`) before building from
+  scratch; the jargon dictionary already existed when search was being fixed without it.
+- Shell instructions for the user are ready-to-paste PowerShell, one step at a time. File
+  contents are announced as file contents, with the path.
+- Anything slower than a couple of seconds shows a live status; every failure says what to do next.
+- Suppliers and catalogs are read-only until the pilot ends: no orders, no paid expert requests,
+  no data sent to them. The rule is the product owner's, from 2026-05-27, and was never lifted;
+  `no-supplier-writes.test.ts` enforces it.
+- Never let a model guess or invent an OEM number or a name-to-number link; the model only
+  translates strings that came from a catalog.
+- Keep agent fan-out to 1-3 narrow subagents: a 19-agent Workflow burned the account limit.
+
 ## Bootstrap-Only Instructions
 
 <!-- BOOTSTRAP_ONLY_START -->

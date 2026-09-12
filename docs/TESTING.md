@@ -49,6 +49,33 @@ The Docker smoke test builds the backend image, starts it against `postgres_test
 
 `.github/workflows/ci.yml` runs typecheck, deployment/script tests, contract tests, webapp client tests, backend tests, and the webapp Playwright smoke flow on pushes to `main` and `master` plus pull requests.
 
+## Catalog Live Regression
+
+Catalog search is a chain: jargon dictionary, catalog name suggestions, node choice, part
+filtering, ordering. Changing one link changes results for every car, so fixing the reported car
+alone is how previously fixed cars kept breaking (see `POSTMORTEM.md`).
+
+```bash
+bun run --cwd backend catalog:cases            # basket of real pilot complaints, exits non-zero on failure
+bun run --cwd backend catalog:cases -- --only Subaru
+bun run --cwd backend catalog:names -- <VIN>   # which part a query actually returns, read by eye
+bun run --cwd backend catalog:coverage -- <VIN>
+```
+
+`catalog:cases` carries an expectation per case (first row, scheme, callout number, model year),
+so it answers pass/fail instead of needing a human to read a table. Run it before committing any
+search change, and add a case whenever a complaint is fixed. It needs live catalogs: the
+parts-catalogs key is bound to the VPS IP, so a full green run only happens on the server.
+Repeat VINs at 17vin are free for three months, so re-running the basket costs nothing.
+
+Every `*.test.ts` under `backend/src` must be listed in `test:unit` or in
+`scripts/test-integration.mjs`; `src/test-registry.test.ts` fails otherwise, because a test that
+no runner executes is not coverage.
+
+Local reality on the current workstation: Docker does not run (no virtualization), so integration
+tests use the native PostgreSQL 18 instance, and Playwright only works through Node plus a Chrome
+started with `--remote-debugging-port`, not under bun.
+
 ## Webapp E2E
 
 Playwright is configured in `webapp/playwright.config.ts`.

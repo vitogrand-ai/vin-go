@@ -183,6 +183,7 @@ Test runners use the separate Docker Compose `postgres_test` service and the `TE
 ## Project READMEs
 
 - [backend/README.md](backend/README.md) - API, auth, Prisma, and backend validation.
+- [docs/POSTMORTEM.md](docs/POSTMORTEM.md) - pilot complaints, their real root causes, and the checks that keep them from returning.
 - [docs/LOCAL_DATABASE.md](docs/LOCAL_DATABASE.md) - Docker Compose PostgreSQL setup and reset workflow.
 - [docs/STORAGE.md](docs/STORAGE.md) - DigitalOcean Spaces, CDN, uploads, and image/media storage rules.
 - [docs/YANDEX_CLOUD.md](docs/YANDEX_CLOUD.md) - optional Yandex Cloud deployment path when explicitly selected.
