@@ -11,6 +11,7 @@ import {
   collectParts,
   mapVehicle,
   normalizeImageUrl,
+  pickCar,
   rankByPosition,
   rankSuggestions,
   shortenQuery,
@@ -750,6 +751,72 @@ describe('shortenQuery / normalizeImageUrl', () => {
     expect(vehicle?.raw?.modification).toBe('177.087     (A 200)')
     // Координаты каталога на месте — по ним идёт поиск деталей.
     expect(vehicle?.raw?.carId).toBe('car-1')
+  })
+
+  test('несколько модификаций по одному VIN → выбирается по модельному году VIN', () => {
+    // Живой ответ прода по VW LFV3B2FY2N3102396 (три модификации, поля срезаны
+    // до значимых). Первой каталог отдаёт машину 1992 года — до этой правки
+    // мастер получал её год и её детали (carId у модификаций разный).
+    const jetta = [
+      {
+        brand: 'Volkswagen',
+        modelName: 'Jetta',
+        title: 'Jetta',
+        catalogId: 'vw',
+        carId: 'jetta-1992',
+        criteria: '3d*LFV3B2FY2N3102396(1992!31a3cee7',
+        description: '1991-2012',
+        parameters: [{ key: 'year', name: 'Год', value: '1992' }],
+      },
+      {
+        brand: 'Volkswagen',
+        modelName: 'Jetta',
+        title: 'Jetta',
+        catalogId: 'vw',
+        carId: 'jetta-2022-limousine',
+        criteria: '37*LFV3B2FY2N3102396(2022!31a3cee7',
+        description: '2020-2027 Limousine',
+        parameters: [{ key: 'year', name: 'Год', value: '2022' }],
+      },
+      {
+        brand: 'Volkswagen',
+        modelName: 'Jetta',
+        title: 'Jetta',
+        catalogId: 'vw',
+        carId: 'jetta-2022-suv',
+        criteria: '37*LFV3B2FY2N3102396(2022!31a3cee7',
+        description: '2020-2027 SUV',
+        parameters: [{ key: 'year', name: 'Год', value: '2022' }],
+      },
+    ]
+
+    const vehicle = mapVehicle('LFV3B2FY2N3102396', jetta)
+    expect(vehicle?.year).toBe(2022)
+    // Детали ищутся по координатам выбранной машины, а не первой в списке.
+    expect(vehicle?.raw?.carId).toBe('jetta-2022-limousine')
+  })
+
+  test('год есть только диапазоном в описании — модификация всё равно находится', () => {
+    const vehicle = mapVehicle('LFV3B2FY2N3102396', [
+      { brand: 'Volkswagen', modelName: 'Jetta', catalogId: 'vw', carId: 'old', description: '1991-2012' },
+      { brand: 'Volkswagen', modelName: 'Jetta', catalogId: 'vw', carId: 'new', description: '2020-2027' },
+    ])
+    expect(vehicle?.raw?.carId).toBe('new')
+  })
+
+  test('год из VIN ничего не подтвердил → порядок каталога не ломаем', () => {
+    // Европейский Mercedes: правило ISO даёт «2001», но такой модификации нет —
+    // выдумывать выбор не на чем, берём первую, как и раньше.
+    const picked = pickCar('WDD1770871V030773', [
+      { carId: 'a', description: '2018-2021' },
+      { carId: 'b', description: '2022-2025' },
+    ])
+    expect(picked?.['carId']).toBe('a')
+  })
+
+  test('единственная модификация возвращается без разбора года', () => {
+    expect(pickCar('LFV3B2FY2N3102396', [{ carId: 'only' }])?.['carId']).toBe('only')
+    expect(pickCar('LFV3B2FY2N3102396', [])).toBeNull()
   })
 
   test('когда modelName совпадает с title, модификация в raw не дублируется', () => {

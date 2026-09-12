@@ -8,6 +8,7 @@ import { NAME_MATCH, closeness, queryNames, wordKeys } from './part-match'
 import { englishPartTerms } from './part-terms'
 import { requestProviderJson } from './provider-http'
 import type { CatalogProvider } from './providers'
+import { vinModelYear } from './vin-year'
 
 /**
  * Адаптер каталога parts-catalogs.com — мировой OEM-каталог (легковые + грузовые,
@@ -125,10 +126,9 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
     const source = vehicle.raw?.[CATALOG_SOURCE_KEY]
     let ref = source === undefined || source === SOURCE_NAME ? carRefFromRaw(vehicle.raw) : null
     if (!ref) {
-      const data = await this.request(
-        `/car/info?q=${encodeURIComponent(vehicle.vin.trim().toUpperCase())}`,
-      )
-      ref = data === null ? null : carRefFromCarInfo(data)
+      const vin = vehicle.vin.trim().toUpperCase()
+      const data = await this.request(`/car/info?q=${encodeURIComponent(vin)}`)
+      ref = data === null ? null : carRefFromCarInfo(vin, data)
       if (!ref) return []
     }
 
@@ -264,12 +264,11 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
 }
 
 /**
- * Ответ /car/info (массив модификаций) → карточка авто. Берётся первая
- * модификация — для полного VIN каталог обычно отдаёт одну. null — если
- * не удалось определить ни марку, ни модель.
+ * Ответ /car/info (массив модификаций) → карточка авто. Модификацию выбирает
+ * `pickCar`. null — если не удалось определить ни марку, ни модель.
  */
 export function mapVehicle(vinOrFrame: string, data: unknown): Vehicle | null {
-  const car = (asArray(data) ?? [])[0]
+  const car = pickCar(vinOrFrame, data)
   if (!car) return null
 
   const make = str(car, ['brand'])
@@ -280,12 +279,11 @@ export function mapVehicle(vinOrFrame: string, data: unknown): Vehicle | null {
   const modification = str(car, ['title'])
   if (!make && !model) return null
 
-  const yearParam = paramValue(car, ['year'], ['год', 'year'])
   return {
     vin: vinOrFrame,
     make: make ?? 'Не определено',
     model: model ?? 'Не определено',
-    year: (yearParam ? Number.parseInt(yearParam, 10) : null) ?? parseYear(car),
+    year: carYear(car),
     engine: paramValue(car, ['spec_engine', 'engine'], ['двигатель', 'engine', 'мотор']),
     bodyType: paramValue(car, ['body', 'body_type'], ['кузов', 'body']),
     // Только координаты каталога (нужны searchParts) и модификация; полный
@@ -295,6 +293,48 @@ export function mapVehicle(vinOrFrame: string, data: unknown): Vehicle | null {
       ...(modification && modification !== model ? { modification } : {}),
     },
   }
+}
+
+/**
+ * Выбор модификации из ответа /car/info.
+ *
+ * По одному VIN каталог отдаёт не одну машину, а список — и это РАЗНЫЕ машины
+ * с разными `carId`, то есть с разными деталями. Живой случай: VW
+ * `LFV3B2FY2N3102396` → «Jetta 1992 (1991-2012)», «Jetta 2022 (2020-2027
+ * Limousine)» и «Jetta 2022 (2020-2027 SUV)». Первая в списке — машина
+ * тридцатилетней давности: мастер получал и чужой год, и чужие детали.
+ *
+ * Разводит их модельный год из самого VIN (`vinModelYear`): берём модификацию,
+ * чей год каталога совпал с ним, иначе — чей диапазон лет («2020-2027») его
+ * накрывает. Гипотезу из VIN применяем ТОЛЬКО когда каталог её подтвердил:
+ * у европейских Mercedes года в VIN нет вовсе, и там список остаётся в
+ * исходном порядке — как и для единственной модификации.
+ */
+export function pickCar(vinOrFrame: string, data: unknown): Record<string, unknown> | null {
+  const cars = asArray(data) ?? []
+  if (cars.length <= 1) return cars[0] ?? null
+
+  const vinYear = vinModelYear(vinOrFrame)
+  if (vinYear === null) return cars[0]!
+  return (
+    cars.find((car) => carYear(car) === vinYear) ??
+    cars.find((car) => yearsCover(car, vinYear)) ??
+    cars[0]!
+  )
+}
+
+/** Год модификации: параметр каталога, иначе год из criteria/description. */
+function carYear(car: Record<string, unknown>): number | null {
+  const param = paramValue(car, ['year'], ['год', 'year'])
+  const parsed = param ? Number.parseInt(param, 10) : Number.NaN
+  return Number.isFinite(parsed) ? parsed : parseYear(car)
+}
+
+/** Накрывает ли диапазон выпуска модификации («2020-2027 SUV») этот год? */
+function yearsCover(car: Record<string, unknown>, year: number): boolean {
+  const range = (str(car, ['description']) ?? '').match(/\b((?:19|20)\d{2})\s*-\s*((?:19|20)\d{2})\b/)
+  if (!range) return false
+  return year >= Number.parseInt(range[1]!, 10) && year <= Number.parseInt(range[2]!, 10)
 }
 
 /**
@@ -326,9 +366,9 @@ function parseYear(car: Record<string, unknown>): number | null {
   return fromDescription ? Number.parseInt(fromDescription[0], 10) : null
 }
 
-/** Первая модификация ответа /car/info → координаты каталога (для поиска). */
-function carRefFromCarInfo(data: unknown): CarRef | null {
-  const car = (asArray(data) ?? [])[0]
+/** Выбранная модификация ответа /car/info → координаты каталога (для поиска). */
+function carRefFromCarInfo(vinOrFrame: string, data: unknown): CarRef | null {
+  const car = pickCar(vinOrFrame, data)
   return car ? carRefFromCar(car) : null
 }
 
