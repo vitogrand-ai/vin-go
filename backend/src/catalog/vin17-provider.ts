@@ -239,12 +239,16 @@ export function mapVehicle(vin: string, payload: Record<string, unknown>): Vehic
     vin,
     make: make ? normalizeBrand(make) : 'Не определено',
     model: modelName ?? 'Не определено',
-    // Год из самого VIN точнее года поколения модели (Model_year); когда нет ни
-    // того, ни другого (живой случай: европейский Mercedes), год стоит в конце
-    // описания модели («… Dynamic Type 2019»). Иначе честный null, а не 0.
+    // Год из самого VIN точнее года поколения модели (Model_year). Но «нет
+    // данных» 17vin отдаёт НУЛЁМ, а не пустым полем: у европейских VIN год в
+    // самом номере не закодирован (живой случай: Mercedes W177 —
+    // model_year_from_vin = "0" при Model_year = "2019"). Ноль — не год, иначе
+    // он бы победил настоящий год модели. Поэтому каждый источник проверяем на
+    // правдоподобие, а когда не осталось ни одного, год берём из конца описания
+    // модели («… Dynamic Type 2019»). Ничего не нашли — честный null, а не 0.
     year:
-      int(payload, ['model_year_from_vin']) ??
-      (model ? int(model, ['Model_year']) : parseIntOrNull(attrs?.get('year'))) ??
+      plausibleYear(int(payload, ['model_year_from_vin'])) ??
+      plausibleYear(model ? int(model, ['Model_year']) : parseIntOrNull(attrs?.get('year'))) ??
       yearFromModelDetail(modelDetail),
     engine: model
       ? str(model, ['Engine_no_en', 'Engine_no'])
@@ -333,6 +337,12 @@ function capitalize(word: string): string {
 function parseIntOrNull(value: string | undefined): number | null {
   const parsed = Number.parseInt(value ?? '', 10)
   return Number.isFinite(parsed) ? parsed : null
+}
+
+/** Похоже это на год выпуска? Ноль и мусор из ответа каталога — это «не знаю». */
+function plausibleYear(year: number | null): number | null {
+  if (year === null) return null
+  return year >= 1900 && year <= new Date().getFullYear() + 2 ? year : null
 }
 
 /** Год в конце описания модели («… Dynamic Type 2019»); только правдоподобный. */

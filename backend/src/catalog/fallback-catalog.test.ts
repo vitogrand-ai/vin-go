@@ -85,6 +85,84 @@ describe('FallbackCatalogProvider.decodeVin', () => {
   })
 })
 
+describe('FallbackCatalogProvider.decodeVin — добор года', () => {
+  /** Живой случай: parts-catalogs опознал европейский Mercedes, но года у него нет. */
+  const noYear: Vehicle = {
+    vin: 'WDD1770871V030773',
+    make: 'Mercedes',
+    model: 'A-class',
+    year: null,
+    engine: null,
+    bodyType: null,
+    raw: { carId: 'car-1' },
+  }
+
+  test('год берётся у следующего источника, а марка, модель и raw остаются от владельца', async () => {
+    const fb = new FallbackCatalogProvider([
+      { name: 'partscatalogs', provider: fakeProvider({ decode: async () => ({ ...noYear }) }) },
+      {
+        name: 'vin17',
+        provider: fakeProvider({
+          decode: async () => ({
+            ...noYear,
+            make: 'Mercedes-Benz',
+            model: 'A200',
+            year: 2019,
+            bodyType: 'Hatchback',
+            raw: { epc: 'benz' },
+          }),
+        }),
+      },
+    ])
+
+    const vehicle = await fb.decodeVin('WDD1770871V030773')
+    expect(vehicle?.year).toBe(2019)
+    expect(vehicle?.bodyType).toBe('Hatchback')
+    // Поиск деталей идёт по координатам владельца — их добор не подменяет.
+    expect(vehicle?.make).toBe('Mercedes')
+    expect(vehicle?.model).toBe('A-class')
+    expect(vehicle?.raw?.carId).toBe('car-1')
+    expect(vehicle?.raw?.[CATALOG_SOURCE_KEY]).toBe('partscatalogs')
+  })
+
+  test('год у владельца есть → платный источник не дёргаем', async () => {
+    let vin17Calls = 0
+    const fb = new FallbackCatalogProvider([
+      { name: 'partscatalogs', provider: fakeProvider({ decode: async () => ({ ...baseVehicle }) }) },
+      {
+        name: 'vin17',
+        provider: fakeProvider({
+          decode: async () => {
+            vin17Calls += 1
+            return { ...baseVehicle }
+          },
+        }),
+      },
+    ])
+
+    expect((await fb.decodeVin('VIN1'))?.year).toBe(2024)
+    expect(vin17Calls).toBe(0)
+  })
+
+  test('сбой добора не ломает карточку — отдаём её без года', async () => {
+    const fb = new FallbackCatalogProvider([
+      { name: 'partscatalogs', provider: fakeProvider({ decode: async () => ({ ...noYear }) }) },
+      {
+        name: 'vin17',
+        provider: fakeProvider({
+          decode: async () => {
+            throw new Error('vin17 down')
+          },
+        }),
+      },
+    ])
+
+    const vehicle = await fb.decodeVin('WDD1770871V030773')
+    expect(vehicle?.year).toBeNull()
+    expect(vehicle?.raw?.[CATALOG_SOURCE_KEY]).toBe('partscatalogs')
+  })
+})
+
 describe('FallbackCatalogProvider.searchParts', () => {
   test('ищет деталь только в каталоге, который определил авто', async () => {
     let acatSearched = false

@@ -273,6 +273,41 @@ describe('mapVehicle', () => {
     expect(vehicle!.raw?.['epc']).toBe('bmw') // поиск деталей остаётся возможен
   })
 
+  test('model_year_from_vin = «0» (европейский VIN) не отменяет год модели', () => {
+    // Живой Mercedes W177 со скриншота пилота: в европейском VIN года нет,
+    // 17vin отдаёт нулевой model_year_from_vin — год у него в Model_year.
+    const vehicle = mapVehicle('WDD1770871V030773', {
+      epc: 'benz',
+      model_year_from_vin: '0',
+      model_list: [
+        {
+          Brand_en: 'Mercedes-benz',
+          Model_en: 'A200',
+          Model_year: '2019',
+          Model_detail_en: 'Mercedes-benz A-Class A200 1.3T DCT(7-speed) Dynamic Type 2019',
+          Chassis_code: 'W177',
+        },
+      ],
+    })
+    expect(vehicle!.year).toBe(2019)
+  })
+
+  test('нулевой год и в модели → берём год из описания, а не показываем 0', () => {
+    const vehicle = mapVehicle('WDD1770871V030773', {
+      epc: 'benz',
+      model_year_from_vin: '0',
+      model_list: [
+        {
+          Brand_en: 'Mercedes-benz',
+          Model_en: 'A200',
+          Model_year: '0',
+          Model_detail_en: 'Mercedes-benz A-Class A200 1.3T DCT(7-speed) Dynamic Type 2019',
+        },
+      ],
+    })
+    expect(vehicle!.year).toBe(2019)
+  })
+
   test('модель без английских полей → китайский brand как запасной вариант', () => {
     const vehicle = mapVehicle(VIN, { brand: '丰田', model_list: [{ Model_en: 'Prado' }] })
     expect(vehicle!.make).toBe('丰田')

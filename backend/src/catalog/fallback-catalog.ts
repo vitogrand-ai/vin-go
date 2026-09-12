@@ -61,10 +61,12 @@ export class FallbackCatalogProvider implements CatalogProvider {
       ? [...this.providers].sort((a, b) => Number(b.framePriority ?? false) - Number(a.framePriority ?? false))
       : this.providers
 
-    for (const { name, provider } of ordered) {
+    for (const [index, { name, provider }] of ordered.entries()) {
       try {
         const vehicle = await provider.decodeVin(vin)
-        if (vehicle) return tagSource(vehicle, name)
+        // Источники до этого честно ответили «не найдено» — добираем у тех,
+        // кого ещё не спрашивали.
+        if (vehicle) return this.fillMissingFacts(tagSource(vehicle, name), vin, ordered.slice(index + 1))
       } catch (error) {
         // Источник упал — пробуем следующий, но запоминаем первый сбой.
         console.error(`[catalog:${name}] decodeVin упал, пробуем следующий источник`, error)
@@ -76,6 +78,51 @@ export class FallbackCatalogProvider implements CatalogProvider {
     if (firstError === null) return null
     // Никто не нашёл, но были отказы — не выдаём сбой upstream за «не найдено».
     throw firstError
+  }
+
+  /**
+   * Добор года (и заодно двигателя с кузовом) у оставшихся источников.
+   *
+   * Зачем: год есть не в каждом каталоге. Живой случай — европейский Mercedes:
+   * в VIN год не закодирован вовсе, а parts-catalogs в /car/info по нему не
+   * отдаёт ни параметра `year`, ни года в criteria/description. Мастеру же год
+   * нужен, чтобы узнать машину, — и другой источник его знает (17vin: «…
+   * Dynamic Type 2019»). Поэтому карточку без года достраиваем, а не показываем
+   * как есть.
+   *
+   * Марка, модель и `raw` остаются от источника, опознавшего VIN: по его
+   * координатам идёт поиск деталей. Чужой ответ трогает только пустые поля.
+   *
+   * Лишний вызов стоит денег (17vin — $0.15 за VIN), поэтому идём за добором
+   * только при отсутствующем годе и только в источники, ещё не отвечавшие по
+   * этому VIN. Результат кладётся в кэш VIN — платим раз на машину, а не раз
+   * на запрос.
+   */
+  private async fillMissingFacts(
+    vehicle: Vehicle,
+    vin: string,
+    rest: NamedCatalogProvider[],
+  ): Promise<Vehicle> {
+    if (vehicle.year) return vehicle
+
+    for (const { name, provider } of rest) {
+      let other: Vehicle | null
+      try {
+        other = await provider.decodeVin(vin)
+      } catch (error) {
+        // Добор — не основная расшифровка: сбой источника не ломает карточку.
+        console.warn(`[catalog:${name}] добор года упал, карточка без года`, error)
+        continue
+      }
+      if (!other?.year) continue
+      return {
+        ...vehicle,
+        year: other.year,
+        engine: vehicle.engine ?? other.engine,
+        bodyType: vehicle.bodyType ?? other.bodyType,
+      }
+    }
+    return vehicle
   }
 
   async searchParts(vehicle: Vehicle, query: string): Promise<Part[]> {
