@@ -4,7 +4,7 @@ import { AppError } from '../http/errors'
 import { CATALOG_SOURCE_KEY } from './fallback-catalog'
 import { asArray, firstArray, int, isRecord, str } from './parse-utils'
 import { positionRank } from './position-filter'
-import { NAME_MATCH, closeness, queryNames, wordKeys } from './part-match'
+import { NAME_MATCH, NODE_MATCH, closeness, queryNames, queryNamesForOrder, wordKeys } from './part-match'
 import { englishPartTerms } from './part-terms'
 import { requestProviderJson } from './provider-http'
 import type { CatalogProvider } from './providers'
@@ -573,21 +573,33 @@ export function rankByPosition(schemas: Record<string, unknown>[], query: string
  * всего подошедшее хоть к одному имени ряда, и только потом список режется до
  * MAX_PART_NAMES — точное попадание не должно отсечься лимитом.
  *
- * Названия без общих слов НЕ выбрасываются: у каталогов без русского
- * универсального дерева справочник английский, и пустым оказался бы весь
- * список. Порядок каталога сохраняется внутри равных — сортировка стабильная.
+ * Названия дальше NODE_MATCH выбрасываются: узел не о том, что спрашивали.
+ * Живьём на Chery подсказка на «тормозные» отдавала единственный «Насос
+ * вакуумный тормозной системы», и мастер получал насос вместо честного «не
+ * найдено» — пустой результат честнее чужой детали. Сверка идёт по ряду
+ * ВМЕСТЕ с английскими терминами: у каталогов без русского универсального
+ * дерева справочник английский, и по одному русскому ряду пустым оказался бы
+ * весь список. Порядок каталога сохраняется внутри равных — сортировка
+ * стабильная.
  */
 export function rankSuggestions(suggestions: Suggestion[], query: string): string[] {
-  const names = queryNames(query)
-  return suggestions
-    .map((suggestion, order) => ({
-      sid: suggestion.sid,
-      order,
-      score: closeness(suggestion.name, names),
-    }))
+  const names = queryNamesForOrder(query)
+  const ranked = suggestions.map((suggestion, order) => ({
+    sid: suggestion.sid,
+    order,
+    score: closeness(suggestion.name, names),
+  }))
+
+  // Порог применяется, только когда мы вообще понимаем язык справочника: хоть
+  // одно название отозвалось на слова запроса. Сплошные нули значат, что
+  // справочник говорит словами, которых в словаре нет, — там порог отрезал бы
+  // весь поиск, и лучше довериться порядку каталога, как было раньше.
+  const understood = ranked.some((item) => item.score > 0)
+  return ranked
+    .filter((item) => !understood || item.score >= NODE_MATCH)
     .sort((a, b) => b.score - a.score || a.order - b.order)
     .slice(0, MAX_PART_NAMES)
-    .map((ranked) => ranked.sid)
+    .map((item) => item.sid)
 }
 
 /**

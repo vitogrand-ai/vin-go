@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'bun:test'
 
-import { closeness, queryNames, queryNamesForOrder, NAME_MATCH } from './part-match'
+import { closeness, queryNames, queryNamesForOrder, NAME_MATCH, NODE_MATCH } from './part-match'
 
 /** Какое из названий продукт поставит первым по запросу мастера. */
 function first(query: string, names: string[]): string {
@@ -54,6 +54,41 @@ describe('порядок выдачи', () => {
         'ПРОБКА ЗАЛИВА МАСЛА',
       ]),
     ).toBe('КРЫШКА ГОЛОВКИ ЦИЛИНДРОВ')
+  })
+
+  it('падежи русского названия не мешают узнать деталь', () => {
+    // Живьём: подсказка на «блок цилиндров» отдаёт «Головка блока цилиндров»,
+    // и слово «блока» должно считаться тем же «блоком», иначе нужный узел
+    // весит не больше случайного соседа.
+    const names = queryNames('блок цилиндров')
+    expect(closeness('Головка блока цилиндров', names)).toBeGreaterThan(
+      closeness('Прокладка передней крышки блока цилиндров', names),
+    )
+    expect(closeness('Блок цилиндров', names)).toBeGreaterThan(closeness('Головка блока цилиндров', names))
+  })
+
+  it('порог узла отделяет чужой узел от нужного', () => {
+    // «Насос вакуумный тормозной системы» приходил мастеру на «колодки
+    // передние» вместо честного «не найдено». Развести их можно только
+    // порогом, а порог держится, лишь когда между ними есть зазор: раньше у
+    // насоса было 0.083, у нужной «Головки блока цилиндров» — 0.125.
+    expect(closeness('Насос вакуумный тормозной системы', queryNames('колодки передние'))).toBeLessThan(
+      NODE_MATCH,
+    )
+    expect(closeness('Реле противотуманной фары', queryNames('фара'))).toBeLessThan(NODE_MATCH)
+
+    // Узлы, которые обязаны пережить порог: по ним живьём находят деталь.
+    expect(closeness('Головка блока цилиндров', queryNames('блок цилиндров'))).toBeGreaterThanOrEqual(
+      NODE_MATCH,
+    )
+    expect(closeness('Колодки тормозные дисковые', queryNames('колодки передние'))).toBeGreaterThanOrEqual(
+      NODE_MATCH,
+    )
+    expect(closeness('Фара головного света', queryNames('фара'))).toBeGreaterThanOrEqual(NODE_MATCH)
+    // Справочник бывает и английским — там узел узнаётся по терминам запроса.
+    expect(
+      closeness('COVER SUB-ASSY, CYLINDER HEAD', queryNamesForOrder('крышка гбц')),
+    ).toBeGreaterThanOrEqual(NODE_MATCH)
   })
 
   it('уточнение в названии не отдаёт первое место короткому чужому соседу', () => {
