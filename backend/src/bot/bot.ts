@@ -1,4 +1,10 @@
-import { plateSchema, vinOrFrameSchema, type Part, type TierPick } from '@web-app-demo/contracts'
+import {
+  plateSchema,
+  vinOrFrameSchema,
+  type Part,
+  type TierPick,
+  type Vehicle,
+} from '@web-app-demo/contracts'
 
 import type { Actor } from '../auth/actor'
 import type { CatalogService } from '../catalog/service'
@@ -24,10 +30,27 @@ import { describeNetworkError, type TelegramClient, type TgCallbackQuery, type T
 import { detectImageMediaType, type VinOcrProvider } from './vin-ocr'
 import type { VoiceTranscriber } from './voice-transcribe'
 
+/**
+ * Что бот помнит о детали из выдачи: название плюс подробности каталога,
+ * которые показываются в карточке при выборе (сколько штук, чем заменена,
+ * примечание, период применимости).
+ */
+export type PartCard = {
+  name: string
+  quantity?: number | null
+  replacedBy?: string | null
+  note?: string | null
+  appliesPeriod?: string | null
+}
+
 export type ChatSession = {
   vin?: string
-  /** Карта oemNumber → название запчасти из последнего поиска. */
-  parts?: Record<string, string>
+  /**
+   * Карта oemNumber → карточка запчасти из последнего поиска: название и то,
+   * что каталог рассказал о детали сверх номера. Сессии переживают деплой
+   * (`PrismaSessionStore`), поэтому старое значение-строка — тоже название.
+   */
+  parts?: Record<string, PartCard | string>
   /**
    * Контекст выдачи предложений по каждому OEM (для кнопок «в корзину»).
    * Ключ — oemNumber, поэтому нажатие кнопки на старом сообщении добавит именно
@@ -317,8 +340,7 @@ export class TelegramBot {
   private async handleVin(chatId: number, vin: string): Promise<void> {
     try {
       const { vehicle } = await this.catalog.decodeVin(vin)
-      this.session(chatId).vin = vin
-      await this.client.sendMessage(chatId, formatVehicle(vehicle), { parseMode: 'HTML' })
+      await this.startCarSession(chatId, vehicle)
     } catch (error) {
       // «Не найден» и «каталог лежит» — разные ответы: сбой источника не должен
       // выглядеть так, будто мастер ошибся в VIN.
@@ -334,8 +356,7 @@ export class TelegramBot {
   private async handlePlate(chatId: number, plate: string): Promise<void> {
     try {
       const { vehicle } = await this.catalog.resolvePlate(plate)
-      this.session(chatId).vin = vehicle.vin
-      await this.client.sendMessage(chatId, formatVehicle(vehicle), { parseMode: 'HTML' })
+      await this.startCarSession(chatId, vehicle)
     } catch {
       await this.client.sendMessage(
         chatId,
@@ -390,7 +411,7 @@ export class TelegramBot {
       return
     }
 
-    session.parts = Object.fromEntries(parts.map((part) => [part.oemNumber, part.name]))
+    session.parts = Object.fromEntries(parts.map((part) => [part.oemNumber, toPartCard(part)]))
 
     // Схема узла из каталога — мастеру видно, ту ли деталь он выбирает.
     // Фото не критично: любой сбой (битый URL, недоступный хост картинок) —
@@ -453,7 +474,7 @@ export class TelegramBot {
       return
     }
 
-    session.parts = Object.fromEntries(parts.map((part) => [part.oemNumber, part.name]))
+    session.parts = Object.fromEntries(parts.map((part) => [part.oemNumber, toPartCard(part)]))
     const { text, keyboard } = partsMessage(parts, undefined, { hasScheme: Boolean(session.scheme) })
     await this.client.sendMessage(chatId, `📍 Позиция ${position} на схеме.\n${text}`, {
       parseMode: 'HTML',
@@ -537,10 +558,11 @@ export class TelegramBot {
 
   private async showOffers(chatId: number, oemNumber: string): Promise<void> {
     const session = this.session(chatId)
-    const { picks, offers, source } = await this.catalog.getOffers(oemNumber)
-    const partName = session.parts?.[oemNumber] ?? oemNumber
+    const { picks, offers, source, dealerPrice } = await this.catalog.getOffers(oemNumber)
+    const card = readPartCard(session.parts?.[oemNumber])
+    const partName = card?.name ?? oemNumber
     ;(session.offers ??= {})[oemNumber] = { oemNumber, partName, picks }
-    await this.client.sendMessage(chatId, offersMessage(oemNumber, picks, offers, source), {
+    await this.client.sendMessage(chatId, offersMessage(oemNumber, picks, offers, source, card, dealerPrice), {
       parseMode: 'HTML',
       replyMarkup: picks.length > 0 ? tierAddKeyboard(picks, oemNumber) : undefined,
     })
@@ -619,8 +641,33 @@ export class TelegramBot {
       await this.client.sendMessage(chatId, 'Этой машины больше нет в гараже. Откройте /garage заново.')
       return
     }
-    this.session(chatId).vin = vehicle.vin
-    await this.client.sendMessage(chatId, formatVehicle(vehicle), { parseMode: 'HTML' })
+    await this.startCarSession(chatId, vehicle)
+  }
+
+  /**
+   * Начало работы с машиной — единственное место, где в разговор входит VIN.
+   *
+   * Чат идёт подряд, и без явной границы выдача по прошлой машине смешивается с
+   * новой: мастер присылал «9» с ещё открытой схемой прежнего автомобиля, и бот
+   * искал позицию чужого узла на новой машине. Поэтому при смене машины всё,
+   * что относилось к прошлой (выдача, предложения, схема, последний запрос),
+   * закрывается, а карточка авто предваряется пометкой о переключении. Повтор
+   * того же VIN контекст не трогает: схема и кнопки остаются рабочими.
+   */
+  private async startCarSession(chatId: number, vehicle: Vehicle): Promise<void> {
+    const session = this.session(chatId)
+    const switched = session.vin !== undefined && session.vin !== vehicle.vin
+    if (session.vin !== vehicle.vin) {
+      session.vin = vehicle.vin
+      delete session.parts
+      delete session.offers
+      delete session.lastQuery
+      delete session.scheme
+      delete session.schemeId
+    }
+    await this.client.sendMessage(chatId, formatVehicle(vehicle, { switched }), {
+      parseMode: 'HTML',
+    })
   }
 
   private async handleLink(
@@ -748,6 +795,26 @@ export function parseServiceCommand(text: string): number | null {
   const mileage = Number.parseInt(match[1]!.replace(/\s+/g, ''), 10)
   if (!Number.isFinite(mileage) || mileage <= 0 || mileage > 2_000_000) return null
   return mileage
+}
+
+/** Деталь каталога → то, что бот помнит о ней до выбора мастером. */
+function toPartCard(part: Part): PartCard {
+  return {
+    name: part.name,
+    quantity: part.quantity ?? null,
+    replacedBy: part.replacedBy ?? null,
+    note: part.note ?? null,
+    appliesPeriod: part.appliesPeriod ?? null,
+  }
+}
+
+/**
+ * Карточка из сессии. Сессии переживают деплой, а до появления карточек бот
+ * хранил здесь одно название строкой — такую сессию читаем как название.
+ */
+function readPartCard(saved: PartCard | string | undefined): PartCard | undefined {
+  if (saved === undefined) return undefined
+  return typeof saved === 'string' ? { name: saved } : saved
 }
 
 /** Честное «не найдено» от каталога — в отличие от сбоя источника (502 и т.п.). */

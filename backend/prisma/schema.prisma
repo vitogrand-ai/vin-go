@@ -52,6 +52,14 @@ model Organization {
   defaultMarkupBps Int        @default(0) @map("default_markup_bps")
   /// Код приглашения: регистрация с ним ведёт сотрудника в эту организацию.
   inviteCode       String     @unique(map: "organizations_invite_code_key") @map("invite_code")
+  /// Реквизиты исполнителя для заказ-наряда (ПП РФ № 780 от 29.05.2025, п. 9(а)):
+  /// наименование юрлица/ИП, ИНН, ОГРН/ОГРНИП, адрес. Пусто — печатается название.
+  legalName        String?    @map("legal_name")
+  inn              String?
+  ogrn             String?
+  address          String?
+  /// Гарантийные обязательства (п. 9(з)) — текст в заказ-наряде.
+  warrantyText     String?    @map("warranty_text")
   createdAt        DateTime   @default(now()) @map("created_at")
   updatedAt        DateTime   @updatedAt @map("updated_at")
   members          User[]
@@ -184,6 +192,13 @@ model Order {
   draftKey   String?     @unique @map("draft_key")
   vehicleVin String?     @map("vehicle_vin")
   notes      String?
+  /// Приём машины для заказ-наряда (ПП № 780, п. 9 и п. 12): срок исполнения,
+  /// причина обращения, комплектность и повреждения, госномер и пробег на момент приёма.
+  dueAt          DateTime? @map("due_at")
+  complaint      String?
+  conditionNotes String?   @map("condition_notes")
+  plate          String?
+  mileageKm      Int?      @map("mileage_km")
   currency   String      @default("RUB")
   createdAt  DateTime    @default(now()) @map("created_at")
   updatedAt  DateTime    @updatedAt @map("updated_at")
@@ -192,6 +207,7 @@ model Order {
   organization Organization? @relation(fields: [orgId], references: [id], onDelete: Cascade, map: "orders_org_id_fkey")
   customer     Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull, map: "orders_customer_id_fkey")
   items        OrderItem[]
+  works        OrderWork[]
   payments     Payment[]
 
   @@index([userId, status], map: "orders_user_id_status_idx")
@@ -274,6 +290,22 @@ model OrderItem {
 
   @@index([orderId], map: "order_items_order_id_idx")
   @@map("order_items")
+}
+
+/// Работа (услуга) в заказ-наряде — вторая половина документа рядом с запчастями:
+/// наименование, цена, количество (ПП № 780, п. 9(е)). Цена — для клиента, в копейках.
+model OrderWork {
+  id          String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  orderId     String   @db.Uuid @map("order_id")
+  name        String
+  priceAmount Int      @map("price_amount")
+  currency    String   @default("RUB")
+  quantity    Int      @default(1)
+  createdAt   DateTime @default(now()) @map("created_at")
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade, map: "order_works_order_id_fkey")
+
+  @@index([orderId], map: "order_works_order_id_idx")
+  @@map("order_works")
 }
 
 model AuthSession {

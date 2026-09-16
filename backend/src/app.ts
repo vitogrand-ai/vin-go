@@ -68,12 +68,14 @@ export function createApp({ env, prisma }: CreateAppOptions) {
     plates: plateProvider,
     offerResolver,
     meta: providersMeta,
+    dealerPrices: dealerPriceProvider,
   } = createCatalogProviders(env, prisma)
   const catalogService = new CatalogService(
     catalogProvider,
     supplierProvider,
     plateProvider,
     providersMeta,
+    dealerPriceProvider,
   )
   const garageService = new GarageService(prisma, catalogProvider)
   const notificationService = new NotificationService(prisma, {
@@ -101,6 +103,12 @@ export function createApp({ env, prisma }: CreateAppOptions) {
     defaultHook: validationErrorHook,
   })
 
+  // Прокси схем узлов (catalog/scheme-image.ts) отдаёт публичную картинку
+  // каталога для <img> веба и мобильного, а они живут на другом адресе, чем
+  // API. С общим `Cross-Origin-Resource-Policy: same-origin` браузер такую
+  // картинку не показывает. secureHeaders ставит заголовки ПОСЛЕ ответа, и
+  // внешний слой пишет последним — поэтому этот вызов стоит раньше общего.
+  app.use('/api/catalog/image', secureHeaders({ crossOriginResourcePolicy: 'cross-origin' }))
   app.use(secureHeaders())
   app.use(
     '*',

@@ -8,6 +8,8 @@ import {
   VIN17_MAX_PARTS,
   brandFromEpc,
   buildVin17Token,
+  formatPeriod,
+  mapDealerPrice,
   mapParts,
   mapVehicle,
   safeBase64,
@@ -143,6 +145,13 @@ describe('Vin17CatalogProvider.searchParts', () => {
         name_zh: '带滤芯的机油滤清器盖总成',
         qty: '01',
         is_fit_for_this_vin: 1,
+        illustration_img_address: '153008A.png',
+        callout: '15650',
+        cata_code: '1502_153008A-0001',
+        replacement: '1565038021',
+        remark_zh: '1GRFE..GRJ150',
+        begin_date: '201005',
+        end_date: '201311',
       },
       { partnumber: 'X1', name_en: 'NOT FOR THIS CAR', is_fit_for_this_vin: 0 }, // не для этого VIN
       { partnumber: '', name_en: 'NO NUMBER' }, // без номера — бесполезна
@@ -158,7 +167,9 @@ describe('Vin17CatalogProvider.searchParts', () => {
 
     const parts = await provider.searchParts(vehicle, 'масляный фильтр')
 
-    expect(calls).toHaveLength(1)
+    // Поиск + узел первой детали: выноски поиск не отдаёт, их даёт только узел.
+    expect(calls).toHaveLength(2)
+    expect(new URL(calls[1]!).searchParams.get('action')).toBe('part')
     const url = new URL(calls[0]!)
     expect(url.pathname).toBe('/toyota')
     expect(url.searchParams.get('action')).toBe('search_epc_part_name')
@@ -172,6 +183,14 @@ describe('Vin17CatalogProvider.searchParts', () => {
         name: 'CAP ASSY, OIL FILTER W/ELEMEMT',
         category: 'ENGINE OIL PUMP & OIL FILTER', // последний узел пути категорий
         brand: 'Toyota',
+        // Схема приходит тем же ответом: отдельного запроса она не стоит.
+        imageUrl: 'http://resource.17vin.com/img/toyota/153008A.png',
+        position: '15650', // выноска «15650» подписана на самой картинке
+        schemeId: '1502_153008A-0001',
+        quantity: 1, // «01» каталога
+        replacedBy: '1565038021', // заказывать надо новый номер
+        note: '1GRFE..GRJ150', // мотор и шасси — чем деталь отличается от соседней
+        appliesPeriod: '05.2010 — 11.2013',
       },
     ])
   })
@@ -185,9 +204,48 @@ describe('Vin17CatalogProvider.searchParts', () => {
     })
 
     const parts = await provider.searchParts({ ...vehicle, raw: {} }, 'фильтр')
-    expect(calls).toHaveLength(2)
+    expect(calls).toHaveLength(3) // декод + поиск + узел
     expect(new URL(calls[1]!).pathname).toBe('/toyota')
     expect(parts).toHaveLength(1)
+  })
+
+  test('деталь получает координату своей выноски из узла — для обводки на схеме', async () => {
+    const provider = providerWith((url) => {
+      if (new URL(url).searchParams.get('action') === 'part') {
+        return envelope(1, {
+          partlist: [],
+          all_img_hotspots: [
+            {
+              img_hotspots: {
+                img_width: 760,
+                img_height: 1112,
+                hotspots: [
+                  { callout: '15650', topleft_x: 56, topleft_y: 594 },
+                  { callout: '15692', topleft_x: 383, topleft_y: 128 },
+                ],
+              },
+            },
+          ],
+        })
+      }
+      return envelope(1, SEARCH_PAYLOAD)
+    })
+
+    const [part] = await provider.searchParts(vehicle, 'масляный фильтр')
+    expect(part!.position).toBe('15650')
+    expect(part!.schemeHotspot!.x).toBeCloseTo(56 / 760)
+    expect(part!.schemeHotspot!.y).toBeCloseTo(594 / 1112)
+  })
+
+  test('узел не ответил — выдача уходит без обводки, а не падает', async () => {
+    const provider = providerWith((url) => {
+      if (new URL(url).searchParams.get('action') === 'part') throw new Error('ECONNRESET')
+      return envelope(1, SEARCH_PAYLOAD)
+    })
+
+    const parts = await provider.searchParts(vehicle, 'масляный фильтр')
+    expect(parts).toHaveLength(1)
+    expect(parts[0]!.schemeHotspot).toBeUndefined()
   })
 
   test('русский запрос без перевода → пустой список БЕЗ вызова API (иначе шум всего каталога)', async () => {
@@ -232,6 +290,111 @@ describe('Vin17CatalogProvider.searchParts', () => {
   test('code 1003 (бренд не поддержан) → пустой список, а не ошибка', async () => {
     const provider = providerWith(() => envelope(1003, '', '不支持的品牌接口'))
     expect(await provider.searchParts(vehicle, 'фильтр')).toEqual([])
+  })
+})
+
+describe('Vin17CatalogProvider.schemeParts', () => {
+  const vehicle: Vehicle = {
+    vin: VIN,
+    make: 'Toyota',
+    model: 'Prado',
+    year: 2013,
+    engine: '1GR',
+    bodyType: null,
+    raw: { epc: 'toyota' },
+  }
+
+  /** Живой ответ оп. 5105: узел целиком, без отбора по названию. */
+  const SCHEME_PAYLOAD = {
+    partlist: [
+      {
+        illustration_img_address: '153008A.png',
+        callout: '15650',
+        partnumber_original: '1565038020',
+        name_en: 'CAP ASSY, OIL FILTER W/ELEMEMT',
+        is_fit_for_this_vin: 1,
+      },
+      {
+        illustration_img_address: '153008A.png',
+        callout: '15692',
+        partnumber_original: '1569231030',
+        name_en: 'GASKET, OIL FILTER BRACKET',
+        is_fit_for_this_vin: 1,
+      },
+      // Крепёж каталог отдаёт без названия и выноски — показывать нечего.
+      { illustration_img_address: '153008A.png', callout: '', partnumber_original: '9012608056', name_en: '' },
+    ],
+    imgaddress: '153008A.png',
+  }
+
+  test('узел запрашивается оп. 5105 и отдаётся целиком, с выносками и схемой', async () => {
+    const calls: string[] = []
+    const provider = providerWith((url) => {
+      calls.push(url)
+      return envelope(1, SCHEME_PAYLOAD)
+    })
+
+    const parts = await provider.schemeParts(vehicle, '1502_153008A-0001')
+
+    expect(calls).toHaveLength(1)
+    const url = new URL(calls[0]!)
+    expect(url.pathname).toBe('/toyota')
+    expect(url.searchParams.get('action')).toBe('part')
+    expect(url.searchParams.get('last_cata_code')).toBe('1502_153008A-0001')
+    expect(url.searchParams.get('vin')).toBe(VIN)
+
+    expect(parts).toEqual([
+      {
+        oemNumber: '1565038020',
+        name: 'CAP ASSY, OIL FILTER W/ELEMEMT',
+        category: '',
+        brand: 'Toyota',
+        imageUrl: 'http://resource.17vin.com/img/toyota/153008A.png',
+        position: '15650',
+        schemeId: '1502_153008A-0001',
+        quantity: null,
+        replacedBy: null,
+        note: null,
+        appliesPeriod: null,
+      },
+      {
+        oemNumber: '1569231030',
+        name: 'GASKET, OIL FILTER BRACKET',
+        category: '',
+        brand: 'Toyota',
+        imageUrl: 'http://resource.17vin.com/img/toyota/153008A.png',
+        position: '15692',
+        schemeId: '1502_153008A-0001',
+        quantity: null,
+        replacedBy: null,
+        note: null,
+        appliesPeriod: null,
+      },
+    ])
+  })
+
+  test('нет epc в raw → восстановление повторным декодом, как в поиске', async () => {
+    const calls: string[] = []
+    const provider = providerWith((url) => {
+      calls.push(url)
+      if (new URL(url).pathname === '/') return envelope(1, DECODE_PAYLOAD)
+      return envelope(1, SCHEME_PAYLOAD)
+    })
+
+    const parts = await provider.schemeParts({ ...vehicle, raw: {} }, '1502_153008A-0001')
+    expect(calls).toHaveLength(2)
+    expect(new URL(calls[1]!).pathname).toBe('/toyota')
+    expect(parts).toHaveLength(2)
+  })
+
+  test('пустой идентификатор узла → без вызова API', async () => {
+    const calls: string[] = []
+    const provider = providerWith((url) => {
+      calls.push(url)
+      return envelope(1, SCHEME_PAYLOAD)
+    })
+    expect(await provider.schemeParts(vehicle, '  ')).toEqual([])
+    expect(calls).toHaveLength(0)
   })
 })
 
@@ -320,22 +483,34 @@ describe('mapParts', () => {
       partnumber: `P${i}`,
       name_en: `PART ${i}`,
     }))
-    expect(mapParts({ searchlist }, 'Toyota')).toHaveLength(VIN17_MAX_PARTS)
+    expect(mapParts({ searchlist }, { brand: 'Toyota', epc: 'toyota' })).toHaveLength(VIN17_MAX_PARTS)
   })
 
   test('поддерживает и partlist (оп. 5105), китайские имена как запасной вариант', () => {
     const parts = mapParts(
       { partlist: [{ partnumber_original: '091140G010', name_zh: '千斤顶把手' }] },
-      null,
+      { brand: null, epc: null },
     )
     expect(parts).toEqual([
-      { oemNumber: '091140G010', name: '千斤顶把手', category: '', brand: null },
+      {
+        oemNumber: '091140G010',
+        name: '千斤顶把手',
+        category: '',
+        brand: null,
+        imageUrl: null,
+        position: null,
+        schemeId: null,
+        quantity: null,
+        replacedBy: null,
+        note: null,
+        appliesPeriod: null,
+      },
     ])
   })
 
   test('дубли (номер+название) схлопываются: деталь приходит строкой на каждую позицию', () => {
     const row = { partnumber: '34356890788', name_en: 'Brake pad wear sensor, front' }
-    const parts = mapParts({ searchlist: [row, { ...row }, { ...row }] }, 'BMW')
+    const parts = mapParts({ searchlist: [row, { ...row }, { ...row }] }, { brand: 'BMW', epc: 'bmw' })
     expect(parts).toHaveLength(1)
   })
 })
@@ -382,5 +557,53 @@ describe('17vin: год и марка на живых нюансах прода'
     expect(normalizeBrand('bmw')).toBe('BMW')
     expect(normalizeBrand('toyota')).toBe('Toyota')
     expect(normalizeBrand('Lexus')).toBe('Lexus')
+  })
+})
+
+describe('formatPeriod', () => {
+  test('обе даты каталога → читаемый период', () => {
+    expect(formatPeriod('201005', '201311')).toBe('05.2010 — 11.2013')
+  })
+
+  test('конец 999999 («ставится до сих пор») периодом не считается', () => {
+    expect(formatPeriod('201202', '999999')).toBe('с 02.2012')
+  })
+
+  test('дат нет — периода нет', () => {
+    expect(formatPeriod(null, null)).toBeNull()
+    expect(formatPeriod('', '0')).toBeNull()
+  })
+})
+
+describe('mapDealerPrice — цена оригинала у дилеров (оп. 4006)', () => {
+  test('живой ответ Toyota: диапазон по дилерам в фэнях', () => {
+    const price = mapDealerPrice({
+      list: [
+        { Brand: '丰田', Partnumber: '1565038020', Price: '438' },
+        { Brand: '雷克萨斯', Partnumber: '1565038020', Price: '481' },
+        { Brand: '四川一汽丰田', Partnumber: '1565038020', Price: '438' },
+      ],
+    })
+    expect(price).toEqual({ min: 43800, max: 48100, currency: 'CNY', market: 'CN', dealers: 3 })
+  })
+
+  test('дробная цена переводится без потери копеек', () => {
+    expect(mapDealerPrice({ list: [{ Price: '345.82' }] })?.min).toBe(34582)
+  })
+
+  test('нет цен или только мусор — цены нет', () => {
+    expect(mapDealerPrice({ list: [] })).toBeNull()
+    expect(mapDealerPrice({ list: [{ Price: '' }, { Price: '0' }, { Price: 'n/a' }] })).toBeNull()
+  })
+
+  test('номер уходит без пробелов и дефисов — как его знает каталог', async () => {
+    const calls: string[] = []
+    const provider = providerWith((url) => {
+      calls.push(url)
+      return envelope(1, [{ Price: '401.06' }])
+    })
+    const price = await provider.dealerPrice('000 098-713 a')
+    expect(new URL(calls[0]!).searchParams.get('partnumber')).toBe('000098713A')
+    expect(price?.min).toBe(40106)
   })
 })

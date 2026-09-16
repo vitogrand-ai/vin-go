@@ -1,7 +1,15 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useSearch } from '@tanstack/react-router'
-import { vinOrFrameSchema, type Offer, type OfferTier, type Part, type TierPick, type Vehicle } from '@web-app-demo/contracts'
-import { useMemo, useRef, useState } from 'react'
+import {
+  vinOrFrameSchema,
+  type DealerPrice,
+  type Offer,
+  type OfferTier,
+  type Part,
+  type TierPick,
+  type Vehicle,
+} from '@web-app-demo/contracts'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
@@ -17,12 +25,17 @@ import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
 import { Typography } from '@/components/ui/typography'
-import { useAddCartItem, useCreateExpertRequest } from '@/features/cabinet/queries'
+import {
+  useAddCartItem,
+  useCatalogStatus,
+  useCreateExpertRequest,
+} from '@/features/cabinet/queries'
 import { SchemeViewer } from '@/features/search/SchemeViewer'
 import { ApiRequestError } from '@/lib/api'
 import { describeApiError } from '@/lib/errors'
 import { formatDelivery, formatMoney, TIER_META } from '@/lib/format'
 import { publicApi } from '@/lib/public-api'
+import { schemeImageSrc } from '@/lib/scheme-image'
 import {
   pushSearchHistory,
   readSearchHistory,
@@ -33,110 +46,134 @@ import { cn } from '@/lib/utils'
 
 type AddToCart = (offer: Offer, tier?: OfferTier) => void
 
+/** Машины мок-каталога — показываются только пока каталог демонстрационный. */
 const DEMO_VINS = ['WVWZZZ1JZ3W386752', 'XTA210990Y2293564', 'LFV3B2FY2N3102396']
 const DEMO_PLATES = ['А123ВС777', 'О001АА199', 'У454УС198']
 
 type SearchMode = 'vin' | 'plate'
 
+/**
+ * Подбор в два шага, как в боте: сначала машина, потом сколько угодно
+ * запросов по ней. Один экран — одна машина: пока она выбрана, всё ниже
+ * относится к ней, а «Сменить машину» закрывает подбор целиком. Так не
+ * смешиваются выдачи разных клиентов, когда приёмщик работает с несколькими
+ * подряд.
+ */
+export function SearchPage() {
+  // Deep-link: /search?vin=... — кнопка «Подобрать запчасти» из гаража.
+  const urlSearch = useSearch({ strict: false }) as { vin?: string }
+  const [vehicle, setVehicle] = useState<Vehicle | null>(null)
+  const [history, setHistory] = useState<SearchHistoryEntry[]>(() => readSearchHistory())
+
+  const startCar = (next: Vehicle) => {
+    // Новая машина — новый подбор: прежняя выдача не должна остаться на экране.
+    setVehicle((current) => (current?.vin === next.vin ? current : next))
+  }
+
+  return (
+    <section className="mx-auto grid w-full max-w-6xl gap-6 px-5 py-8 sm:py-10">
+      {vehicle ? (
+        <CarSearch
+          key={vehicle.vin}
+          vehicle={vehicle}
+          history={history}
+          onHistory={setHistory}
+          onChangeCar={() => setVehicle(null)}
+        />
+      ) : (
+        <VehicleStep initialVin={urlSearch.vin} history={history} onResolved={startCar} />
+      )}
+    </section>
+  )
+}
+
 /** Какое поле формы не прошло проверку — подсвечиваем его и объясняем причину. */
 type FormError = { field: 'vehicle' | 'query'; message: string }
 
-export function SearchPage() {
-  // Deep-link: /search?vin=... прификлит VIN (кнопка «Подобрать запчасти» из гаража).
-  const urlSearch = useSearch({ strict: false }) as { vin?: string }
+/**
+ * Шаг 1 — машина. VIN, госномер или недавняя машина из истории.
+ */
+function VehicleStep({
+  initialVin,
+  history,
+  onResolved,
+}: {
+  initialVin?: string
+  history: SearchHistoryEntry[]
+  onResolved: (vehicle: Vehicle) => void
+}) {
   const [mode, setMode] = useState<SearchMode>('vin')
-  const [vin, setVin] = useState(() => (urlSearch.vin ?? '').toUpperCase())
+  const [vin, setVin] = useState(() => (initialVin ?? '').toUpperCase())
   const [plate, setPlate] = useState('')
-  const [query, setQuery] = useState('')
-  const [selectedPart, setSelectedPart] = useState<Part | null>(null)
-  const [history, setHistory] = useState<SearchHistoryEntry[]>(() => readSearchHistory())
   const [formError, setFormError] = useState<FormError | null>(null)
-  const vehicleInputRef = useRef<HTMLInputElement>(null)
-  const queryInputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const status = useCatalogStatus()
 
-  const search = useMutation({
-    mutationFn: (resolvedVin: string) => publicApi.searchParts({ vin: resolvedVin, query }),
-    onSuccess: () => setSelectedPart(null),
+  const decode = useMutation({
+    mutationFn: (value: string) => publicApi.decodeVin({ vin: value }),
+    onSuccess: (data) => onResolved(data.vehicle),
   })
-
-  // Госномер → VIN, затем сразу поиск по найденному VIN.
   const plateLookup = useMutation({
-    mutationFn: () => publicApi.resolvePlate({ plate }),
+    mutationFn: (value: string) => publicApi.resolvePlate({ plate: value }),
     onSuccess: (data) => {
-      setVin(data.vehicle.vin)
       toast.success(`Авто определено: ${data.vehicle.make} ${data.vehicle.model}`)
-      search.mutate(data.vehicle.vin)
-      setHistory(pushSearchHistory({ mode: 'plate', value: plate, query }))
+      onResolved(data.vehicle)
     },
-    onError: (error) => toast.error(describeError(error)),
   })
+  const isBusy = decode.isPending || plateLookup.isPending
+  const error = decode.error ?? plateLookup.error
 
-  const isBusy = search.isPending || plateLookup.isPending
+  // Пришли по ссылке с VIN — определяем машину сразу, без лишнего нажатия.
+  const autoStarted = useRef(false)
+  useEffect(() => {
+    if (autoStarted.current || !initialVin) return
+    autoStarted.current = true
+    if (vinOrFrameSchema.safeParse(initialVin).success) decode.mutate(initialVin.toUpperCase())
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- один раз при открытии страницы
+  }, [initialVin])
 
-  // Кнопка «Найти» всегда активна: молча заблокированная кнопка не объясняет,
-  // чего не хватает. Проверяем поля на отправке и указываем на пустое.
+  // Кнопка всегда активна: молча заблокированная не объясняет, чего не хватает.
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
-
-    if (mode === 'vin' ? !vin.trim() : !plate.trim()) {
+    const value = (mode === 'vin' ? vin : plate).trim()
+    if (!value) {
       setFormError({
         field: 'vehicle',
         message: mode === 'vin' ? 'Введите VIN автомобиля' : 'Введите госномер автомобиля',
       })
-      vehicleInputRef.current?.focus()
+      inputRef.current?.focus()
       return
     }
-
-    if (!query.trim()) {
-      setFormError({
-        field: 'query',
-        message: 'Укажите, что ищем — например, «тормозные колодки»',
-      })
-      queryInputRef.current?.focus()
-      return
-    }
-
     setFormError(null)
-
-    if (mode === 'vin') {
-      search.mutate(vin, {
-        onSuccess: () => setHistory(pushSearchHistory({ mode: 'vin', value: vin, query })),
-      })
-    } else {
-      plateLookup.mutate()
-    }
+    if (mode === 'vin') decode.mutate(value)
+    else plateLookup.mutate(value)
   }
 
-  // Клик по записи истории — прификл формы (пользователь жмёт «Найти»).
-  const applyHistory = (entry: SearchHistoryEntry) => {
-    setFormError(null)
-    setMode(entry.mode)
-    if (entry.mode === 'vin') setVin(entry.value)
-    else setPlate(entry.value)
-    setQuery(entry.query)
-  }
-
-  const vehicle = search.data?.vehicle ?? null
-  const parts = search.data?.parts ?? []
+  // Недавние машины — по одной кнопке на VIN, самые свежие первыми.
+  const recentCars = useMemo(() => {
+    const seen = new Set<string>()
+    return history.filter((entry) => {
+      if (entry.mode !== 'vin' || seen.has(entry.value)) return false
+      seen.add(entry.value)
+      return true
+    })
+  }, [history])
 
   return (
-    <section className="mx-auto grid w-full max-w-6xl gap-8 px-5 py-10">
-      <div className="grid gap-3">
-        <Badge variant="outline" className="w-fit">
-          Подбор по VIN
-        </Badge>
+    <>
+      <div className="grid gap-2">
         <Typography variant="h1" className="max-w-3xl">
-          Найдите запчасть и сравните три варианта цены
+          Какая машина?
         </Typography>
         <Typography tone="muted" className="max-w-2xl">
-          Введите VIN автомобиля и название запчасти. Система покажет каталожный номер и
-          предложения поставщиков в формате «эконом / оптимальный / оригинал».
+          Определим автомобиль по VIN или госномеру, затем подберём запчасти: каталожный номер,
+          схема узла и предложения поставщиков в трёх вариантах цены.
         </Typography>
       </div>
 
       <Card>
-        <CardContent className="pt-6">
-          <div className="mb-4 inline-flex rounded-lg border p-0.5">
+        <CardContent className="grid gap-4 pt-6">
+          <div className="inline-flex w-fit rounded-lg border p-0.5">
             {(['vin', 'plate'] as const).map((value) => (
               <button
                 key={value}
@@ -157,14 +194,14 @@ export function SearchPage() {
             ))}
           </div>
 
-          <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-[1fr_1fr_auto]">
-            {mode === 'vin' ? (
-              <div className="grid gap-1.5">
-                <Typography variant="label" tone="muted">
-                  VIN
-                </Typography>
+          <form onSubmit={handleSubmit} className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-start">
+            <div className="grid gap-1.5">
+              <Typography variant="label" tone="muted">
+                {mode === 'vin' ? 'VIN или номер кузова' : 'Госномер'}
+              </Typography>
+              {mode === 'vin' ? (
                 <Input
-                  ref={vehicleInputRef}
+                  ref={inputRef}
                   value={vin}
                   onChange={(event) => {
                     setVin(event.target.value.toUpperCase())
@@ -175,17 +212,12 @@ export function SearchPage() {
                   autoCapitalize="characters"
                   spellCheck={false}
                   aria-invalid={formError?.field === 'vehicle'}
-                  className="font-mono"
+                  className="font-mono text-base"
+                  autoFocus
                 />
-                <FieldError error={formError} field="vehicle" />
-              </div>
-            ) : (
-              <div className="grid gap-1.5">
-                <Typography variant="label" tone="muted">
-                  Госномер
-                </Typography>
+              ) : (
                 <Input
-                  ref={vehicleInputRef}
+                  ref={inputRef}
                   value={plate}
                   onChange={(event) => {
                     setPlate(event.target.value.toUpperCase())
@@ -196,14 +228,119 @@ export function SearchPage() {
                   autoCapitalize="characters"
                   spellCheck={false}
                   aria-invalid={formError?.field === 'vehicle'}
-                  className="font-mono"
+                  className="font-mono text-base"
+                  autoFocus
                 />
-                <FieldError error={formError} field="vehicle" />
-              </div>
-            )}
+              )}
+              <FieldError error={formError} field="vehicle" />
+            </div>
+            <Button type="submit" size="lg" disabled={isBusy} className="sm:mt-6">
+              {isBusy ? <Spinner /> : null}
+              Определить машину
+            </Button>
+          </form>
+
+          {error ? <Typography tone="destructive">{describeError(error)}</Typography> : null}
+
+          {status.data?.catalog.demo ? (
+            <ChipRow label={mode === 'vin' ? 'Демо-VIN:' : 'Демо-номера:'}>
+              {(mode === 'vin' ? DEMO_VINS : DEMO_PLATES).map((demo) => (
+                <Chip
+                  key={demo}
+                  mono
+                  onClick={() => {
+                    if (mode === 'vin') setVin(demo)
+                    else setPlate(demo)
+                    setFormError(null)
+                  }}
+                >
+                  {demo}
+                </Chip>
+              ))}
+            </ChipRow>
+          ) : null}
+
+          {recentCars.length > 0 ? (
+            <ChipRow label="Недавние машины:">
+              {recentCars.map((entry) => (
+                <Chip key={entry.value} mono onClick={() => decode.mutate(entry.value)}>
+                  {entry.value}
+                </Chip>
+              ))}
+            </ChipRow>
+          ) : null}
+        </CardContent>
+      </Card>
+    </>
+  )
+}
+
+/**
+ * Шаг 2 — подбор по выбранной машине. Карточка машины закреплена сверху и
+ * остаётся на экране при прокрутке: всё под ней относится к этой машине.
+ */
+function CarSearch({
+  vehicle,
+  history,
+  onHistory,
+  onChangeCar,
+}: {
+  vehicle: Vehicle
+  history: SearchHistoryEntry[]
+  onHistory: (next: SearchHistoryEntry[]) => void
+  onChangeCar: () => void
+}) {
+  const [query, setQuery] = useState('')
+  const [selectedPart, setSelectedPart] = useState<Part | null>(null)
+  const [formError, setFormError] = useState<FormError | null>(null)
+  const queryInputRef = useRef<HTMLInputElement>(null)
+
+  const search = useMutation({
+    mutationFn: (value: string) => publicApi.searchParts({ vin: vehicle.vin, query: value }),
+    onSuccess: (_data, value) => {
+      setSelectedPart(null)
+      onHistory(pushSearchHistory({ mode: 'vin', value: vehicle.vin, query: value }))
+    },
+  })
+
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault()
+    const value = query.trim()
+    if (!value) {
+      setFormError({ field: 'query', message: 'Укажите, что ищем — например, «тормозные колодки»' })
+      queryInputRef.current?.focus()
+      return
+    }
+    setFormError(null)
+    search.mutate(value)
+  }
+
+  const runQuery = (value: string) => {
+    setQuery(value)
+    setFormError(null)
+    search.mutate(value)
+  }
+
+  // Что уже искали по этой машине — повтор одним нажатием.
+  const carQueries = useMemo(() => {
+    const seen = new Set<string>()
+    return history
+      .filter((entry) => entry.value === vehicle.vin && !seen.has(entry.query) && seen.add(entry.query))
+      .map((entry) => entry.query)
+  }, [history, vehicle.vin])
+
+  const parts = search.data?.parts ?? []
+
+  return (
+    <>
+      <CurrentCar vehicle={vehicle} onChange={onChangeCar} />
+
+      <Card>
+        <CardContent className="grid gap-3 pt-6">
+          <form onSubmit={handleSubmit} className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-start">
             <div className="grid gap-1.5">
               <Typography variant="label" tone="muted">
-                Запчасть
+                Какая запчасть?
               </Typography>
               <Input
                 ref={queryInputRef}
@@ -212,80 +349,124 @@ export function SearchPage() {
                   setQuery(event.target.value)
                   setFormError(null)
                 }}
-                placeholder="тормозные колодки"
+                placeholder="тормозные колодки передние"
                 aria-invalid={formError?.field === 'query'}
+                className="text-base"
+                autoFocus
               />
               <FieldError error={formError} field="query" />
             </div>
-            <div className="grid gap-1.5">
-              <Typography variant="label" tone="muted" className="sm:opacity-0">
-                &nbsp;
-              </Typography>
-              <Button type="submit" disabled={isBusy}>
-                {isBusy ? <Spinner /> : null}
-                Найти
-              </Button>
-            </div>
+            <Button type="submit" size="lg" disabled={search.isPending} className="sm:mt-6">
+              {search.isPending ? <Spinner /> : null}
+              Найти
+            </Button>
           </form>
-
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Typography variant="bodyXs" tone="muted">
-              {mode === 'vin' ? 'Демо-VIN:' : 'Демо-номера:'}
-            </Typography>
-            {(mode === 'vin' ? DEMO_VINS : DEMO_PLATES).map((demo) => (
-              <button
-                key={demo}
-                type="button"
-                onClick={() => {
-                  if (mode === 'vin') setVin(demo)
-                  else setPlate(demo)
-                  setFormError(null)
-                }}
-                className="rounded-md border px-2 py-0.5 font-mono text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-secondary-foreground"
-              >
-                {demo}
-              </button>
-            ))}
-          </div>
-
-          {history.length > 0 ? (
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <Typography variant="bodyXs" tone="muted">
-                Недавние:
-              </Typography>
-              {history.map((entry) => (
-                <button
-                  key={`${entry.mode}:${entry.value}:${entry.query}`}
-                  type="button"
-                  onClick={() => applyHistory(entry)}
-                  className="rounded-md border px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-secondary-foreground"
-                >
-                  <span className="font-mono">{entry.value}</span> · {entry.query}
-                </button>
+          {carQueries.length > 0 ? (
+            <ChipRow label="По этой машине искали:">
+              {carQueries.map((value) => (
+                <Chip key={value} onClick={() => runQuery(value)}>
+                  {value}
+                </Chip>
               ))}
-            </div>
+            </ChipRow>
           ) : null}
         </CardContent>
       </Card>
+
+      {search.isPending ? (
+        <div className="flex items-center gap-3" role="status">
+          <Spinner />
+          <Typography tone="muted">Ищем в каталогах — до 20 секунд на сложных запросах…</Typography>
+        </div>
+      ) : null}
 
       {search.isError ? (
         <Typography tone="destructive">{describeError(search.error)}</Typography>
       ) : null}
 
-      {vehicle ? <VehicleCard vehicle={vehicle} /> : null}
-
       {search.isSuccess ? (
-        <PartsList parts={parts} selectedPart={selectedPart} onSelect={setSelectedPart} />
+        <PartsList
+          parts={parts}
+          query={search.variables ?? ''}
+          resolvedQuery={search.data.resolvedQuery}
+          demo={search.data.source?.demo ?? false}
+          selectedPart={selectedPart}
+          onSelect={setSelectedPart}
+        />
       ) : null}
 
-      {search.isSuccess && parts.length === 0 && vehicle ? (
-        <AskExpert vin={vehicle.vin} query={query} />
+      {search.isSuccess && parts.length === 0 ? (
+        <AskExpert vin={vehicle.vin} query={search.variables ?? query} />
       ) : null}
 
-      {selectedPart ? (
-        <OffersPanel part={selectedPart} vehicleVin={vehicle?.vin} />
-      ) : null}
-    </section>
+      {selectedPart ? <OffersPanel part={selectedPart} vehicleVin={vehicle.vin} /> : null}
+    </>
+  )
+}
+
+/**
+ * Закреплённая карточка выбранной машины. Всё, что ниже, относится к ней;
+ * «Сменить машину» закрывает подбор целиком.
+ */
+function CurrentCar({ vehicle, onChange }: { vehicle: Vehicle; onChange: () => void }) {
+  const facts = [vehicle.year ? String(vehicle.year) : null, vehicle.engine, vehicle.bodyType].filter(
+    Boolean,
+  )
+  return (
+    <div className="sticky top-0 z-10 -mx-5 border-b bg-background/95 px-5 py-3 backdrop-blur sm:mx-0 sm:rounded-2xl sm:border sm:px-4">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="grid min-w-0 flex-1 gap-0.5">
+          <Typography variant="h5" className="truncate">
+            🚗 {vehicle.make} {vehicle.model}
+            {facts.length > 0 ? (
+              <span className="font-normal text-muted-foreground"> · {facts.join(' · ')}</span>
+            ) : null}
+          </Typography>
+          <Typography variant="code" tone="muted" className="truncate">
+            {vehicle.vin}
+          </Typography>
+        </div>
+        <Button type="button" variant="outline" size="sm" onClick={onChange}>
+          Сменить машину
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function ChipRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Typography variant="bodyXs" tone="muted">
+        {label}
+      </Typography>
+      {children}
+    </div>
+  )
+}
+
+function Chip({
+  mono,
+  onClick,
+  children,
+}: {
+  mono?: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'rounded-md border px-2 py-0.5 text-xs text-muted-foreground transition-colors',
+        'hover:bg-secondary hover:text-secondary-foreground',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        mono && 'font-mono',
+      )}
+    >
+      {children}
+    </button>
   )
 }
 
@@ -368,47 +549,18 @@ function FieldError({ error, field }: { error: FormError | null; field: FormErro
   )
 }
 
-function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
-  const facts: Array<[string, string]> = [
-    ['Марка', vehicle.make],
-    ['Модель', vehicle.model],
-    ['Год', vehicle.year ? String(vehicle.year) : '—'],
-    ['Двигатель', vehicle.engine ?? '—'],
-    ['Кузов', vehicle.bodyType ?? '—'],
-  ]
-
-  return (
-    <Card size="sm">
-      <CardHeader>
-        <CardTitle>
-          {vehicle.make} {vehicle.model}
-        </CardTitle>
-        <CardDescription className="font-mono">{vehicle.vin}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">
-          {facts.map(([label, value]) => (
-            <div key={label} className="grid gap-0.5">
-              <Typography as="dt" variant="bodyXs" tone="muted">
-                {label}
-              </Typography>
-              <Typography as="dd" variant="bodySmMedium">
-                {value}
-              </Typography>
-            </div>
-          ))}
-        </dl>
-      </CardContent>
-    </Card>
-  )
-}
-
 function PartsList({
   parts,
+  query,
+  resolvedQuery,
+  demo,
   selectedPart,
   onSelect,
 }: {
   parts: Part[]
+  query: string
+  resolvedQuery?: string
+  demo: boolean
   selectedPart: Part | null
   onSelect: (part: Part) => void
 }) {
@@ -417,7 +569,8 @@ function PartsList({
       <Card size="sm">
         <CardContent className="pt-6">
           <Typography tone="muted">
-            По этому запросу ничего не найдено. Попробуйте другое название запчасти.
+            По запросу «{query}» ничего не найдено. Попробуйте другое название запчасти или
+            уточните узел — например, «колодки передние».
           </Typography>
         </CardContent>
       </Card>
@@ -426,7 +579,19 @@ function PartsList({
 
   return (
     <div className="grid gap-3">
-      <Typography variant="h4">Найденные запчасти</Typography>
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <Typography variant="h4">Найдено: {parts.length}</Typography>
+        <Typography variant="bodySm" tone="muted">
+          по запросу «{query}»
+          {/* Искали другим словом — говорим прямо, иначе выдача по «гранатке» выглядит случайной. */}
+          {resolvedQuery ? ` — искали как «${resolvedQuery}»` : ''}
+        </Typography>
+        {demo ? (
+          <Badge variant="outline" className="border-amber-500/60 text-amber-700">
+            Демо-каталог
+          </Badge>
+        ) : null}
+      </div>
       <div className="grid gap-2">
         {parts.map((part) => {
           const isActive = selectedPart?.oemNumber === part.oemNumber
@@ -435,15 +600,16 @@ function PartsList({
               key={part.oemNumber}
               type="button"
               onClick={() => onSelect(part)}
+              aria-pressed={isActive}
               className={cn(
-                'flex items-center gap-3 rounded-lg border bg-card p-4 text-left transition-colors',
+                'flex items-center gap-3 rounded-lg border bg-card p-3 text-left transition-colors sm:p-4',
                 'hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 isActive && 'border-primary bg-secondary',
               )}
             >
               {part.imageUrl ? (
                 <img
-                  src={part.imageUrl}
+                  src={schemeImageSrc(part.imageUrl)}
                   alt=""
                   loading="lazy"
                   className="h-14 w-14 shrink-0 rounded border bg-white object-contain"
@@ -457,8 +623,23 @@ function PartsList({
                   </Typography>
                 </div>
                 <Typography variant="bodyXs" tone="muted">
-                  {part.category}
+                  {[
+                    part.category,
+                    part.position ? `позиция ${part.position} на схеме` : null,
+                    part.quantity && part.quantity > 1 ? `${part.quantity} шт. на машину` : null,
+                    part.note,
+                    part.appliesPeriod,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
                 </Typography>
+                {/* Заказ по заменённому номеру у поставщиков не найдётся —
+                    предупреждение видно в списке, до выбора детали. */}
+                {part.replacedBy ? (
+                  <Typography variant="bodyXs" tone="destructive">
+                    Заменён на {part.replacedBy} — заказывать новый номер
+                  </Typography>
+                ) : null}
               </div>
             </button>
           )
@@ -512,7 +693,7 @@ function OffersPanel({ part, vehicleVin }: { part: Part; vehicleVin?: string }) 
     return <Typography tone="destructive">{describeError(offersQuery.error)}</Typography>
   }
 
-  const { picks, offers, source } = offersQuery.data
+  const { picks, offers, source, dealerPrice } = offersQuery.data
 
   return (
     <div className="grid gap-4">
@@ -521,11 +702,19 @@ function OffersPanel({ part, vehicleVin }: { part: Part; vehicleVin?: string }) 
         <Typography variant="code" tone="muted">
           OEM {part.oemNumber}
         </Typography>
+        {dealerPrice ? <DealerPriceNote price={dealerPrice} /> : null}
       </div>
 
       {source?.demo ? <DemoPricesNotice /> : null}
 
-      {part.imageUrl ? <SchemeViewer imageUrl={part.imageUrl} partName={part.name} /> : null}
+      {part.imageUrl ? (
+        <SchemeViewer
+          imageUrl={part.imageUrl}
+          partName={part.name}
+          position={part.position}
+          hotspot={part.schemeHotspot}
+        />
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-3">
         {picks.map((pick) => (
@@ -542,6 +731,23 @@ function OffersPanel({ part, vehicleVin }: { part: Part; vehicleVin?: string }) 
 
       <OffersTable offers={offers} onAdd={handleAdd} />
     </div>
+  )
+}
+
+/**
+ * Цена оригинала у дилеров — ориентир, а не предложение: купить по ней нельзя.
+ * Рынок и валюта названы прямо, чтобы приёмщик не назвал клиенту юани рублями.
+ */
+function DealerPriceNote({ price }: { price: DealerPrice }) {
+  const yuan = (fen: number) =>
+    (fen / 100).toLocaleString('ru-RU', { maximumFractionDigits: 2 })
+  const range = price.min === price.max ? yuan(price.min) : `${yuan(price.min)}–${yuan(price.max)}`
+
+  return (
+    <Typography variant="bodySm" tone="muted">
+      Оригинал у дилеров в Китае: <span className="font-medium text-foreground">{range} ¥</span>{' '}
+      — ориентир, не цена покупки
+    </Typography>
   )
 }
 
@@ -757,6 +963,7 @@ function describeError(error: unknown): string {
     // Сообщения сервера для 404 контекстны (VIN или госномер).
     if (error.status === 404) return error.message
     if (error.status === 400) return 'Проверьте введённые данные (VIN, госномер или запрос).'
+    if (error.status === 502) return 'Каталог сейчас недоступен. Попробуйте ещё раз через пару минут.'
     return error.message
   }
   return 'Не удалось выполнить запрос. Попробуйте ещё раз.'

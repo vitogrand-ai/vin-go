@@ -1,12 +1,12 @@
 import { createHash } from 'node:crypto'
 
-import type { Part, Vehicle } from '@web-app-demo/contracts'
+import type { DealerPrice, Part, Vehicle } from '@web-app-demo/contracts'
 
 import { AppError } from '../http/errors'
 import { asArray, int, isRecord, str } from './parse-utils'
 import { translatePartQuery } from './part-terms'
 import { requestProviderJson } from './provider-http'
-import type { CatalogProvider } from './providers'
+import type { CatalogProvider, DealerPriceProvider } from './providers'
 
 /**
  * Адаптер каталога 17vin.com — китайский EPC: VIN → авто → оригинальные детали.
@@ -27,6 +27,11 @@ import type { CatalogProvider } from './providers'
  *     с query_part_name в URL-safe base64. Названия в базе — китайские/английские,
  *     поэтому русский запрос напрямую даёт мало пользы: перевод запроса RU→ZH —
  *     отдельный слой (см. TODO в docstring searchParts).
+ *   • Схема узла приходит в ответе того же поиска: `illustration_img_address` —
+ *     файл картинки на хосте из оп. 2004, `callout` — номер выноски на ней,
+ *     `cata_code` — идентификатор узла. Отдельного запроса схема не стоит.
+ *   • Весь узел по `cata_code` (оп. 5105): `GET /{epc}?action=part` — список
+ *     деталей с выносками, адресом схемы и координатами выносок на картинке.
  *   • Коды конверта (оп. 2002): 1 — успех; 0 — нет данных; 1003 — бренд не
  *     поддержан (для нас — штатное «пусто»); 1001/1002/1004 — ошибки запроса и
  *     авторизации; 1005 — исчерпан баланс/срок; 1006/1007 — сбои. Всё, кроме
@@ -36,6 +41,9 @@ import type { CatalogProvider } from './providers'
 
 /** Базовый URL API (из документации; API отдаётся по HTTP на порту 8080). */
 export const VIN17_DEFAULT_BASE_URL = 'http://api.17vin.com:8080'
+
+/** Хост картинок каталога — схем узлов и фотографий моделей (оп. 2004). */
+export const VIN17_IMAGE_BASE_URL = 'http://resource.17vin.com/img'
 
 /**
  * Потолок деталей в ответе поиска: нечёткий поиск 5107 на общих словах
@@ -51,7 +59,7 @@ export type Vin17Config = {
   fetchImpl?: typeof fetch
 }
 
-export class Vin17CatalogProvider implements CatalogProvider {
+export class Vin17CatalogProvider implements CatalogProvider, DealerPriceProvider {
   private readonly user: string
   private readonly password: string
   private readonly baseUrl: string
@@ -101,15 +109,8 @@ export class Vin17CatalogProvider implements CatalogProvider {
       latinPostFilter = true
     }
 
-    // Код бренда (epc) кладётся в raw при decodeVin. Если авто определял другой
-    // каталог (best-effort ветка FallbackCatalogProvider) — восстанавливаем epc
-    // повторным декодом: по тому же VIN 17vin повтор не тарифицирует.
-    let epc = typeof vehicle.raw?.['epc'] === 'string' ? (vehicle.raw['epc'] as string) : null
-    if (!epc) {
-      const decoded = await this.call(decodePath(vehicle.vin.trim().toUpperCase()))
-      epc = decoded ? str(decoded, ['epc']) : null
-      if (!epc) return []
-    }
+    const epc = await this.resolveEpc(vehicle)
+    if (!epc) return []
 
     const params = new URLSearchParams({
       action: 'search_epc_part_name',
@@ -120,8 +121,97 @@ export class Vin17CatalogProvider implements CatalogProvider {
     })
     const payload = await this.call(`/${encodeURIComponent(epc)}?${params.toString()}`)
     if (payload === null) return []
-    const parts = mapParts(payload, vehicle.make)
-    return latinPostFilter ? filterByQueryTokens(parts, q) : parts
+    const found = mapParts(payload, { brand: vehicle.make, epc })
+    const parts = latinPostFilter ? filterByQueryTokens(found, q) : found
+    return this.withHotspots(vehicle, epc, parts)
+  }
+
+  /**
+   * Координаты выносок для выдачи поиска. Поиск (5107) их не отдаёт — только
+   * запрос узла (5105), поэтому узел первой детали догружается отдельно: её
+   * схему бот и веб показывают первой. Денег это не стоит — VIN уже оплачен
+   * поиском. Сбой догрузки выдачу не ломает: деталь просто останется без
+   * обводки, номер выноски у неё есть и так.
+   */
+  private async withHotspots(vehicle: Vehicle, epc: string, parts: Part[]): Promise<Part[]> {
+    const schemeId = parts.find((part) => part.schemeId && part.imageUrl)?.schemeId
+    if (!schemeId) return parts
+
+    let node: Record<string, unknown> | null
+    try {
+      node = await this.call(nodePath(epc, vehicle.vin, schemeId))
+    } catch (error) {
+      console.warn(`[17vin] выноски узла ${schemeId} не догрузились, выдача без обводки`, error)
+      return parts
+    }
+    const hotspots = node ? parseHotspots(node) : new Map<string, SchemeHotspot>()
+    if (hotspots.size === 0) return parts
+
+    return parts.map((part) => {
+      if (part.schemeId !== schemeId || !part.position) return part
+      const hotspot = hotspots.get(part.position)
+      return hotspot ? { ...part, schemeHotspot: hotspot } : part
+    })
+  }
+
+  /**
+   * Весь узел по его идентификатору (оп. 5105): мастер смотрит на схему и
+   * называет номер выноски, а не название детали. Отбора по названию здесь нет —
+   * на схеме масляного фильтра под номером 15692 стоит прокладка кронштейна,
+   * которую словами никто бы не спросил.
+   *
+   * Документация предлагает для этого оп. 4005 (`action=illustration`), но она
+   * на нашем аккаунте отвечает «配件查询参数错误» при любом наборе параметров
+   * (проверено живьём, сент 2026). Оп. 5105 отдаёт ровно то же — список деталей
+   * узла с выносками и адресом схемы, — поэтому идём через неё.
+   *
+   * `last_cata_code_level` каталог, вопреки документации, игнорирует: живьём
+   * ответ одинаков для 1, 2, 3 и даже для отсутствующего параметра. Уровень
+   * узла из `cata_code` не восстановить, поэтому шлём значение из примера
+   * документации.
+   */
+  async schemeParts(vehicle: Vehicle, schemeId: string): Promise<Part[]> {
+    const cataCode = schemeId.trim()
+    if (!cataCode) return []
+    const epc = await this.resolveEpc(vehicle)
+    if (!epc) return []
+
+    const payload = await this.call(nodePath(epc, vehicle.vin, cataCode))
+    if (payload === null) return []
+    const hotspots = parseHotspots(payload)
+    return mapParts(payload, { brand: vehicle.make, epc, schemeId: cataCode }).map((part) => {
+      const hotspot = part.position ? hotspots.get(part.position) : undefined
+      return hotspot ? { ...part, schemeHotspot: hotspot } : part
+    })
+  }
+
+  /**
+   * Цена оригинала у официальных дилеров КНР (оп. 4006) — по номеру, без VIN.
+   *
+   * ПЛАТНАЯ за каждый вызов, в отличие от поиска и узла: живьём баланс
+   * аккаунта уменьшился на 0,03 после вызова и ещё на 0,03 после повтора того
+   * же номера (сент 2026). Поэтому снаружи адаптер оборачивается кэшем
+   * (`CachingDealerPriceProvider`), а здесь вызов идёт как есть.
+   */
+  async dealerPrice(oemNumber: string): Promise<DealerPrice | null> {
+    const number = oemNumber.replace(/[\s-]/g, '').toUpperCase()
+    if (!number) return null
+    const params = new URLSearchParams({ action: 'price', partnumber: number })
+    const payload = await this.call(`/?${params.toString()}`)
+    return payload ? mapDealerPrice(payload) : null
+  }
+
+  /**
+   * Код бренда (epc) кладётся в raw при decodeVin. Если авто определял другой
+   * каталог (best-effort ветка FallbackCatalogProvider) — восстанавливаем epc
+   * повторным декодом: по тому же VIN 17vin повтор не тарифицирует.
+   */
+  private async resolveEpc(vehicle: Vehicle): Promise<string | null> {
+    const fromRaw = vehicle.raw?.['epc']
+    if (typeof fromRaw === 'string' && fromRaw) return fromRaw
+
+    const decoded = await this.call(decodePath(vehicle.vin.trim().toUpperCase()))
+    return decoded ? str(decoded, ['epc']) : null
   }
 
   /**
@@ -149,6 +239,8 @@ export class Vin17CatalogProvider implements CatalogProvider {
     const code = int(envelope, ['code']) ?? 0
     if (code === 1) {
       const payload = envelope['data']
+      // Оп. 4006 отдаёт в data массив дилеров, остальные — объект.
+      if (Array.isArray(payload)) return { list: payload }
       return isRecord(payload) ? payload : null
     }
     if (code === 0 || code === 1003) return null // нет данных / бренд вне каталога
@@ -175,6 +267,54 @@ export function filterByQueryTokens(parts: Part[], query: string): Part[] {
 /** Путь запроса декодирования — единый для decodeVin и восстановления epc. */
 function decodePath(vin: string): string {
   return `/?vin=${encodeURIComponent(vin)}`
+}
+
+/**
+ * Путь запроса узла (оп. 5105) — один для `schemeParts` и догрузки выносок.
+ * `last_cata_code_level` каталог игнорирует (см. `schemeParts`), шлём значение
+ * из примера документации.
+ */
+function nodePath(epc: string, vin: string, cataCode: string): string {
+  const params = new URLSearchParams({
+    action: 'part',
+    vin: vin.trim().toUpperCase(),
+    last_cata_code: cataCode,
+    last_cata_code_level: '2',
+  })
+  return `/${encodeURIComponent(epc)}?${params.toString()}`
+}
+
+export type SchemeHotspot = { x: number; y: number }
+
+/**
+ * Выноски схемы из ответа узла → «номер выноски → доли ширины и высоты».
+ *
+ * Каталог отдаёт левый верхний угол подписи в пикселях и размер картинки:
+ * `all_img_hotspots[].img_hotspots = {img_width, img_height, hotspots:
+ * [{callout, topleft_x, topleft_y}]}`. Доли вместо пикселей — чтобы клиенту
+ * не нужно было знать, в каком размере картинка реально пришла. Координата
+ * вне картинки или картинка без размеров — выноска пропускается.
+ */
+export function parseHotspots(payload: Record<string, unknown>): Map<string, SchemeHotspot> {
+  const result = new Map<string, SchemeHotspot>()
+  for (const block of asArray(payload['all_img_hotspots']) ?? []) {
+    const image = block['img_hotspots']
+    if (!isRecord(image)) continue
+    const width = int(image, ['img_width'])
+    const height = int(image, ['img_height'])
+    if (!width || !height) continue
+
+    for (const spot of asArray(image['hotspots']) ?? []) {
+      const callout = str(spot, ['callout'])
+      const x = int(spot, ['topleft_x'])
+      const y = int(spot, ['topleft_y'])
+      if (!callout || x === null || y === null) continue
+      if (x < 0 || y < 0 || x > width || y > height) continue
+      // Одна выноска может стоять на схеме дважды — берём первую.
+      if (!result.has(callout)) result.set(callout, { x: x / width, y: y / height })
+    }
+  }
+  return result
 }
 
 /**
@@ -351,13 +491,25 @@ export function yearFromModelDetail(modelDetail: string | null): number | null {
   return match ? Number.parseInt(match[1]!, 10) : null
 }
 
+export type Vin17PartsContext = {
+  brand: string | null
+  /** Код каталога бренда — сегмент адреса схемы узла. */
+  epc: string | null
+  /** Узел, который запрашивали (оп. 5105): в его ответе `cata_code` нет. */
+  schemeId?: string
+}
+
 /**
  * Payload поиска 5107 (или списка 5105) → детали контракта. Детали, явно
  * помеченные неприменимыми к этому VIN, записи без номера/названия и дубли
  * (номер+название: одна деталь приходит несколькими строками применимости)
  * отбрасываются; выдача ограничена VIN17_MAX_PARTS.
+ *
+ * Схема узла приходит в том же ответе, отдельного запроса не требует:
+ * `illustration_img_address` — файл картинки, `callout` — номер выноски на ней,
+ * `cata_code` — сам узел (по нему открывается `schemeParts`).
  */
-export function mapParts(payload: Record<string, unknown>, brand: string | null): Part[] {
+export function mapParts(payload: Record<string, unknown>, ctx: Vin17PartsContext): Part[] {
   const list = asArray(payload['searchlist']) ?? asArray(payload['partlist'])
   if (!list) return []
 
@@ -376,10 +528,91 @@ export function mapParts(payload: Record<string, unknown>, brand: string | null)
     seen.add(key)
 
     // cata_name_en — путь категорий через «>», берём последний осмысленный узел.
+    // В ответе узла (5105) его нет вовсе: категория там — сам запрошенный узел.
     const cataPath = str(item, ['cata_name_en', 'cata_name_zh']) ?? ''
     const category = cataPath.split('>').map((s) => s.trim()).filter(Boolean).pop() ?? ''
 
-    parts.push({ oemNumber, name, category, brand })
+    parts.push({
+      oemNumber,
+      name,
+      category,
+      brand: ctx.brand,
+      imageUrl: schemeImageUrl(ctx.epc, str(item, ['illustration_img_address'])),
+      position: str(item, ['callout']),
+      schemeId: str(item, ['cata_code']) ?? ctx.schemeId ?? null,
+      // Количество каталог пишет с ведущим нулём («01», «04»).
+      quantity: parsePositiveInt(str(item, ['qty'])),
+      replacedBy: str(item, ['replacement', 'old_replacement']),
+      // remark_en у Toyota пуст всегда, содержимое лежит в remark_zh и почти
+      // целиком латинское: коды мотора и шасси, маркировка, мощность лампы.
+      note: str(item, ['remark_en', 'remark_zh']),
+      appliesPeriod: formatPeriod(str(item, ['begin_date']), str(item, ['end_date'])),
+    })
   }
   return parts
+}
+
+/**
+ * Ответ оп. 4006 → цена оригинала у дилеров: минимум и максимум по всем, кто
+ * назвал цену. Живой ответ — строка на каждого дилера бренда («丰田» — импорт,
+ * «四川一汽丰田» — FAW-Toyota), `Price` строкой («438», «345.82»).
+ *
+ * Валюту документация не указывает. Это цены китайских дилерских центров, а
+ * баланс того же аккаунта каталог пишет в 元 — поэтому CNY. Суммы — в фэнях,
+ * как рубли в контракте хранятся в копейках.
+ */
+export function mapDealerPrice(payload: Record<string, unknown>): DealerPrice | null {
+  const prices: number[] = []
+  for (const dealer of asArray(payload['list']) ?? []) {
+    const price = Number.parseFloat(str(dealer, ['Price', 'price']) ?? '')
+    if (Number.isFinite(price) && price > 0) prices.push(Math.round(price * 100))
+  }
+  if (prices.length === 0) return null
+  return {
+    min: Math.min(...prices),
+    max: Math.max(...prices),
+    currency: 'CNY',
+    market: 'CN',
+    dealers: prices.length,
+  }
+}
+
+/** «01» → 1; мусор и ноль — «не знаю». */
+function parsePositiveInt(value: string | null): number | null {
+  const parsed = Number.parseInt(value ?? '', 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
+
+/**
+ * Период применимости из дат каталога (`YYYYMM`) в читаемый вид:
+ * «05.2010 — 11.2013», «с 05.2010» (конец `999999` — деталь ставится до сих
+ * пор), «до 11.2013». Обе даты пусты или неразборчивы — период не показываем.
+ */
+export function formatPeriod(begin: string | null, end: string | null): string | null {
+  const from = formatYearMonth(begin)
+  const to = formatYearMonth(end)
+  if (from && to) return `${from} — ${to}`
+  if (from) return `с ${from}`
+  if (to) return `до ${to}`
+  return null
+}
+
+/** `201005` → `05.2010`. `999999` («по настоящее время») и мусор → null. */
+function formatYearMonth(value: string | null): string | null {
+  const match = value?.match(/^((?:19|20)\d{2})(0[1-9]|1[0-2])$/)
+  return match ? `${match[2]}.${match[1]}` : null
+}
+
+/**
+ * Адрес схемы узла: `{хост}/img/{epc}/{файл}` (оп. 2004).
+ *
+ * Хост — HTTP: HTTPS-зеркало `images.17vin.com` из документации лежит целиком
+ * (503 на любом пути, включая корень; проверено сент 2026), а у
+ * `resource.17vin.com` TLS не поднят вовсе. Телеграм скачивает картинку сам, и
+ * протокол ему безразличен; в вебе на HTTPS-странице такую схему заблокирует
+ * браузер — это чинится проксированием на нашей стороне, а не здесь.
+ */
+export function schemeImageUrl(epc: string | null, imgAddress: string | null): string | null {
+  if (!epc || !imgAddress) return null
+  return `${VIN17_IMAGE_BASE_URL}/${encodeURIComponent(epc)}/${encodeURIComponent(imgAddress)}`
 }

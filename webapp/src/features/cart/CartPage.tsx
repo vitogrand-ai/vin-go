@@ -82,6 +82,18 @@ function Cart() {
 
       <Totals order={order} />
 
+      {/* Работы и данные приёма живут в карточке заказа: корзина — это тот же черновик. */}
+      <Typography variant="bodySm" tone="muted">
+        Работы, причина обращения и срок —{' '}
+        <Link to="/orders/$id" params={{ id: order.id }} className="text-primary hover:underline">
+          в заказ-наряде
+        </Link>
+        {order.works.length > 0
+          ? ` (работ: ${order.works.length}, ${formatMoney(order.worksTotal)})`
+          : ''}
+        .
+      </Typography>
+
       <div className="flex flex-wrap items-center justify-end gap-2">
         <Button
           type="button"

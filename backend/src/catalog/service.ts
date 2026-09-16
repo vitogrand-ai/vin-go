@@ -1,5 +1,6 @@
 import type {
   CatalogStatusResponse,
+  DealerPrice,
   DecodeVinResponse,
   OffersResponse,
   ResolvePlateResponse,
@@ -14,7 +15,12 @@ import { MockCatalogProvider, MockPlateProvider, MockSupplierProvider } from './
 import { expandPartQuery } from './part-jargon'
 import { closeness, queryNamesForOrder } from './part-match'
 import { filterByPosition } from './position-filter'
-import type { CatalogProvider, PlateProvider, SupplierProvider } from './providers'
+import type {
+  CatalogProvider,
+  DealerPriceProvider,
+  PlateProvider,
+  SupplierProvider,
+} from './providers'
 import { selectTiers } from './tiering'
 
 /**
@@ -33,6 +39,8 @@ export class CatalogService {
      * цены не должны выглядеть настоящими.
      */
     private readonly meta: CatalogProvidersMeta = MOCK_PROVIDERS_META,
+    /** Цена оригинала у дилеров — ориентир рядом с предложениями, если источник есть. */
+    private readonly dealerPrices?: DealerPriceProvider,
   ) {}
 
   /** Состояние источников данных: каталог, поставщики, реестр госномеров. */
@@ -115,13 +123,31 @@ export class CatalogService {
   }
 
   async getOffers(oemNumber: string, region?: string): Promise<OffersResponse> {
-    const offers = await this.suppliers.getOffers(oemNumber, region)
+    const [offers, dealerPrice] = await Promise.all([
+      this.suppliers.getOffers(oemNumber, region),
+      this.lookupDealerPrice(oemNumber),
+    ])
     const sorted = [...offers].sort((a, b) => a.price.amount - b.price.amount)
     return {
       oemNumber: oemNumber.trim().toUpperCase(),
       picks: selectTiers(sorted),
       offers: sorted,
       source: this.meta.suppliers,
+      dealerPrice,
+    }
+  }
+
+  /**
+   * Цена у дилера — справка, а не предложение: её сбой не должен оставлять
+   * мастера без цен поставщиков. Поэтому ошибка источника глушится с логом.
+   */
+  private async lookupDealerPrice(oemNumber: string): Promise<DealerPrice | null> {
+    if (!this.dealerPrices) return null
+    try {
+      return await this.dealerPrices.dealerPrice(oemNumber)
+    } catch (error) {
+      console.warn(`[catalog] цена у дилера для ${oemNumber} не получена`, error)
+      return null
     }
   }
 }
@@ -179,7 +205,9 @@ function logSearchMiss(
 /**
  * Схлопывает дубли по OEM-номеру: номер идентифицирует деталь, а каталоги
  * присылают её по строке на каждую позицию применимости. Первое вхождение
- * задаёт название; картинка схемы добирается из любого дубля, у которого есть.
+ * задаёт название; схема, выноска и узел добираются из любого дубля, у
+ * которого они есть, — иначе выбор детали цифрой со схемы зависел бы от того,
+ * какая строка применимости пришла первой.
  */
 function dedupeByOem(parts: Part[]): Part[] {
   const byOem = new Map<string, Part>()
@@ -187,9 +215,15 @@ function dedupeByOem(parts: Part[]): Part[] {
     const existing = byOem.get(part.oemNumber)
     if (!existing) {
       byOem.set(part.oemNumber, part)
-    } else if (!existing.imageUrl && part.imageUrl) {
-      byOem.set(part.oemNumber, { ...existing, imageUrl: part.imageUrl })
+      continue
     }
+    const merged: Part = {
+      ...existing,
+      imageUrl: existing.imageUrl ?? part.imageUrl ?? null,
+      position: existing.position ?? part.position ?? null,
+      schemeId: existing.schemeId ?? part.schemeId ?? null,
+    }
+    byOem.set(part.oemNumber, merged)
   }
   return [...byOem.values()]
 }

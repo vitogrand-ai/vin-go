@@ -184,6 +184,9 @@ Test runners use the separate Docker Compose `postgres_test` service and the `TE
 
 - [backend/README.md](backend/README.md) - API, auth, Prisma, and backend validation.
 - [docs/POSTMORTEM.md](docs/POSTMORTEM.md) - pilot complaints, their real root causes, and the checks that keep them from returning.
+- [docs/CATALOG_ADAPTERS.md](docs/CATALOG_ADAPTERS.md) - what every catalog/supplier adapter must pull from its source, the checklist for a new one, and the current gaps.
+- [docs/SOURCES.md](docs/SOURCES.md) - catalog data sources on the market (coverage, API, price, legality) and which to connect next.
+- [docs/COMPETITORS.md](docs/COMPETITORS.md) - competitor feature matrix, what the market treats as table stakes, where VINGO leads and lags.
 - [docs/LOCAL_DATABASE.md](docs/LOCAL_DATABASE.md) - Docker Compose PostgreSQL setup and reset workflow.
 - [docs/STORAGE.md](docs/STORAGE.md) - DigitalOcean Spaces, CDN, uploads, and image/media storage rules.
 - [docs/YANDEX_CLOUD.md](docs/YANDEX_CLOUD.md) - optional Yandex Cloud deployment path when explicitly selected.

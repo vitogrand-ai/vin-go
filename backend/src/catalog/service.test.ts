@@ -237,6 +237,41 @@ describe('CatalogService — источник данных в ответах', (
   })
 })
 
+describe('CatalogService.getOffers — цена оригинала у дилера', () => {
+  const PRICE = { min: 43800, max: 48100, currency: 'CNY' as const, market: 'CN' as const, dealers: 3 }
+
+  function serviceWith(dealerPrices?: { dealerPrice: (oem: string) => Promise<typeof PRICE | null> }) {
+    return new CatalogService(
+      new CanonicalOnlyCatalog('шрус'),
+      new MockSupplierProvider(),
+      new MockPlateProvider(),
+      undefined,
+      dealerPrices,
+    )
+  }
+
+  test('цена дилера идёт рядом с предложениями поставщиков', async () => {
+    const offers = await serviceWith({ dealerPrice: async () => PRICE }).getOffers('1J0698151')
+    expect(offers.dealerPrice).toEqual(PRICE)
+    expect(offers.offers.length).toBeGreaterThan(0)
+  })
+
+  test('источник цены упал — предложения поставщиков всё равно приходят', async () => {
+    const offers = await serviceWith({
+      dealerPrice: async () => {
+        throw new Error('17vin 1005: баланс исчерпан')
+      },
+    }).getOffers('1J0698151')
+    expect(offers.dealerPrice).toBeNull()
+    expect(offers.offers.length).toBeGreaterThan(0)
+  })
+
+  test('источника цены нет (мок, без 17vin) — цены нет, а не выдуманная', async () => {
+    const offers = await serviceWith().getOffers('1J0698151')
+    expect(offers.dealerPrice).toBeNull()
+  })
+})
+
 describe('CatalogService.schemeParts', () => {
   const node: Part[] = [
     { oemNumber: '566941015F', name: 'Фара головного света', category: 'Фары', brand: 'Skoda', imageUrl: null, position: '1', schemeId: 'G1' },
@@ -275,5 +310,37 @@ describe('CatalogService.schemeParts', () => {
       new MockPlateProvider(),
     )
     expect((await service.schemeParts(VEHICLE.vin, 'G1', '9')).parts).toEqual([])
+  })
+})
+
+describe('CatalogService — дубли применимости', () => {
+  test('выноска и узел добираются из дубля, как и схема', async () => {
+    const catalog: CatalogProvider = {
+      async decodeVin() {
+        return VEHICLE
+      },
+      async searchParts() {
+        return [
+          { oemNumber: 'X1', name: 'Колодки тормозные', category: 'Тормоза', brand: null },
+          {
+            oemNumber: 'X1',
+            name: 'Колодки тормозные',
+            category: 'Тормоза',
+            brand: null,
+            imageUrl: 'https://img.example.com/schema.png',
+            position: '4',
+            schemeId: 'G-BRAKE',
+          },
+        ]
+      },
+    }
+
+    const result = await serviceWith(catalog).searchParts(VEHICLE.vin, 'колодки')
+    expect(result.parts).toHaveLength(1)
+    expect(result.parts[0]).toMatchObject({
+      imageUrl: 'https://img.example.com/schema.png',
+      position: '4',
+      schemeId: 'G-BRAKE',
+    })
   })
 })

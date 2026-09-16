@@ -10,13 +10,52 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Typography } from '@/components/ui/typography'
+import { schemeImageSrc } from '@/lib/scheme-image'
 import { cn } from '@/lib/utils'
+
+type SchemeHotspot = { x: number; y: number }
 
 type SchemeViewerProps = {
   /** Адрес схемы узла — уже оригинал, каталог отдаёт около 800×1100. */
   imageUrl: string
   /** Название детали: идёт в alt и в заголовок окна просмотра. */
   partName: string
+  /** Номер выноски детали на схеме — для подписи обводки. */
+  position?: string | null
+  /** Где выноска стоит на схеме, в долях картинки: по ней деталь обводится. */
+  hotspot?: SchemeHotspot | null
+}
+
+/**
+ * Обводка выноски детали на схеме.
+ *
+ * Каталог даёт левый верхний угол подписи выноски, а сама подпись («15643A»)
+ * уходит от него вправо и вниз. Рамка начинается чуть левее и выше угла и
+ * накрывает подпись с запасом. Размер — в долях картинки, как и координата:
+ * схемы каталога одного масштаба (~760 px в ширину), подпись там ~60–80 px.
+ *
+ * Лежит поверх картинки внутри обёртки ровно её размера, поэтому проценты
+ * совпадают с картинкой и при вписывании в окно, и в натуральную величину.
+ */
+function SchemeMarker({ hotspot }: { hotspot: SchemeHotspot }) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        // Акцент продукта — тёплый янтарь, как у пометок в выдаче. Чёрная рамка
+        // сливается с линиями чертежа, а янтарная — единственное цветное пятно.
+        'pointer-events-none absolute rounded-full border-[3px] border-amber-500 bg-amber-400/20',
+        // Белое кольцо снаружи отделяет рамку от соседних линий схемы.
+        'shadow-[0_0_0_2px_rgb(255_255_255/0.9),0_2px_10px_rgb(180_83_9/0.35)]',
+      )}
+      style={{
+        left: `${Math.max(hotspot.x * 100 - 1.2, 0)}%`,
+        top: `${Math.max(hotspot.y * 100 - 1, 0)}%`,
+        width: '12%',
+        height: '4%',
+      }}
+    />
+  )
 }
 
 /**
@@ -28,10 +67,15 @@ type SchemeViewerProps = {
  * в натуральную величину с прокруткой. Ссылка «Открыть файл» оставляет выход на
  * исходный PNG: дальше масштабом управляет сам браузер, без пережатия.
  */
-export function SchemeViewer({ imageUrl, partName }: SchemeViewerProps) {
+export function SchemeViewer({ imageUrl, partName, position, hotspot }: SchemeViewerProps) {
   const [open, setOpen] = useState(false)
   // Внутри окна: false — схема вписана в экран, true — натуральный размер.
   const [actualSize, setActualSize] = useState(false)
+  // HTTP-схемы (17vin) идут через прокси бэкенда — иначе HTTPS-страница их не покажет.
+  const src = schemeImageSrc(imageUrl)
+  const alt = hotspot && position
+    ? `Схема узла: ${partName}, деталь обведена — позиция ${position}`
+    : `Схема узла: ${partName}`
 
   return (
     <>
@@ -49,15 +93,18 @@ export function SchemeViewer({ imageUrl, partName }: SchemeViewerProps) {
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         )}
       >
-        <img
-          src={imageUrl}
-          alt={`Схема узла: ${partName}`}
-          loading="lazy"
+        <span
           className={cn(
-            'max-h-96 w-full object-contain p-2',
+            'flex justify-center p-2',
             'transition-transform duration-200 ease-out group-hover:scale-[1.02]',
           )}
-        />
+        >
+          {/* Обёртка ровно размера картинки — иначе обводка съедет на поля. */}
+          <span className="relative inline-block">
+            <img src={src} alt={alt} loading="lazy" className="block max-h-96 max-w-full" />
+            {hotspot ? <SchemeMarker hotspot={hotspot} /> : null}
+          </span>
+        </span>
         {/* Подсказка видна всегда: на телефоне наведения нет, а без неё не
             догадаться, что схему можно открыть крупнее. */}
         <span
@@ -75,7 +122,10 @@ export function SchemeViewer({ imageUrl, partName }: SchemeViewerProps) {
         <DialogContent className="max-w-[min(96vw,1100px)] gap-4 sm:max-w-[min(96vw,1100px)]">
           <DialogHeader>
             <DialogTitle>Схема узла</DialogTitle>
-            <DialogDescription>{partName}</DialogDescription>
+            <DialogDescription>
+              {partName}
+              {hotspot && position ? ` — обведена позиция ${position}` : ''}
+            </DialogDescription>
           </DialogHeader>
 
           <div
@@ -94,11 +144,16 @@ export function SchemeViewer({ imageUrl, partName }: SchemeViewerProps) {
                 actualSize ? 'cursor-zoom-out' : 'w-full cursor-zoom-in',
               )}
             >
-              <img
-                src={imageUrl}
-                alt={`Схема узла: ${partName}`}
-                className={actualSize ? 'max-w-none' : 'mx-auto max-h-[72vh] w-full object-contain'}
-              />
+              <span className={actualSize ? 'relative inline-block' : 'flex justify-center'}>
+                <span className="relative inline-block">
+                  <img
+                    src={src}
+                    alt={alt}
+                    className={actualSize ? 'block max-w-none' : 'block max-h-[72vh] max-w-full'}
+                  />
+                  {hotspot ? <SchemeMarker hotspot={hotspot} /> : null}
+                </span>
+              </span>
             </button>
           </div>
 
@@ -110,7 +165,7 @@ export function SchemeViewer({ imageUrl, partName }: SchemeViewerProps) {
             </Typography>
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" size="sm" asChild>
-                <a href={imageUrl} target="_blank" rel="noreferrer">
+                <a href={src} target="_blank" rel="noreferrer">
                   Открыть файл
                 </a>
               </Button>

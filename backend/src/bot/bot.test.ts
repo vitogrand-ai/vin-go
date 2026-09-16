@@ -373,3 +373,83 @@ describe('TelegramBot', () => {
     expect(last?.options?.replyMarkup?.inline_keyboard?.at(-1)?.[0]?.callback_data).toBe('scheme')
   })
 })
+
+/**
+ * Одна машина — один подбор. Мастер работает с несколькими машинами подряд, и
+ * без явной границы схема и кнопки прошлой машины «продолжают» разговор:
+ * живьём «9» после нового VIN искал позицию чужого узла.
+ */
+describe('TelegramBot — граница между машинами', () => {
+  const OTHER_VIN = 'XW8ZZZ5NZLG123456'
+  const headlight: Part = {
+    oemNumber: '566941015F',
+    name: 'Фара головного света',
+    category: 'Светодиодные фары',
+    brand: 'Skoda',
+    imageUrl: 'https://img.example.com/schema.png',
+    position: '1',
+    schemeId: 'GROUP-LIGHT',
+  }
+  const harness: Part = { ...headlight, oemNumber: '565941813F', name: 'Жгут проводов освещения', position: '9' }
+
+  function carBot(client: FakeTelegramClient) {
+    const catalog = new CatalogService(
+      {
+        decodeVin: async (vin) => ({
+          vin,
+          make: vin === OTHER_VIN ? 'Skoda' : 'Volkswagen',
+          model: vin === OTHER_VIN ? 'Kodiaq' : 'Golf',
+          year: 2020,
+          engine: null,
+          bodyType: null,
+        }),
+        searchParts: async () => [headlight],
+        schemeParts: async () => [headlight, harness],
+      },
+      new MockSupplierProvider(),
+      new MockPlateProvider(),
+    )
+    return new TelegramBot(client, catalog)
+  }
+
+  test('новый VIN закрывает прошлый подбор: номер со схемы больше не открывает чужой узел', async () => {
+    const client = new FakeTelegramClient()
+    const bot = carBot(client)
+
+    await bot.handleUpdate(messageUpdate(DEMO_VIN))
+    await bot.handleUpdate(messageUpdate('фара'))
+    await bot.handleUpdate(messageUpdate(OTHER_VIN))
+
+    const card = client.sent.at(-1)?.text ?? ''
+    expect(card).toContain('Другая машина')
+    expect(card).toContain('Skoda')
+
+    // Схема прошлой машины закрыта: число уходит в обычный поиск, а не в её узел.
+    const photosBefore = client.sentPhotos.length
+    await bot.handleUpdate(messageUpdate('9'))
+    // Выдача со схемой уходит фотографией — значит, это обычный поиск, а не узел.
+    expect(client.sentPhotos.length).toBe(photosBefore + 1)
+    expect(client.sentPhotos.at(-1)?.options?.caption).toContain('Найдено запчастей')
+    expect(client.sent.at(-1)?.text).not.toContain('Позиция 9')
+  })
+
+  test('повтор того же VIN контекст не сбрасывает', async () => {
+    const client = new FakeTelegramClient()
+    const bot = carBot(client)
+
+    await bot.handleUpdate(messageUpdate(DEMO_VIN))
+    await bot.handleUpdate(messageUpdate('фара'))
+    await bot.handleUpdate(messageUpdate(DEMO_VIN))
+
+    expect(client.sent.at(-1)?.text).not.toContain('Другая машина')
+
+    await bot.handleUpdate(messageUpdate('9'))
+    expect(client.sent.at(-1)?.text).toContain('Позиция 9')
+  })
+
+  test('первая машина в чате — без пометки о переключении', async () => {
+    const client = new FakeTelegramClient()
+    await carBot(client).handleUpdate(messageUpdate(DEMO_VIN))
+    expect(client.sent[0]?.text).not.toContain('Другая машина')
+  })
+})

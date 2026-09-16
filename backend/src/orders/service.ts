@@ -2,6 +2,7 @@ import {
   allowedOrderTransitionsFor,
   applyMarkup,
   type AddCartItemRequest,
+  type AddOrderWorkRequest,
   type CartResponse,
   type Currency,
   type OfferTier,
@@ -10,7 +11,9 @@ import {
   type OrderResponse,
   type OrdersResponse,
   type OrderStatus,
+  type OrderVehicleDto,
   type PartQuality,
+  type UpdateOrderReceptionPayload,
 } from '@web-app-demo/contracts'
 
 import type { Actor } from '../auth/actor'
@@ -51,25 +54,47 @@ type OrderItemRecord = {
   quantity: number
 }
 
+type OrderWorkRecord = {
+  id: string
+  name: string
+  priceAmount: number
+  currency: string
+  quantity: number
+}
+
 type OrderRecord = {
   id: string
   number: number
   status: string
+  orgId: string | null
   vehicleVin: string | null
   notes: string | null
+  dueAt: Date | null
+  complaint: string | null
+  conditionNotes: string | null
+  plate: string | null
+  mileageKm: number | null
   currency: string
   createdAt: Date
   placedAt: Date | null
   items: OrderItemRecord[]
+  works: OrderWorkRecord[]
   payments: { status: string }[]
   customer: { id: string; name: string; phone: string | null } | null
+  user: { displayName: string | null; email: string }
 }
 
 const itemsInclude = {
   items: { orderBy: { createdAt: 'asc' as const } },
+  works: { orderBy: { createdAt: 'asc' as const } },
   payments: { orderBy: { createdAt: 'desc' as const }, take: 1 },
   customer: { select: { id: true, name: true, phone: true } },
+  // Кто принял заказ — печатается в заказ-наряде (ПП № 780, п. 9(и)).
+  user: { select: { displayName: true, email: true } },
 }
+
+/** Статусы, в которых заказ-наряд ещё правится: выданный и отменённый — история. */
+const EDITABLE_STATUSES = new Set<string>(['DRAFT', 'PLACED', 'PAID', 'PROCESSING', 'READY'])
 
 /**
  * Область видимости заказа: оператор платформы видит любой, сотрудник
@@ -98,7 +123,7 @@ export class OrdersService {
 
   async getCart(actor: Actor): Promise<CartResponse> {
     const order = await this.loadDraft(actor.userId)
-    return { order: order ? toOrderDto(order) : null }
+    return { order: order ? await this.toDto(order) : null }
   }
 
   async getOrder(actor: Actor, orderId: string): Promise<OrderResponse> {
@@ -109,28 +134,94 @@ export class OrdersService {
     if (!order) {
       throw new AppError(404, 'NOT_FOUND', 'Заказ не найден')
     }
-    return { order: toOrderDto(order) }
+    return { order: await this.toDto(order) }
   }
 
   /**
    * Привязывает корзину к автомобилю по VIN. Если машина есть в гараже
-   * автосервиса и у неё есть владелец — клиент подставляется сам.
+   * автосервиса — подставляются её владелец, госномер и пробег: это же
+   * данные приёма для заказ-наряда, приёмщик их не набирает второй раз.
    */
   async setCartVehicle(actor: Actor, vin: string): Promise<OrderResponse> {
     const draftId = await this.ensureDraft(actor, 'RUB', vin)
     const garageCar = await this.db.vehicle.findFirst({
       where: { orgId: actor.orgId, vin },
-      select: { customerId: true },
+      select: { customerId: true, plate: true, mileageKm: true },
     })
     const order = await this.db.order.update({
       where: { id: draftId },
       data: {
         vehicleVin: vin,
         ...(garageCar?.customerId ? { customerId: garageCar.customerId } : {}),
+        ...(garageCar?.plate ? { plate: garageCar.plate } : {}),
+        ...(garageCar?.mileageKm != null ? { mileageKm: garageCar.mileageKm } : {}),
       },
       include: itemsInclude,
     })
-    return { order: toOrderDto(order) }
+    return { order: await this.toDto(order) }
+  }
+
+  /**
+   * Работа в заказ-наряд. Правится, пока заказ не выдан и не отменён: после
+   * выдачи документ подписан, и менять его состав нельзя.
+   */
+  async addWork(actor: Actor, input: AddOrderWorkRequest): Promise<OrderResponse> {
+    const order = await this.requireEditable(actor, input.orderId)
+    await this.db.orderWork.create({
+      data: {
+        orderId: order.id,
+        name: input.name,
+        priceAmount: input.amount,
+        currency: order.currency,
+        quantity: input.quantity ?? 1,
+      },
+    })
+    return this.getOrder(actor, order.id)
+  }
+
+  async removeWork(actor: Actor, orderId: string, workId: string): Promise<OrderResponse> {
+    const order = await this.requireEditable(actor, orderId)
+    const result = await this.db.orderWork.deleteMany({ where: { id: workId, orderId: order.id } })
+    if (result.count === 0) {
+      throw new AppError(404, 'NOT_FOUND', 'Работа не найдена в заказе')
+    }
+    return this.getOrder(actor, order.id)
+  }
+
+  /** Данные приёма машины: null очищает поле, отсутствие — не трогает. */
+  async updateReception(
+    actor: Actor,
+    input: UpdateOrderReceptionPayload,
+  ): Promise<OrderResponse> {
+    const order = await this.requireEditable(actor, input.orderId)
+    await this.db.order.update({
+      where: { id: order.id },
+      data: {
+        ...(input.dueAt !== undefined ? { dueAt: input.dueAt ? new Date(input.dueAt) : null } : {}),
+        ...(input.complaint !== undefined ? { complaint: input.complaint || null } : {}),
+        ...(input.conditionNotes !== undefined
+          ? { conditionNotes: input.conditionNotes || null }
+          : {}),
+        ...(input.plate !== undefined ? { plate: input.plate } : {}),
+        ...(input.mileageKm !== undefined ? { mileageKm: input.mileageKm } : {}),
+      },
+    })
+    return this.getOrder(actor, order.id)
+  }
+
+  private async requireEditable(
+    actor: Actor,
+    orderId: string,
+  ): Promise<{ id: string; status: string; currency: string }> {
+    const order = await this.db.order.findFirst({
+      where: orderScope(actor, orderId),
+      select: { id: true, status: true, currency: true },
+    })
+    if (!order) throw new AppError(404, 'NOT_FOUND', 'Заказ не найден')
+    if (!EDITABLE_STATUSES.has(order.status)) {
+      throw new AppError(400, 'BAD_REQUEST', 'Заказ уже закрыт — заказ-наряд не правится')
+    }
+    return order
   }
 
   /** Клиент автосервиса для корзины; null — отвязать. */
@@ -142,7 +233,7 @@ export class OrdersService {
       data: { customerId },
       include: itemsInclude,
     })
-    return { order: toOrderDto(order) }
+    return { order: await this.toDto(order) }
   }
 
   /**
@@ -197,6 +288,38 @@ export class OrdersService {
       throw new AppError(404, 'NOT_FOUND', 'Заказ не найден')
     }
     return this.getOrder(actor, orderId)
+  }
+
+  /**
+   * DTO с машиной из гаража: у заказа есть только VIN, а в заказ-наряде нужны
+   * марка, модель и год (ПП № 780, п. 9(д)). Гараж общий для организации,
+   * поэтому ищем по паре (orgId, vin); одним запросом на весь список.
+   */
+  private async toDtos(orders: OrderRecord[]): Promise<OrderDto[]> {
+    const pairs = orders
+      .filter((order) => order.orgId && order.vehicleVin)
+      .map((order) => ({ orgId: order.orgId!, vin: order.vehicleVin! }))
+    const vehicles = pairs.length
+      ? await this.db.vehicle.findMany({
+          where: { OR: pairs },
+          select: { orgId: true, vin: true, make: true, model: true, year: true },
+        })
+      : []
+    const byKey = new Map<string, OrderVehicleDto>()
+    for (const vehicle of vehicles) {
+      byKey.set(`${vehicle.orgId}:${vehicle.vin}`, {
+        make: vehicle.make,
+        model: vehicle.model,
+        year: vehicle.year,
+      })
+    }
+    return orders.map((order) =>
+      toOrderDto(order, byKey.get(`${order.orgId}:${order.vehicleVin}`) ?? null),
+    )
+  }
+
+  private async toDto(order: OrderRecord): Promise<OrderDto> {
+    return (await this.toDtos([order]))[0]!
   }
 
   async addItem(actor: Actor, input: AddCartItemRequest): Promise<OrderResponse> {
@@ -280,7 +403,7 @@ export class OrdersService {
       return tx.order.findFirstOrThrow({ where: { id: draftId }, include: itemsInclude })
     })
 
-    return { order: toOrderDto(order) }
+    return { order: await this.toDto(order) }
   }
 
   async updateItemQuantity(
@@ -296,7 +419,7 @@ export class OrdersService {
     if (result.count === 0) {
       throw new AppError(404, 'NOT_FOUND', 'Позиция не найдена в корзине')
     }
-    return { order: toOrderDto(await this.reloadDraft(draft.id)) }
+    return { order: await this.toDto(await this.reloadDraft(draft.id)) }
   }
 
   /**
@@ -324,7 +447,7 @@ export class OrdersService {
       where: { id: itemId },
       data: { saleAmount, markupBps },
     })
-    return { order: toOrderDto(await this.reloadDraft(draft.id)) }
+    return { order: await this.toDto(await this.reloadDraft(draft.id)) }
   }
 
   async removeItem(actor: Actor, itemId: string): Promise<OrderResponse> {
@@ -335,7 +458,7 @@ export class OrdersService {
     if (result.count === 0) {
       throw new AppError(404, 'NOT_FOUND', 'Позиция не найдена в корзине')
     }
-    return { order: toOrderDto(await this.reloadDraft(draft.id)) }
+    return { order: await this.toDto(await this.reloadDraft(draft.id)) }
   }
 
   async clear(actor: Actor): Promise<void> {
@@ -358,7 +481,7 @@ export class OrdersService {
       data: { status: 'PLACED', placedAt: new Date(), draftKey: null, orgId: actor.orgId },
       include: itemsInclude,
     })
-    return { order: toOrderDto(order) }
+    return { order: await this.toDto(order) }
   }
 
   /**
@@ -396,7 +519,7 @@ export class OrdersService {
       `Заказ № ${updated.number}: ${ORDER_STATUS_LABEL_RU[status]}`,
     )
 
-    return { order: toOrderDto(updated) }
+    return { order: await this.toDto(updated) }
   }
 
   async listOrders(actor: Actor): Promise<OrdersResponse> {
@@ -409,7 +532,7 @@ export class OrdersService {
       include: itemsInclude,
       orderBy: { placedAt: 'desc' },
     })
-    return { orders: orders.map(toOrderDto) }
+    return { orders: await this.toDtos(orders) }
   }
 
   private async loadDraft(userId: string): Promise<OrderRecord | null> {
@@ -439,7 +562,7 @@ function isUniqueConstraintError(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'
 }
 
-function toOrderDto(order: OrderRecord): OrderDto {
+function toOrderDto(order: OrderRecord, vehicle: OrderVehicleDto | null): OrderDto {
   const currency = order.currency as Currency
   const items = order.items.map((item) => {
     const itemCurrency = item.currency as Currency
@@ -468,8 +591,17 @@ function toOrderDto(order: OrderRecord): OrderDto {
     ? (latestPayment.status as OrderPaymentStatus)
     : 'NONE'
 
+  const works = order.works.map((work) => ({
+    id: work.id,
+    name: work.name,
+    price: { amount: work.priceAmount, currency: work.currency as Currency },
+    quantity: work.quantity,
+    lineTotal: { amount: work.priceAmount * work.quantity, currency: work.currency as Currency },
+  }))
+
   const total = items.reduce((sum, item) => sum + item.lineTotal.amount, 0)
   const saleTotal = items.reduce((sum, item) => sum + item.saleLineTotal.amount, 0)
+  const worksTotal = works.reduce((sum, work) => sum + work.lineTotal.amount, 0)
 
   return {
     id: order.id,
@@ -477,12 +609,24 @@ function toOrderDto(order: OrderRecord): OrderDto {
     status: order.status as OrderStatus,
     paymentStatus,
     vehicleVin: order.vehicleVin,
+    vehicle,
     customer: order.customer,
     notes: order.notes,
+    reception: {
+      dueAt: order.dueAt ? order.dueAt.toISOString() : null,
+      complaint: order.complaint,
+      conditionNotes: order.conditionNotes,
+      plate: order.plate,
+      mileageKm: order.mileageKm,
+    },
+    acceptedBy: order.user.displayName ?? order.user.email,
     items,
     itemCount: items.reduce((sum, item) => sum + item.quantity, 0),
+    works,
     total: { amount: total, currency },
     saleTotal: { amount: saleTotal, currency },
+    worksTotal: { amount: worksTotal, currency },
+    grandTotal: { amount: saleTotal + worksTotal, currency },
     marginTotal: { amount: saleTotal - total, currency },
     createdAt: order.createdAt.toISOString(),
     placedAt: order.placedAt ? order.placedAt.toISOString() : null,

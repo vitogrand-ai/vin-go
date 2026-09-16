@@ -118,6 +118,12 @@ export class OrganizationService {
         ...(input.defaultMarkupBps !== undefined
           ? { defaultMarkupBps: input.defaultMarkupBps }
           : {}),
+        // Реквизиты для заказ-наряда: null очищает, отсутствие не трогает.
+        ...(input.legalName !== undefined ? { legalName: input.legalName } : {}),
+        ...(input.inn !== undefined ? { inn: input.inn } : {}),
+        ...(input.ogrn !== undefined ? { ogrn: input.ogrn } : {}),
+        ...(input.address !== undefined ? { address: input.address } : {}),
+        ...(input.warrantyText !== undefined ? { warrantyText: input.warrantyText } : {}),
       },
     })
     return this.get(actor)
@@ -185,6 +191,11 @@ type OrgRecord = {
   phone: string | null
   defaultMarkupBps: number
   inviteCode: string
+  legalName: string | null
+  inn: string | null
+  ogrn: string | null
+  address: string | null
+  warrantyText: string | null
   createdAt: Date
   _count: { members: number }
 }
@@ -196,6 +207,11 @@ function toDto(org: OrgRecord): OrganizationDto {
     phone: org.phone,
     defaultMarkupBps: org.defaultMarkupBps,
     inviteCode: org.inviteCode,
+    legalName: org.legalName,
+    inn: org.inn,
+    ogrn: org.ogrn,
+    address: org.address,
+    warrantyText: org.warrantyText,
     memberCount: org._count.members,
     createdAt: org.createdAt.toISOString(),
   }

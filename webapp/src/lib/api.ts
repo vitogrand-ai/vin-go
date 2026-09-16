@@ -1,5 +1,6 @@
 import {
   addCartItemRequestSchema,
+  addOrderWorkRequestSchema,
   addVehicleRequestSchema,
   answerExpertRequestSchema,
   apiErrorSchema,
@@ -41,6 +42,7 @@ import {
   refreshResponseSchema,
   registerRequestSchema,
   removeCartItemRequestSchema,
+  removeOrderWorkRequestSchema,
   removeVehicleRequestSchema,
   searchPartsRequestSchema,
   searchPartsResponseSchema,
@@ -49,9 +51,11 @@ import {
   telegramStatusResponseSchema,
   updateCartItemRequestSchema,
   updateOrderNotesRequestSchema,
+  updateOrderReceptionRequestSchema,
   updateOrderStatusRequestSchema,
   vehicleResponseSchema,
   type AddCartItemRequest,
+  type AddOrderWorkRequest,
   type AddVehicleRequest,
   type AnswerExpertRequest,
   type AuthResponse,
@@ -90,6 +94,7 @@ import {
   type RefundResponse,
   type RegisterRequest,
   type RemoveCartItemRequest,
+  type RemoveOrderWorkRequest,
   type ResolvePlateRequest,
   type ResolvePlateResponse,
   type RemoveVehicleRequest,
@@ -100,12 +105,14 @@ import {
   type TelegramStatusResponse,
   type UpdateCartItemRequest,
   type UpdateOrderNotesRequest,
+  type UpdateOrderReceptionRequest,
   type UpdateOrderStatusRequest,
   type VehicleResponse,
 } from '@web-app-demo/contracts'
 import type { z } from 'zod'
 
-const apiBaseUrl = (import.meta.env?.VITE_API_URL ?? 'http://localhost:3000').replace(/\/$/, '')
+/** Базовый адрес API: пусто в сборке = same-origin (прод за Caddy), локально — :3000. */
+export const apiBaseUrl = (import.meta.env?.VITE_API_URL ?? 'http://localhost:3000').replace(/\/$/, '')
 
 type ApiClientOptions = {
   getAccessToken: () => string | null
@@ -407,6 +414,35 @@ export class ApiClient {
   updateOrderNotes(input: UpdateOrderNotesRequest): Promise<OrderResponse> {
     const payload = updateOrderNotesRequestSchema.parse(input)
     return this.request('/api/orders/notes', orderResponseSchema, {
+      method: 'POST',
+      body: payload,
+      auth: true,
+    })
+  }
+
+  // --- Заказ-наряд: работы и приём машины ---
+
+  addOrderWork(input: AddOrderWorkRequest): Promise<OrderResponse> {
+    const payload = addOrderWorkRequestSchema.parse(input)
+    return this.request('/api/orders/works', orderResponseSchema, {
+      method: 'POST',
+      body: payload,
+      auth: true,
+    })
+  }
+
+  removeOrderWork(input: RemoveOrderWorkRequest): Promise<OrderResponse> {
+    const payload = removeOrderWorkRequestSchema.parse(input)
+    return this.request('/api/orders/works/remove', orderResponseSchema, {
+      method: 'POST',
+      body: payload,
+      auth: true,
+    })
+  }
+
+  updateOrderReception(input: UpdateOrderReceptionRequest): Promise<OrderResponse> {
+    const payload = updateOrderReceptionRequestSchema.parse(input)
+    return this.request('/api/orders/reception', orderResponseSchema, {
       method: 'POST',
       body: payload,
       auth: true,

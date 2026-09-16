@@ -1,5 +1,6 @@
 import type {
   DataSource,
+  DealerPrice,
   Money,
   Offer,
   OrderDto,
@@ -53,11 +54,19 @@ export const WELCOME =
   'Команды: /garage — выбрать машину из гаража, /cart — корзина, /orders — заказы, ' +
   '/checkout — оформить, /то 145000 — что пора менять, /start — помощь.'
 
-export function formatVehicle(vehicle: Vehicle): string {
-  const lines = [
+/**
+ * Карточка машины. `switched` — в чате уже была другая машина: граница между
+ * двумя подборами должна быть видна в ленте, иначе кнопки и схема прошлой
+ * машины выглядят продолжением разговора.
+ */
+export function formatVehicle(vehicle: Vehicle, options?: { switched?: boolean }): string {
+  const lines = options?.switched
+    ? ['🔄 <b>Другая машина</b> — прежний подбор закрыт.', '']
+    : []
+  lines.push(
     `🚗 <b>${escapeHtml(vehicle.make)} ${escapeHtml(vehicle.model)}</b>`,
     `VIN: <code>${escapeHtml(vehicle.vin)}</code>`,
-  ]
+  )
   // «Год: 0» выглядит ошибкой продукта — неизвестный год просто не показываем.
   if (vehicle.year) lines.push(`Год: ${vehicle.year}`)
   if (vehicle.engine) lines.push(`Двигатель: ${escapeHtml(vehicle.engine)}`)
@@ -174,11 +183,62 @@ export function ordersMessage(orders: OrderDto[]): string {
   if (orders.length === 0) return 'Заказов пока нет.'
   const lines = ['📋 <b>Заказы</b>', '']
   for (const order of orders) {
-    lines.push(
-      `№ ${order.id.slice(0, 8).toUpperCase()} — ${ORDER_STATUS_LABEL[order.status]} — ${formatMoney(order.total)}`,
-    )
+    // Сквозной номер — тот же, что в кабинете и в смете: по нему заказ ищут.
+    lines.push(`№ ${order.number} — ${ORDER_STATUS_LABEL[order.status]} — ${formatMoney(order.total)}`)
   }
   return lines.join('\n')
+}
+
+/**
+ * Что каталог рассказал о детали сверх номера. Приходит из сессии бота, где
+ * лежит с момента выдачи поиска.
+ */
+export type PartDetails = {
+  name: string
+  quantity?: number | null
+  replacedBy?: string | null
+  note?: string | null
+  appliesPeriod?: string | null
+}
+
+/**
+ * Шапка карточки детали: название и то, что мастеру нужно знать ДО заказа.
+ *
+ * Замена номера идёт первой строкой и с предупреждением: заказ по старому
+ * номеру у поставщиков просто не найдётся. Количество важно не меньше —
+ * прокладок на узле две, болтов четыре, а мастер закажет одну штуку.
+ */
+function partDetailLines(part?: PartDetails): string[] {
+  if (!part) return []
+
+  const lines = [`<b>${escapeHtml(part.name)}</b>`]
+  if (part.replacedBy) {
+    lines.push(`🔁 Заменён на <code>${escapeHtml(part.replacedBy)}</code> — заказывать новый номер.`)
+  }
+  if (part.quantity && part.quantity > 1) lines.push(`🔢 На машине: ${part.quantity} шт.`)
+  if (part.note) lines.push(`📝 ${escapeHtml(part.note)}`)
+  if (part.appliesPeriod) lines.push(`📅 Ставилась: ${escapeHtml(part.appliesPeriod)}`)
+  return lines
+}
+
+/**
+ * Цена оригинала у дилеров — ориентир, а не предложение. Рынок называется
+ * прямо: цена китайских дилеров, в юанях; приёмщик в РФ не должен принять её
+ * за цену, по которой можно купить.
+ */
+function dealerPriceLine(price?: DealerPrice | null): string[] {
+  if (!price) return []
+  const range =
+    price.min === price.max
+      ? formatYuan(price.min)
+      : `${formatYuan(price.min)}–${formatYuan(price.max)}`
+  return [`🏷 Оригинал у дилеров в Китае: ${range} ¥ — ориентир, не цена покупки.`]
+}
+
+/** Фэни → юани: «438», «345,82». */
+function formatYuan(fen: number): string {
+  const yuan = fen / 100
+  return Number.isInteger(yuan) ? String(yuan) : yuan.toFixed(2).replace('.', ',')
 }
 
 export function offersMessage(
@@ -186,11 +246,14 @@ export function offersMessage(
   picks: TierPick[],
   offers: Offer[],
   source?: DataSource,
+  part?: PartDetails,
+  dealerPrice?: DealerPrice | null,
 ): string {
-  const lines = [`📦 OEM <code>${escapeHtml(oemNumber)}</code>`, '']
+  const lines = [`📦 OEM <code>${escapeHtml(oemNumber)}</code>`, ...partDetailLines(part), '']
 
   if (picks.length === 0) {
-    lines.push('Предложений не найдено.')
+    // Поставщики молчат — ориентир по цене оригинала тем ценнее.
+    lines.push('Предложений не найдено.', ...dealerPriceLine(dealerPrice))
     return lines.join('\n')
   }
 
@@ -210,6 +273,7 @@ export function offersMessage(
     )
   }
 
+  lines.push(...dealerPriceLine(dealerPrice))
   lines.push(`Всего предложений: ${offers.length}.`)
   return lines.join('\n')
 }

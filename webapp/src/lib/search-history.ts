@@ -10,7 +10,7 @@ export type SearchHistoryEntry = {
 }
 
 const KEY = 'vin-go:search-history'
-const MAX = 6
+const MAX = 10
 
 function isEntry(value: unknown): value is SearchHistoryEntry {
   if (!value || typeof value !== 'object') return false

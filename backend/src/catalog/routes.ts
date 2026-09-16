@@ -12,7 +12,8 @@ import {
 } from '@web-app-demo/contracts'
 import { createRoute, OpenAPIHono } from '@hono/zod-openapi'
 
-import { validationErrorHook } from '../http/errors'
+import { AppError, validationErrorHook } from '../http/errors'
+import { fetchSchemeImage, parseSchemeImageUrl } from './scheme-image'
 import type { CatalogService } from './service'
 
 type CatalogRouteEnv = {
@@ -99,13 +100,36 @@ const statusRoute = createRoute({
   },
 })
 
-export function createCatalogRoutes() {
+export type CatalogRoutesOptions = {
+  /** fetch для прокси схем — подменяется в тестах, по умолчанию глобальный. */
+  imageFetch?: typeof fetch
+}
+
+export function createCatalogRoutes(options: CatalogRoutesOptions = {}) {
   const routes = new OpenAPIHono<CatalogRouteEnv>({
     defaultHook: validationErrorHook,
   })
+  const imageFetch = options.imageFetch ?? fetch
 
   routes.openapi(statusRoute, (c) => {
     return c.json(c.get('catalogService').status(), 200)
+  })
+
+  // Схема узла через наш адрес — для браузера на HTTPS-странице и мобильного:
+  // 17vin отдаёт картинки только по HTTP (см. scheme-image.ts). Не в OpenAPI:
+  // ответ бинарный, а не JSON-контракт.
+  routes.get('/image', async (c) => {
+    const url = parseSchemeImageUrl(c.req.query('src') ?? '')
+    if (!url) {
+      throw new AppError(400, 'BAD_REQUEST', 'Проксируются только схемы подключённых каталогов')
+    }
+    const image = await fetchSchemeImage(url, imageFetch)
+    return c.body(image.bytes, 200, {
+      'Content-Type': image.contentType,
+      // Схема узла не меняется: день в кэше браузера экономит и CDN каталогу, и нам.
+      'Cache-Control': 'public, max-age=86400',
+      'X-Content-Type-Options': 'nosniff',
+    })
   })
 
   routes.openapi(decodeVinRoute, async (c) => {

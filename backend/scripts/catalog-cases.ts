@@ -166,6 +166,15 @@ const CASES: Case[] = [
     origin: 'опорная машина демо: ходовой расходник должен находиться всегда',
     expect: { minParts: 1, firstMatches: /фильтр|filter/i },
   },
+  {
+    vin: 'LFMGJE720DS070251',
+    car: 'Toyota Prado (FAW, рынок КНР)',
+    query: 'масляный фильтр',
+    origin:
+      '16.09.2026: машина, на которой схему отдаёт 17vin, а не parts-catalogs — ' +
+      'адаптер отбрасывал illustration_img_address и callout из ответа поиска',
+    expect: { minParts: 1, scheme: true, position: true },
+  },
 ]
 
 type Result = {

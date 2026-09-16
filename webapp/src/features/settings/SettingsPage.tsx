@@ -80,7 +80,16 @@ function OrganizationCard() {
   )
 }
 
-type OrgDraft = { name?: string; phone?: string; markupPercent?: string }
+type OrgDraft = {
+  name?: string
+  phone?: string
+  markupPercent?: string
+  legalName?: string
+  inn?: string
+  ogrn?: string
+  address?: string
+  warrantyText?: string
+}
 
 function OrganizationForm({
   organization,
@@ -97,17 +106,31 @@ function OrganizationForm({
   const name = draft.name ?? organization.name
   const phone = draft.phone ?? organization.phone ?? ''
   const markupPercent = draft.markupPercent ?? String(bpsToPercent(organization.defaultMarkupBps))
+  // Реквизиты для заказ-наряда (ПП РФ № 780, п. 9(а)).
+  const legalName = draft.legalName ?? organization.legalName ?? ''
+  const inn = draft.inn ?? organization.inn ?? ''
+  const ogrn = draft.ogrn ?? organization.ogrn ?? ''
+  const address = draft.address ?? organization.address ?? ''
+  const warrantyText = draft.warrantyText ?? organization.warrantyText ?? ''
   const setName = (value: string) => setDraft((current) => ({ ...current, name: value }))
   const setPhone = (value: string) => setDraft((current) => ({ ...current, phone: value }))
   const setMarkupPercent = (value: string) =>
     setDraft((current) => ({ ...current, markupPercent: value }))
+  const setField = (field: keyof OrgDraft) => (value: string) =>
+    setDraft((current) => ({ ...current, [field]: value }))
+  const requisiteChanged = (value: string, saved: string | null) => (value.trim() || null) !== saved
 
   const parsedPercent = Number(markupPercent.replace(',', '.'))
   const markupValid = Number.isFinite(parsedPercent) && parsedPercent >= 0 && parsedPercent <= 1000
   const dirty =
     name.trim() !== organization.name ||
     (phone.trim() || null) !== organization.phone ||
-    (markupValid && percentToBps(parsedPercent) !== organization.defaultMarkupBps)
+    (markupValid && percentToBps(parsedPercent) !== organization.defaultMarkupBps) ||
+    requisiteChanged(legalName, organization.legalName) ||
+    requisiteChanged(inn, organization.inn) ||
+    requisiteChanged(ogrn, organization.ogrn) ||
+    requisiteChanged(address, organization.address) ||
+    requisiteChanged(warrantyText, organization.warrantyText)
 
   const handleSave = (event: React.FormEvent) => {
     event.preventDefault()
@@ -120,6 +143,11 @@ function OrganizationForm({
         name: name.trim(),
         phone: phone.trim() === '' ? null : phone.trim(),
         defaultMarkupBps: percentToBps(parsedPercent),
+        legalName: legalName.trim() || null,
+        inn: inn.trim() || null,
+        ogrn: ogrn.trim() || null,
+        address: address.trim() || null,
+        warrantyText: warrantyText.trim() || null,
       },
       {
         onSuccess: () => {
@@ -150,8 +178,9 @@ function OrganizationForm({
           </Badge>
         </div>
         <CardDescription>
-          Название и телефон печатаются в смете для клиента. Наценка по умолчанию применяется к
-          каждой позиции при добавлении в корзину — её можно поправить вручную в самой корзине.
+          Название и телефон печатаются в смете для клиента, реквизиты — в заказ-наряде. Наценка по
+          умолчанию применяется к каждой позиции при добавлении в корзину — её можно поправить
+          вручную в самой корзине.
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-5">
@@ -180,6 +209,79 @@ function OrganizationForm({
                 inputMode="tel"
                 disabled={!isOwner}
               />
+            </div>
+          </div>
+          <div className="grid gap-4 rounded-lg border p-4">
+            <div className="grid gap-0.5">
+              <Typography variant="bodySmMedium">Реквизиты для заказ-наряда</Typography>
+              <Typography variant="bodyXs" tone="muted">
+                Наименование юрлица или ИП, ИНН, ОГРН и адрес — обязательные сведения об
+                исполнителе (Правила ТО и ремонта, ПП РФ № 780, п. 9).
+              </Typography>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-1.5 sm:col-span-2">
+                <Typography variant="label" tone="muted">
+                  Юридическое наименование
+                </Typography>
+                <Input
+                  value={legalName}
+                  onChange={(event) => setField('legalName')(event.target.value)}
+                  placeholder="ИП Иванов И.И. или ООО «Автосервис»"
+                  maxLength={160}
+                  disabled={!isOwner}
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Typography variant="label" tone="muted">
+                  ИНН
+                </Typography>
+                <Input
+                  value={inn}
+                  onChange={(event) => setField('inn')(event.target.value)}
+                  placeholder="10 или 12 цифр"
+                  inputMode="numeric"
+                  maxLength={12}
+                  disabled={!isOwner}
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Typography variant="label" tone="muted">
+                  ОГРН / ОГРНИП
+                </Typography>
+                <Input
+                  value={ogrn}
+                  onChange={(event) => setField('ogrn')(event.target.value)}
+                  placeholder="13 или 15 цифр"
+                  inputMode="numeric"
+                  maxLength={15}
+                  disabled={!isOwner}
+                />
+              </div>
+              <div className="grid gap-1.5 sm:col-span-2">
+                <Typography variant="label" tone="muted">
+                  Адрес
+                </Typography>
+                <Input
+                  value={address}
+                  onChange={(event) => setField('address')(event.target.value)}
+                  placeholder="г. Москва, ул. Автосервисная, 1"
+                  maxLength={300}
+                  disabled={!isOwner}
+                />
+              </div>
+              <div className="grid gap-1.5 sm:col-span-2">
+                <Typography variant="label" tone="muted">
+                  Гарантия (текст в заказ-наряде)
+                </Typography>
+                <Input
+                  value={warrantyText}
+                  onChange={(event) => setField('warrantyText')(event.target.value)}
+                  placeholder="На работы — 30 дней, на запчасти — гарантия производителя"
+                  maxLength={1000}
+                  disabled={!isOwner}
+                />
+              </div>
             </div>
           </div>
           <div className="grid gap-1.5 sm:max-w-xs">

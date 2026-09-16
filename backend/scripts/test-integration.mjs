@@ -78,6 +78,7 @@ run(
     'src/payments/payments.integration.test.ts',
     'src/bot/bot-cabinet.integration.test.ts',
     'src/notifications/notifications.integration.test.ts',
+    'src/orders/workorder.integration.test.ts',
     'src/experts/experts.integration.test.ts',
   ],
   { env },

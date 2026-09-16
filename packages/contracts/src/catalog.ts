@@ -112,6 +112,34 @@ export const partSchema = z.object({
    * выбирает деталь номером с картинки, а не названием.
    */
   schemeId: z.string().nullable().optional(),
+  /**
+   * Сколько таких деталей стоит на машине. Мастер заказывает комплект, а не
+   * штуку: болтов крепления суппорта — 4, прокладок — 2.
+   */
+  quantity: z.number().int().positive().nullable().optional(),
+  /**
+   * Номер, которым завод заменил эту деталь. Заказывать надо его: старый номер
+   * у поставщиков уже не найдётся (у 17vin — `replacement`).
+   */
+  replacedBy: z.string().nullable().optional(),
+  /**
+   * Примечание каталога — то, чем деталь отличается от соседней такой же:
+   * мотор и шасси («GRJ150..TX»), мощность лампы («12V 55W,HALOGEN»),
+   * производитель («MARK ADVICS PV565H»).
+   */
+  note: z.string().nullable().optional(),
+  /** Период выпуска, когда деталь ставилась на конвейере («05.2010 — 11.2013»). */
+  appliesPeriod: z.string().nullable().optional(),
+  /**
+   * Где выноска этой детали стоит на схеме — доли ширины и высоты картинки
+   * (0..1), чтобы клиент не знал её пиксельных размеров. По ним деталь
+   * обводится прямо на схеме: искать глазами номер «15650» среди полусотни
+   * выносок мастеру не нужно.
+   */
+  schemeHotspot: z
+    .object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) })
+    .nullable()
+    .optional(),
 })
 
 export const offerSchema = z.object({
@@ -190,6 +218,24 @@ export const offersRequestSchema = z.object({
   region: z.string().trim().max(40).optional(),
 })
 
+/**
+ * Справочная цена оригинала у официальных дилеров. Ориентир «сколько стоит
+ * оригинал», а не предложение: купить по ней нельзя, в корзину и оплату она не
+ * попадает. Поэтому своя схема, а не `moneySchema`: та живёт в заказах и
+ * допускает только рубли, а цена дилера — в валюте своего рынка.
+ */
+export const dealerPriceSchema = z.object({
+  /** Дешевле всего у дилеров — в минимальных единицах валюты (фэни). */
+  min: z.number().int().nonnegative(),
+  /** Дороже всего у дилеров, в тех же единицах. */
+  max: z.number().int().nonnegative(),
+  currency: z.literal('CNY'),
+  /** Рынок, где действует цена: для приёмщика в РФ это ориентир, не факт. */
+  market: z.literal('CN'),
+  /** Сколько дилеров назвали цену. */
+  dealers: z.number().int().positive(),
+})
+
 export const offersResponseSchema = z.object({
   oemNumber: z.string(),
   /** Рекомендованные предложения по тирам (может не быть какого-то тира). */
@@ -198,6 +244,8 @@ export const offersResponseSchema = z.object({
   offers: z.array(offerSchema),
   /** Поставщики, из которых собраны предложения (демо или боевые). */
   source: dataSourceSchema.optional(),
+  /** Цена оригинала у дилеров, если источник её знает. */
+  dealerPrice: dealerPriceSchema.nullable().optional(),
 })
 
 /** Состояние подключённых источников данных — для честного индикатора в UI. */
@@ -226,5 +274,6 @@ export type SearchPartsRequest = z.infer<typeof searchPartsRequestSchema>
 export type SearchPartsResponse = z.infer<typeof searchPartsResponseSchema>
 export type OffersRequest = z.infer<typeof offersRequestSchema>
 export type OffersResponse = z.infer<typeof offersResponseSchema>
+export type DealerPrice = z.infer<typeof dealerPriceSchema>
 export type DataSource = z.infer<typeof dataSourceSchema>
 export type CatalogStatusResponse = z.infer<typeof catalogStatusResponseSchema>

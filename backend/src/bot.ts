@@ -33,6 +33,7 @@ export async function main() {
     providers.suppliers,
     providers.plates,
     providers.meta,
+    providers.dealerPrices,
   )
   const orders = new OrdersService(prisma, providers.suppliers, undefined, providers.offerResolver)
   const link = new TelegramLinkService(prisma, env.TELEGRAM_BOT_USERNAME)

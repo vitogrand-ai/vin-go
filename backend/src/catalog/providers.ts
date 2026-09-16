@@ -1,4 +1,4 @@
-import type { Offer, Part, Vehicle } from '@web-app-demo/contracts'
+import type { DealerPrice, Offer, Part, Vehicle } from '@web-app-demo/contracts'
 
 /**
  * Провайдер каталога: расшифровка VIN и поиск каталожных (OEM) номеров.
@@ -25,6 +25,15 @@ export interface CatalogProvider {
 export interface SupplierProvider {
   /** Возвращает предложения по OEM-номеру для указанного региона. */
   getOffers(oemNumber: string, region?: string): Promise<Offer[]>
+}
+
+/**
+ * Справочная цена оригинала у официальных дилеров по OEM-номеру. Не поставщик:
+ * по этой цене не купить, она — ориентир рядом с предложениями.
+ */
+export interface DealerPriceProvider {
+  /** Цена по номеру или null, если источник её не знает. */
+  dealerPrice(oemNumber: string): Promise<DealerPrice | null>
 }
 
 /**

@@ -1,16 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   AddCartItemRequest,
+  AddOrderWorkRequest,
   AddVehicleRequest,
   AnswerExpertRequest,
   CartResponse,
   CreateCustomerRequest,
   CreateExpertRequest,
   OrderDto,
+  OrderResponse,
   OrderStatus,
   OrganizationResponse,
   PaymentMethod,
   UpdateCustomerRequest,
+  UpdateOrderReceptionRequest,
   UpdateOrganizationRequest,
   UpdateVehicleRequest,
 } from '@web-app-demo/contracts'
@@ -325,6 +328,36 @@ export function useUpdateOrderNotes() {
       void queryClient.invalidateQueries({ queryKey: ordersKey })
     },
   })
+}
+
+/** Заказ-наряд: работа добавлена/удалена, приём сохранён — обновляем карточку, список и корзину. */
+function useOrderMutation<TInput>(run: (api: ReturnType<typeof useAuth>['api'], input: TInput) => Promise<OrderResponse>) {
+  const { api } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: TInput) => run(api, input),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['order', data.order.id], data)
+      void queryClient.invalidateQueries({ queryKey: ordersKey })
+      void queryClient.invalidateQueries({ queryKey: cartKey })
+    },
+  })
+}
+
+export function useAddOrderWork() {
+  return useOrderMutation((api, input: AddOrderWorkRequest) => api.addOrderWork(input))
+}
+
+export function useRemoveOrderWork() {
+  return useOrderMutation((api, input: { orderId: string; workId: string }) =>
+    api.removeOrderWork(input),
+  )
+}
+
+export function useUpdateOrderReception() {
+  return useOrderMutation((api, input: UpdateOrderReceptionRequest) =>
+    api.updateOrderReception(input),
+  )
 }
 
 /** Сменить статус заказа (оператором). */

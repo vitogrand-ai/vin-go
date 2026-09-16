@@ -76,6 +76,24 @@ Local reality on the current workstation: Docker does not run (no virtualization
 tests use the native PostgreSQL 18 instance, and Playwright only works through Node plus a Chrome
 started with `--remote-debugging-port`, not under bun.
 
+## Live Smoke After Deploy
+
+```bash
+bun run --cwd backend smoke:live -- http://138.16.227.185           # from any machine, through Caddy
+bun run --cwd backend smoke:live -- http://127.0.0.1:3000 --api-only  # on the server
+```
+
+`smoke:live` is the post-deploy check from `POSTMORTEM.md` done by a script: `/health`, the webapp
+page, `/api/catalog/status` must not be demo, and one live search for a car from the case basket
+must return a part with a scheme. Each failure prints what to do next. The request leaves bun as
+real UTF-8, which avoids the Windows `curl` trap where Cyrillic became `????` and looked like a
+search regression. The bot answer is still checked by hand: polling cannot be probed from outside
+without stealing updates from the running bot.
+
+Work-order behaviour (works, reception data, org requisites, editability by status, org isolation)
+is covered by `src/orders/workorder.integration.test.ts`; the print layout was checked live through
+Chrome with `page.emulateMedia({ media: 'print' })`.
+
 ## Webapp E2E
 
 Playwright is configured in `webapp/playwright.config.ts`.

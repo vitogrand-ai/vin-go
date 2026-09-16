@@ -393,6 +393,12 @@ After deployment:
 
 - verify `doctl apps spec validate <generated-spec.yaml>` passes for every generated spec before create/update;
 - verify `/health` on the backend public URL;
+- run `bun run --cwd backend smoke:live -- http://<public-host>` from any machine: it checks `/health`,
+  the webapp page, that the catalog is live (`catalog.demo=false`) and one real search with a scheme,
+  and prints the next step for every failure. Then ask the Telegram bot one real question by hand;
+- after a release that adds a migration (for example `20260916110000_work_orders`), run
+  `bunx prisma migrate deploy` in `backend` before restarting the services; the `vin_decodes` cache
+  does not need clearing — decoded cars stay valid;
 - verify browser auth only from allowed `CORS_ORIGINS`;
 - verify `webapp` route refreshes hit the React catch-all instead of a static 404;
 - verify `website` loads static assets from the deployed domain;

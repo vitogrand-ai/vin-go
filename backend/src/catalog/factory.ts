@@ -2,6 +2,7 @@ import type { DbClient } from '../db'
 import type { AppEnv } from '../env'
 import { AbcpSupplierProvider } from './abcp-provider'
 import { CatalogTranslator } from './catalog-translator'
+import { CachingDealerPriceProvider } from './dealer-price-cache'
 import { TranslatingCatalogProvider } from './translating-catalog'
 import { AnthropicTranslationProvider } from './translation-provider'
 import { ACAT_DEFAULT_BASE_URL, AcatCatalogProvider } from './acat-provider'
@@ -15,7 +16,12 @@ import { CachingSupplierProvider, type OfferResolver } from './offer-cache'
 import { PARTSAPI_DEFAULT_BASE_URL, PartsApiCatalogProvider } from './partsapi-provider'
 import { PARTSCATALOGS_DEFAULT_BASE_URL, PartsCatalogsCatalogProvider } from './partscatalogs-provider'
 import { PARTSINDEX_DEFAULT_BASE_URL, PartsIndexCatalogProvider } from './partsindex-provider'
-import type { CatalogProvider, PlateProvider, SupplierProvider } from './providers'
+import type {
+  CatalogProvider,
+  DealerPriceProvider,
+  PlateProvider,
+  SupplierProvider,
+} from './providers'
 import { CachingCatalogProvider } from './vin-cache'
 import { VIN17_DEFAULT_BASE_URL, Vin17CatalogProvider } from './vin17-provider'
 import type { DataSource } from '@web-app-demo/contracts'
@@ -28,6 +34,8 @@ export type CatalogProviders = {
   offerResolver: OfferResolver
   /** Какие источники подключены и что из них демо — для честных ответов API. */
   meta: CatalogProvidersMeta
+  /** Цена оригинала у дилеров; нет источника — нет и цены (мок её не выдумывает). */
+  dealerPrices?: DealerPriceProvider
 }
 
 export type CatalogProvidersMeta = {
@@ -87,12 +95,29 @@ export function createCatalogProviders(env: AppEnv, db?: DbClient): CatalogProvi
         })
       : new MockPlateProvider(),
     offerResolver: suppliers,
+    dealerPrices: createDealerPriceProvider(env),
     meta: {
       catalog: { names: catalogSources.names, demo: catalogSources.names.length === 0 },
       suppliers: { names: supplierSources.names, demo: supplierSources.names.length === 0 },
       plates: env.AVTOCOD_API_KEY ? { names: ['avtocod'], demo: false } : { names: [], demo: true },
     },
   }
+}
+
+/**
+ * Цена оригинала у дилеров. Сейчас её знает только 17vin (оп. 4006), и она
+ * платная за каждый вызов — поэтому всегда за кэшем. Отдельный инстанс
+ * адаптера безвреден: состояния, кроме кредов, у него нет.
+ */
+function createDealerPriceProvider(env: AppEnv): DealerPriceProvider | undefined {
+  if (!env.VIN17_USER || !env.VIN17_PASSWORD) return undefined
+  return new CachingDealerPriceProvider(
+    new Vin17CatalogProvider({
+      user: env.VIN17_USER,
+      password: env.VIN17_PASSWORD,
+      baseUrl: env.VIN17_BASE_URL ?? VIN17_DEFAULT_BASE_URL,
+    }),
+  )
 }
 
 /** Собранный слой источников: провайдер и имена боевых источников (пусто = мок). */
@@ -203,8 +228,8 @@ function createCatalogProvider(env: AppEnv): AssembledSources<CatalogProvider> {
   // квоту по числу VIN, поэтому после подписочных источников, но перед 17vin:
   // покрытие мировое, а у 17vin сильная сторона — только китайцы. Имя источника
   // 'partscatalogs' захардкожено и в адаптере (проверка доверия к vehicle.raw).
-  // Единственный источник со схемами узлов: когда деталь нашёл другой каталог,
-  // FallbackCatalogProvider добирает картинки здесь (это ещё один VIN в квоте).
+  // Источник со схемами узлов: когда деталь нашёл каталог без картинок,
+  // FallbackCatalogProvider добирает схемы здесь (это ещё один VIN в квоте).
   if (env.PARTSCATALOGS_API_KEY) {
     sources.push({
       name: 'partscatalogs',
@@ -219,6 +244,10 @@ function createCatalogProvider(env: AppEnv): AssembledSources<CatalogProvider> {
   // Китайский EPC: после широких каталогов — платит $0.15 за каждый новый VIN,
   // поэтому пусть сперва отвечают источники с абонентской платой. Добирает
   // китайские авто (и локализованные иномарки), которые они не опознали.
+  // Схемы узлов приходят вместе с деталями — своему поиску они не стоят ничего.
+  // Но как ДОНОР схем для чужой выдачи (attachImages) 17vin декодирует VIN
+  // заново, и если каталог этот VIN ещё не видел — это те самые $0.15. Отсюда
+  // и порядок: доноров перебирают сверху вниз, parts-catalogs стоит выше.
   if (env.VIN17_USER && env.VIN17_PASSWORD) {
     sources.push({
       name: 'vin17',
@@ -227,6 +256,7 @@ function createCatalogProvider(env: AppEnv): AssembledSources<CatalogProvider> {
         password: env.VIN17_PASSWORD,
         baseUrl: env.VIN17_BASE_URL ?? VIN17_DEFAULT_BASE_URL,
       }),
+      providesImages: true,
     })
   }
 

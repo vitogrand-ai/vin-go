@@ -1,15 +1,18 @@
 import {
   addCartItemRequestSchema,
+  addOrderWorkRequestSchema,
   apiErrorSchema,
   cartResponseSchema,
   orderResponseSchema,
   ordersResponseSchema,
   removeCartItemRequestSchema,
+  removeOrderWorkRequestSchema,
   setCartCustomerRequestSchema,
   setCartVehicleRequestSchema,
   updateCartItemRequestSchema,
   updateCartItemSalePriceRequestSchema,
   updateOrderNotesRequestSchema,
+  updateOrderReceptionRequestSchema,
   updateOrderStatusRequestSchema,
 } from '@web-app-demo/contracts'
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi'
@@ -160,6 +163,45 @@ const updateNotesRoute = createRoute({
   },
 })
 
+// Заказ-наряд: работы и данные приёма машины (ПП РФ № 780).
+const addWorkRoute = createRoute({
+  method: 'post',
+  path: '/orders/works',
+  request: { body: { content: { 'application/json': { schema: addOrderWorkRequestSchema } } } },
+  responses: {
+    200: orderResponse('Работа добавлена'),
+    400: { content: errorResponseContent, description: 'Заказ закрыт или данные некорректны' },
+    401: unauthorized,
+    404: { content: errorResponseContent, description: 'Заказ не найден' },
+  },
+})
+
+const removeWorkRoute = createRoute({
+  method: 'post',
+  path: '/orders/works/remove',
+  request: { body: { content: { 'application/json': { schema: removeOrderWorkRequestSchema } } } },
+  responses: {
+    200: orderResponse('Работа удалена'),
+    400: { content: errorResponseContent, description: 'Заказ закрыт' },
+    401: unauthorized,
+    404: { content: errorResponseContent, description: 'Заказ или работа не найдены' },
+  },
+})
+
+const updateReceptionRoute = createRoute({
+  method: 'post',
+  path: '/orders/reception',
+  request: {
+    body: { content: { 'application/json': { schema: updateOrderReceptionRequestSchema } } },
+  },
+  responses: {
+    200: orderResponse('Данные приёма сохранены'),
+    400: { content: errorResponseContent, description: 'Заказ закрыт или данные некорректны' },
+    401: unauthorized,
+    404: { content: errorResponseContent, description: 'Заказ не найден' },
+  },
+})
+
 const updateStatusRoute = createRoute({
   method: 'post',
   path: '/orders/status',
@@ -241,6 +283,22 @@ export function createOrdersRoutes() {
     const service = c.get('ordersService')
     const { orderId, notes } = c.req.valid('json')
     return c.json(await service.updateNotes(c.get('actor'), orderId, notes), 200)
+  })
+
+  routes.openapi(addWorkRoute, async (c) => {
+    const service = c.get('ordersService')
+    return c.json(await service.addWork(c.get('actor'), c.req.valid('json')), 200)
+  })
+
+  routes.openapi(removeWorkRoute, async (c) => {
+    const service = c.get('ordersService')
+    const { orderId, workId } = c.req.valid('json')
+    return c.json(await service.removeWork(c.get('actor'), orderId, workId), 200)
+  })
+
+  routes.openapi(updateReceptionRoute, async (c) => {
+    const service = c.get('ordersService')
+    return c.json(await service.updateReception(c.get('actor'), c.req.valid('json')), 200)
   })
 
   routes.openapi(checkoutRoute, async (c) => {
