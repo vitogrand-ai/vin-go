@@ -51,6 +51,12 @@ export const VIN17_IMAGE_BASE_URL = 'http://resource.17vin.com/img'
  */
 export const VIN17_MAX_PARTS = 100
 
+/**
+ * Сколько узлов выдачи догружать ради координат выносок. У живых выдач узлов
+ * обычно два-четыре; потолок защищает от нечёткого поиска на общем слове.
+ */
+export const VIN17_MAX_HOTSPOT_NODES = 5
+
 export type Vin17Config = {
   user: string
   password: string
@@ -128,28 +134,43 @@ export class Vin17CatalogProvider implements CatalogProvider, DealerPriceProvide
 
   /**
    * Координаты выносок для выдачи поиска. Поиск (5107) их не отдаёт — только
-   * запрос узла (5105), поэтому узел первой детали догружается отдельно: её
-   * схему бот и веб показывают первой. Денег это не стоит — VIN уже оплачен
-   * поиском. Сбой догрузки выдачу не ломает: деталь просто останется без
-   * обводки, номер выноски у неё есть и так.
+   * запрос узла (5105), поэтому узлы выдачи догружаются отдельно, параллельно.
+   *
+   * Все узлы, а не один: выдача по «амортизатору» собирается из четырёх узлов
+   * (передний, задний, рулевой демпфер, цепь ГРМ), а после ранжирования первой
+   * становится деталь не из того узла, что был первым у каталога, — живьём на
+   * проде 16.09.2026 обводка была только у трёх деталей из тринадцати. Потолок
+   * VIN17_MAX_HOTSPOT_NODES — чтобы нечёткий поиск на общем слове не превращал
+   * одну выдачу в десятки запросов.
+   *
+   * Денег это не стоит — узел бесплатен (сверено по балансу аккаунта). Сбой
+   * узла выдачу не ломает: деталь просто останется без обводки, номер выноски
+   * у неё есть и так.
    */
   private async withHotspots(vehicle: Vehicle, epc: string, parts: Part[]): Promise<Part[]> {
-    const schemeId = parts.find((part) => part.schemeId && part.imageUrl)?.schemeId
-    if (!schemeId) return parts
+    const schemeIds = [
+      ...new Set(parts.filter((part) => part.imageUrl).map((part) => part.schemeId)),
+    ]
+      .filter((id): id is string => Boolean(id))
+      .slice(0, VIN17_MAX_HOTSPOT_NODES)
+    if (schemeIds.length === 0) return parts
 
-    let node: Record<string, unknown> | null
-    try {
-      node = await this.call(nodePath(epc, vehicle.vin, schemeId))
-    } catch (error) {
-      console.warn(`[17vin] выноски узла ${schemeId} не догрузились, выдача без обводки`, error)
-      return parts
-    }
-    const hotspots = node ? parseHotspots(node) : new Map<string, SchemeHotspot>()
-    if (hotspots.size === 0) return parts
+    const nodes = await Promise.all(
+      schemeIds.map(async (schemeId) => {
+        try {
+          const node = await this.call(nodePath(epc, vehicle.vin, schemeId))
+          return [schemeId, node ? parseHotspots(node) : new Map()] as const
+        } catch (error) {
+          console.warn(`[17vin] выноски узла ${schemeId} не догрузились, без обводки`, error)
+          return [schemeId, new Map<string, SchemeHotspot>()] as const
+        }
+      }),
+    )
+    const bySchemeId = new Map<string, Map<string, SchemeHotspot>>(nodes)
 
     return parts.map((part) => {
-      if (part.schemeId !== schemeId || !part.position) return part
-      const hotspot = hotspots.get(part.position)
+      if (!part.schemeId || !part.position) return part
+      const hotspot = bySchemeId.get(part.schemeId)?.get(part.position)
       return hotspot ? { ...part, schemeHotspot: hotspot } : part
     })
   }

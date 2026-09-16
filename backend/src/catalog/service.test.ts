@@ -330,6 +330,11 @@ describe('CatalogService — дубли применимости', () => {
             imageUrl: 'https://img.example.com/schema.png',
             position: '4',
             schemeId: 'G-BRAKE',
+            schemeHotspot: { x: 0.2, y: 0.5 },
+            quantity: 2,
+            replacedBy: 'X1-NEW',
+            note: 'GRJ150..TX',
+            appliesPeriod: '05.2010 — 11.2013',
           },
         ]
       },
@@ -337,10 +342,16 @@ describe('CatalogService — дубли применимости', () => {
 
     const result = await serviceWith(catalog).searchParts(VEHICLE.vin, 'колодки')
     expect(result.parts).toHaveLength(1)
+    // Подробности каталога лежали у второй строки — после слияния не теряются.
     expect(result.parts[0]).toMatchObject({
       imageUrl: 'https://img.example.com/schema.png',
       position: '4',
       schemeId: 'G-BRAKE',
+      schemeHotspot: { x: 0.2, y: 0.5 },
+      quantity: 2,
+      replacedBy: 'X1-NEW',
+      note: 'GRJ150..TX',
+      appliesPeriod: '05.2010 — 11.2013',
     })
   })
 })

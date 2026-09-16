@@ -237,6 +237,35 @@ describe('Vin17CatalogProvider.searchParts', () => {
     expect(part!.schemeHotspot!.y).toBeCloseTo(594 / 1112)
   })
 
+  test('выдача из нескольких узлов — обводка у деталей каждого узла', async () => {
+    // Живой случай прода 16.09.2026: «амортизатор» у Prado — четыре узла, а обводка
+    // была только у деталей первого из них.
+    const nodeCalls: string[] = []
+    const provider = providerWith((url) => {
+      const params = new URL(url).searchParams
+      if (params.get('action') === 'part') {
+        const node = params.get('last_cata_code')!
+        nodeCalls.push(node)
+        const callout = node === 'REAR' ? '48540' : '48510'
+        return envelope(1, {
+          all_img_hotspots: [
+            { img_hotspots: { img_width: 100, img_height: 100, hotspots: [{ callout, topleft_x: 10, topleft_y: 20 }] } },
+          ],
+        })
+      }
+      return envelope(1, {
+        searchlist: [
+          { partnumber: 'R1', name_en: 'ABSORBER, REAR', callout: '48540', cata_code: 'REAR', illustration_img_address: 'r.png' },
+          { partnumber: 'F1', name_en: 'ABSORBER, FRONT', callout: '48510', cata_code: 'FRONT', illustration_img_address: 'f.png' },
+        ],
+      })
+    })
+
+    const parts = await provider.searchParts(vehicle, 'absorber')
+    expect(nodeCalls.sort()).toEqual(['FRONT', 'REAR'])
+    expect(parts.every((part) => part.schemeHotspot)).toBe(true)
+  })
+
   test('узел не ответил — выдача уходит без обводки, а не падает', async () => {
     const provider = providerWith((url) => {
       if (new URL(url).searchParams.get('action') === 'part') throw new Error('ECONNRESET')

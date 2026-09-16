@@ -217,11 +217,18 @@ function dedupeByOem(parts: Part[]): Part[] {
       byOem.set(part.oemNumber, part)
       continue
     }
+    // Подробности каталога могут лежать у любой строки применимости, а не
+    // только у первой: берём первое непустое значение каждого поля.
     const merged: Part = {
       ...existing,
       imageUrl: existing.imageUrl ?? part.imageUrl ?? null,
       position: existing.position ?? part.position ?? null,
       schemeId: existing.schemeId ?? part.schemeId ?? null,
+      schemeHotspot: existing.schemeHotspot ?? part.schemeHotspot ?? null,
+      quantity: existing.quantity ?? part.quantity ?? null,
+      replacedBy: existing.replacedBy ?? part.replacedBy ?? null,
+      note: existing.note ?? part.note ?? null,
+      appliesPeriod: existing.appliesPeriod ?? part.appliesPeriod ?? null,
     }
     byOem.set(part.oemNumber, merged)
   }
