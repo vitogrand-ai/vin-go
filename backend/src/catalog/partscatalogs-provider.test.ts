@@ -11,6 +11,7 @@ import {
   collectParts,
   mapVehicle,
   normalizeImageUrl,
+  partDetails,
   pickCar,
   rankByPosition,
   rankSuggestions,
@@ -238,6 +239,9 @@ describe('PartsCatalogsCatalogProvider.searchParts', () => {
         imageUrl: 'https://ru.img.parts-catalogs.com/bmw_2020_01/data/JPG/502704.png',
         position: '01',
         schemeId: 'GROUP-OIL',
+        note: 'Oil filter',
+        appliesPeriod: null,
+        quantity: 1,
       },
     ])
 
@@ -636,6 +640,9 @@ describe('collectParts', () => {
         imageUrl: null,
         position: null,
         schemeId: null,
+        note: null,
+        appliesPeriod: null,
+        quantity: null,
       },
     ])
   })
@@ -965,5 +972,117 @@ describe('rankByPosition', () => {
 
   test('запрос без позиции порядок каталога не меняет', () => {
     expect(rankByPosition(schemas, 'колодки тормозные').map((s) => s['groupId'])).toEqual(['R', 'F', 'X'])
+  })
+})
+
+describe('partDetails', () => {
+  // Живые записи parts2 (прод, 17.09.2026). Каталог отдаёт отличия исполнений
+  // не в названии, а в description/notice — без них пять АКБ Ford выглядели
+  // пятью одинаковыми «Батарея аккумуляторная».
+  test('Ford: «Описание» в несколько строк → примечание, дата производства → период', () => {
+    const details = partDetails({
+      name: 'Батарея аккумуляторная',
+      notice: 'АккумулЯтор; С Кислотой; Ford',
+      description:
+        'Инженерный номер: 9M5T 10655-BA\nДата производства: 29/09/2014 - 28/11/2018\n: 1\n' +
+        'Описание: АккумулЯтор\nС Кислотой\nFord\nКальциево-серебряный\n60 AH\nЗавод Ford-Всеволожск',
+    })
+    // Ёмкости в notice нет — она только в description: берётся description.
+    expect(details.note).toBe(
+      'АккумулЯтор; С Кислотой; Ford; Кальциево-серебряный; 60 AH; Завод Ford-Всеволожск; ' +
+        'Инженерный номер: 9M5T 10655-BA',
+    )
+    expect(details.appliesPeriod).toBe('29.09.2014 — 28.11.2018')
+    expect(details.quantity).toBeNull()
+  })
+
+  test('Ford: открытый период — «с даты»', () => {
+    const details = partDetails({
+      name: 'Батарея аккумуляторная',
+      notice: null,
+      description: 'Дата производства: 29/09/2014 - \nОписание: АккумулЯтор\n75AH\n700A',
+    })
+    expect(details.appliesPeriod).toBe('с 29.09.2014')
+    expect(details.note).toBe('АккумулЯтор; 75AH; 700A')
+  })
+
+  test('Subaru: код модели и назначения — в примечание, количество — числом', () => {
+    const details = partDetails({
+      name: 'PAD CLIP-FRONT BRAKE',
+      notice: null,
+      description:
+        'Модель: W.IL.20C.LH\nКод назначения: E7\nДата производства: 20200201 - \nКол-во деталей: 04',
+    })
+    expect(details.note).toBe('Модель: W.IL.20C.LH; Код назначения: E7')
+    expect(details.appliesPeriod).toBe('с 01.02.2020')
+    expect(details.quantity).toBe(4)
+  })
+
+  test('Hyundai: «Диапазон от» — начало периода; notice отличается от названия — примечание', () => {
+    const details = partDetails({
+      name: 'Колодки тормозные (ремкомплект)',
+      notice: 'ПРУЖИНА КОЛОДОК',
+      description: 'Кол-во деталей: 4\nДиапазон от: 2007-12-31\n',
+    })
+    expect(details.note).toBe('ПРУЖИНА КОЛОДОК')
+    expect(details.appliesPeriod).toBe('с 31.12.2007')
+    expect(details.quantity).toBe(4)
+  })
+
+  test('Skoda: табличное описание — сторона фары и оговорка в примечании', () => {
+    const details = partDetails({
+      name: 'Фара головного света',
+      notice: 'Светодиодные фары; не содержит:',
+      description:
+        '[Наименование]    [Прим.]     [К-во]\n\nСветодиодные фары слева ЛВPЛ  1     \nне содержит:      POZ.14            ',
+    })
+    expect(details.note).toBe('Светодиодные фары слева ЛВPЛ; не содержит: POZ.14')
+    expect(details.quantity).toBe(1)
+    expect(details.appliesPeriod).toBeNull()
+  })
+
+  test('notice, повторяющий название, и пустое описание ничего не добавляют', () => {
+    expect(
+      partDetails({ name: 'Капот', notice: 'капот', description: 'Кол-во деталей: 001' }),
+    ).toEqual({ note: null, appliesPeriod: null, quantity: 1 })
+    expect(partDetails({ name: 'Капот', notice: '', description: null })).toEqual({
+      note: null,
+      appliesPeriod: null,
+      quantity: null,
+    })
+  })
+
+  test('поиск доносит примечание и период до выдачи', () => {
+    const out: Part[] = []
+    collectParts(
+      {
+        partGroups: [
+          {
+            parts: [
+              {
+                number: '1917577',
+                nameId: '20',
+                name: 'Батарея аккумуляторная',
+                notice: 'АккумулЯтор; С Кислотой; 75AH; 700A',
+                description: 'Дата производства: 29/09/2014 - 05/10/2018\nОписание: АккумулЯтор\n75AH\n700A',
+                positionNumber: '10655',
+              },
+            ],
+          },
+        ],
+      },
+      {
+        category: 'АКБ',
+        imageUrl: null,
+        brand: 'Ford',
+        sidSet: new Set(['20']),
+        englishTerms: [],
+        names: queryNames('аккумулятор'),
+        seen: new Set(),
+        out,
+      },
+    )
+    expect(out[0]?.note).toBe('АккумулЯтор; 75AH; 700A')
+    expect(out[0]?.appliesPeriod).toBe('29.09.2014 — 05.10.2018')
   })
 })

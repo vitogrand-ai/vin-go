@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
-import type { Offer, OrderDto, TierPick } from '@web-app-demo/contracts'
+import type { Offer, OrderDto, Part, TierPick } from '@web-app-demo/contracts'
 
-import { formatVehicle, offersMessage } from './formatters'
+import { formatVehicle, offersMessage, partsMessage } from './formatters'
 
 const OFFER: Offer = {
   id: 'X-1',
@@ -132,5 +132,44 @@ describe('ordersMessage — номер заказа', () => {
     const text = ordersMessage([order])
     expect(text).toContain('№ 17')
     expect(text).not.toContain('0192ABCD')
+  })
+})
+
+describe('partsMessage — исполнения одной позиции', () => {
+  const battery = (oemNumber: string, note: string | null, appliesPeriod: string | null = null): Part => ({
+    oemNumber,
+    name: 'Батарея аккумуляторная',
+    category: 'АКБ',
+    brand: 'Ford',
+    schemeId: 'FORD-10655',
+    position: '10655',
+    note,
+    appliesPeriod,
+  })
+
+  test('одинаковые названия различаются примечанием прямо в выдаче и есть подсказка, с чем сверять', () => {
+    // Живой Ford Mondeo: пять кнопок «Батарея аккумуляторная» без ёмкости —
+    // мастер уходил снимать шильдик и искать номер в чужом каталоге.
+    const { text } = partsMessage([
+      battery('1935737', 'АккумулЯтор; 390 Amp; 43 AH', 'с 29.09.2014'),
+      battery('1917577', 'АккумулЯтор; 75AH; 700A', '29.09.2014 — 05.10.2018'),
+      battery('1712276', null),
+    ])
+    expect(text).toContain('1935737')
+    expect(text).toContain('43 AH')
+    expect(text).toContain('75AH; 700A')
+    expect(text).toContain('29.09.2014 — 05.10.2018')
+    expect(text).toMatch(/сверьте/i)
+    // Каталог про исполнение ничего не сказал — это говорится прямо.
+    expect(text).toMatch(/1712276[^\n]*не указал/)
+  })
+
+  test('разные детали без исполнений — выдача без лишнего блока', () => {
+    const { text } = partsMessage([
+      { ...battery('1917577', 'АккумулЯтор; 75AH'), position: '10655' },
+      { ...battery('5245802', 'Полка АккумулЯтора'), name: 'Поддон аккумуляторной батареи', position: '10732' },
+    ])
+    expect(text).not.toMatch(/сверьте/i)
+    expect(text).not.toContain('75AH')
   })
 })

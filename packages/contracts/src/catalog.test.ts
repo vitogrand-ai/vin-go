@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   frameSchema,
   offerTierSchema,
+  partsWithVariants,
   plateSchema,
   searchPartsRequestSchema,
   vinOrFrameSchema,
@@ -94,5 +95,42 @@ describe('plateSchema', () => {
 describe('offerTierSchema', () => {
   test('содержит три тира', () => {
     expect(offerTierSchema.options).toEqual(['ECONOMY', 'BALANCED', 'ORIGINAL'])
+  })
+})
+
+describe('partsWithVariants', () => {
+  const battery = (oemNumber: string) => ({
+    oemNumber,
+    name: 'Батарея аккумуляторная',
+    schemeId: 'FORD-10655',
+    position: '10655',
+  })
+
+  test('несколько номеров под одной выноской узла — исполнения одной позиции', () => {
+    // Живой Ford Mondeo: пять АКБ под позицией 10655, различаются только ёмкостью.
+    const parts = [battery('1935737'), battery('1917577'), { ...battery('5245802'), position: '10732' }]
+    expect([...partsWithVariants(parts)]).toEqual(['1935737', '1917577'])
+  })
+
+  test('разные позиции и разные детали — не исполнения', () => {
+    const parts = [
+      { oemNumber: '26232FL003', name: 'PAD CLIP-FRONT BRAKE', schemeId: 'S1', position: '26232' },
+      { oemNumber: '26296SJ020', name: 'PAD KIT-FRONT DISK BRAKE', schemeId: 'S1', position: '26296' },
+    ]
+    expect(partsWithVariants(parts).size).toBe(0)
+  })
+
+  test('без схемы исполнения узнаются по одинаковому названию', () => {
+    const parts = [
+      { oemNumber: '566941015F', name: 'Фара головного света' },
+      { oemNumber: '566941016F', name: 'фара головного света ' },
+      { oemNumber: '06A115561B', name: 'Фильтр масляный двигателя' },
+    ]
+    expect([...partsWithVariants(parts)]).toEqual(['566941015F', '566941016F'])
+  })
+
+  test('одна позиция из разных узлов — не исполнения: номер выноски свой у каждой схемы', () => {
+    const parts = [battery('1935737'), { ...battery('1917577'), schemeId: 'OTHER' }]
+    expect(partsWithVariants(parts).size).toBe(0)
   })
 })

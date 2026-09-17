@@ -186,6 +186,7 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
           imageUrl,
           position: str(part, ['positionNumber']),
           schemeId,
+          ...partDetails({ name, notice: str(part, ['notice']), description: str(part, ['description']) }),
         })
       }
     }
@@ -512,6 +513,7 @@ export function collectParts(
         imageUrl: ctx.imageUrl,
         position: str(part, ['positionNumber']),
         schemeId: ctx.schemeId ?? null,
+        ...partDetails({ name, notice: str(part, ['notice']), description: str(part, ['description']) }),
       }
       picked.push({ part: entry, score, exact, order: picked.length })
     }
@@ -522,6 +524,130 @@ export function collectParts(
     if (ctx.out.length >= PARTSCATALOGS_MAX_PARTS) return
     ctx.out.push(part)
   }
+}
+
+/**
+ * Чем деталь отличается от соседей по той же позиции узла.
+ *
+ * Название исполнения не различает: у Ford Mondeo под позицией 10655 пять АКБ,
+ * и все пять — «Батарея аккумуляторная». Ёмкость и пусковой ток, сторона фары,
+ * код модели и даты выпуска лежат в `description` (иногда в `notice`), а без
+ * них мастер выбирает вслепую — ровно то, за чем он уходит в чужой каталог.
+ *
+ * Формат `description` у каталогов разный (живьём, сент 2026):
+ *   • строки «Ключ: значение» — Ford, Subaru, Hyundai, Citroen, Mercedes; у Ford
+ *     «Описание» продолжается следующими строками без ключа;
+ *   • таблица «[Наименование] [Прим.] [К-во]» — VW/Skoda.
+ * Даты выпуска и количество уходят в свои поля, остальное — в примечание.
+ * `notice` берётся, только если описание примечания не дало и notice не
+ * повторяет название: у Ford он — урезанная копия описания (без ёмкости у
+ * одного из АКБ), у Mercedes — то же название строчными.
+ */
+export function partDetails(part: {
+  name: string
+  notice: string | null
+  description: string | null
+}): Pick<Part, 'note' | 'appliesPeriod' | 'quantity'> {
+  const parsed = part.description
+    ? /^\s*\[/.test(part.description)
+      ? parseTableDescription(part.description)
+      : parseKeyedDescription(part.description)
+    : { notes: [], from: null, to: null, quantity: null }
+
+  const name = part.name.trim().toLowerCase()
+  const notes = parsed.notes.filter((item) => item.toLowerCase() !== name)
+  const notice = part.notice?.trim() ?? ''
+  if (notes.length === 0 && notice && notice.toLowerCase() !== name) notes.push(notice)
+
+  return {
+    note: notes.length > 0 ? notes.join('; ') : null,
+    appliesPeriod: formatDayPeriod(parsed.from, parsed.to),
+    quantity: parsed.quantity,
+  }
+}
+
+type ParsedDescription = {
+  notes: string[]
+  from: string | null
+  to: string | null
+  quantity: number | null
+}
+
+/** «Ключ: значение» построчно; строка без ключа продолжает предыдущий. */
+function parseKeyedDescription(description: string): ParsedDescription {
+  const entries: { key: string; values: string[] }[] = []
+  for (const raw of description.split('\n')) {
+    const line = raw.trim()
+    if (!line) continue
+    const keyed = line.match(/^([\p{L}][^:]{0,40}|):\s*(.*)$/u)
+    if (keyed) entries.push({ key: keyed[1]!.trim(), values: keyed[2] ? [keyed[2].trim()] : [] })
+    else entries.at(-1)?.values.push(line)
+  }
+
+  const out: ParsedDescription = { notes: [], from: null, to: null, quantity: null }
+  const described: string[] = []
+  for (const { key, values } of entries) {
+    const value = values.join(' ').trim()
+    if (!key) continue // у Ford «: 1» без подписи — не угадываем, что это
+    if (/^дата производства/i.test(key)) {
+      const [from, to] = value.split(/\s+-\s*|\s*-\s+/)
+      out.from = parseDay(from)
+      out.to = parseDay(to)
+    } else if (/^диапазон от/i.test(key)) {
+      out.from = parseDay(value)
+    } else if (/^диапазон до/i.test(key)) {
+      out.to = parseDay(value)
+    } else if (/^кол-?во|^количество|^qty|^quantity/i.test(key)) {
+      out.quantity = positiveInt(value)
+    } else if (/^описание/i.test(key)) {
+      described.push(...values)
+    } else if (value) {
+      out.notes.push(`${key}: ${value}`)
+    }
+  }
+  // Описание — суть исполнения, служебные коды (инженерный номер) — после него.
+  out.notes = [...described, ...out.notes]
+  return out
+}
+
+/** Таблица VW/Skoda: строка шапки, затем строки «текст … количество». */
+function parseTableDescription(description: string): ParsedDescription {
+  const out: ParsedDescription = { notes: [], from: null, to: null, quantity: null }
+  const rows = description.split('\n').slice(1)
+  for (const raw of rows) {
+    let row = raw.replace(/\s+/g, ' ').trim()
+    if (!row) continue
+    const counted = row.match(/^(.*\S)\s+(\d+)$/)
+    if (counted && out.quantity === null) {
+      row = counted[1]!
+      out.quantity = positiveInt(counted[2]!)
+    }
+    out.notes.push(row)
+  }
+  return out
+}
+
+/** «29/09/2014», «20200201», «2007-12-31» → «29.09.2014». */
+function parseDay(value: string | undefined): string | null {
+  const text = value?.trim() ?? ''
+  let match = text.match(/^(\d{2})\/(\d{2})\/((?:19|20)\d{2})$/)
+  if (match) return `${match[1]}.${match[2]}.${match[3]}`
+  match = text.match(/^((?:19|20)\d{2})-?(\d{2})-?(\d{2})$/)
+  if (match) return `${match[3]}.${match[2]}.${match[1]}`
+  return null
+}
+
+/** Тот же вид периода, что у 17vin (`formatPeriod`), только с точностью до дня. */
+function formatDayPeriod(from: string | null, to: string | null): string | null {
+  if (from && to) return `${from} — ${to}`
+  if (from) return `с ${from}`
+  if (to) return `до ${to}`
+  return null
+}
+
+function positiveInt(value: string): number | null {
+  const n = Number.parseInt(value, 10)
+  return Number.isFinite(n) && n > 0 ? n : null
 }
 
 /**

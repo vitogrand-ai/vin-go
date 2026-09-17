@@ -1,13 +1,14 @@
-import type {
-  DataSource,
-  DealerPrice,
-  Money,
-  Offer,
-  OrderDto,
-  Part,
-  SavedVehicle,
-  TierPick,
-  Vehicle,
+import {
+  partsWithVariants,
+  type DataSource,
+  type DealerPrice,
+  type Money,
+  type Offer,
+  type OrderDto,
+  type Part,
+  type SavedVehicle,
+  type TierPick,
+  type Vehicle,
 } from '@web-app-demo/contracts'
 
 import {
@@ -137,10 +138,44 @@ export function partsMessage(
     : ''
 
   return {
-    text: `${hint}Найдено запчастей: ${parts.length}. Выберите нужную:${overflow}${byNumber}`,
+    text: `${hint}Найдено запчастей: ${parts.length}. Выберите нужную:${overflow}${variantLines(shown)}${byNumber}`,
     keyboard: { inline_keyboard: [...partButtons, ...schemeButton] },
   }
 }
+
+/**
+ * Исполнения одной позиции — с различием прямо в выдаче.
+ *
+ * Кнопки у них одинаковые («Батарея аккумуляторная» ×5 у Ford Mondeo), и без
+ * примечания каталога мастер выбирает вслепую. Выбор тут делается не по VIN,
+ * а по тому, что стоит на машине, — поэтому и подсказка, с чем сверять. Номер
+ * идёт первым: по нему строка сопоставляется с кнопкой.
+ */
+function variantLines(parts: Part[]): string {
+  const variants = partsWithVariants(parts)
+  if (variants.size === 0) return ''
+
+  const lines = parts
+    .filter((part) => variants.has(part.oemNumber))
+    .map((part) => {
+      const about = [part.note, part.appliesPeriod].filter(Boolean).join(' · ')
+      const text = about ? truncate(about, MAX_VARIANT_NOTE) : 'каталог не указал, чем отличается'
+      return `• <code>${escapeHtml(part.oemNumber)}</code> — ${escapeHtml(text)}`
+    })
+  return (
+    '\n\nОдна позиция в нескольких исполнениях — <b>сверьте с тем, что стоит на машине</b> ' +
+    '(маркировка на детали):\n' +
+    lines.join('\n') +
+    // Отбивка до подсказки про номер со схемы — иначе она читается как ещё одно исполнение.
+    '\n'
+  )
+}
+
+/**
+ * Потолок примечания в строке исполнения: 20 строк выдачи должны уложиться в
+ * лимит сообщения Telegram (4096 символов) вместе с остальным текстом.
+ */
+const MAX_VARIANT_NOTE = 150
 
 /** Клавиатура «в корзину» по тирам (callback add:<TIER>:<OEM>). */
 export function tierAddKeyboard(picks: TierPick[], oemNumber: string): InlineKeyboard {

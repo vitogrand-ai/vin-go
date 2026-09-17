@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useSearch } from '@tanstack/react-router'
 import {
+  partsWithVariants,
   vinOrFrameSchema,
   type DealerPrice,
   type Offer,
@@ -564,6 +565,10 @@ function PartsList({
   selectedPart: Part | null
   onSelect: (part: Part) => void
 }) {
+  // Исполнения одной позиции (пять АКБ под одной выноской) названием не
+  // различаются: выбор по тому, что стоит на машине, — различие и подсказка видны в списке.
+  const variants = useMemo(() => partsWithVariants(parts), [parts])
+
   if (parts.length === 0) {
     return (
       <Card size="sm">
@@ -592,6 +597,12 @@ function PartsList({
           </Badge>
         ) : null}
       </div>
+      {variants.size > 0 ? (
+        <Typography variant="bodySm" tone="muted">
+          Одна позиция в нескольких исполнениях — сверьте примечание с тем, что стоит на машине
+          (маркировка на детали).
+        </Typography>
+      ) : null}
       <div className="grid gap-2">
         {parts.map((part) => {
           const isActive = selectedPart?.oemNumber === part.oemNumber
@@ -627,7 +638,8 @@ function PartsList({
                     part.category,
                     part.position ? `позиция ${part.position} на схеме` : null,
                     part.quantity && part.quantity > 1 ? `${part.quantity} шт. на машину` : null,
-                    part.note,
+                    part.note ??
+                      (variants.has(part.oemNumber) ? 'каталог не указал, чем отличается' : null),
                     part.appliesPeriod,
                   ]
                     .filter(Boolean)

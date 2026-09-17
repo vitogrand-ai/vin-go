@@ -264,6 +264,36 @@ export type OfferTier = z.infer<typeof offerTierSchema>
 export type Vehicle = z.infer<typeof vehicleSchema>
 export type PartCategory = z.infer<typeof partCategorySchema>
 export type Part = z.infer<typeof partSchema>
+
+/**
+ * OEM-номера деталей выдачи, у которых рядом есть другое исполнение той же
+ * позиции: под выноской 10655 узла АКБ у Ford Mondeo пять номеров, и все пять
+ * называются «Батарея аккумуляторная». Такой выбор делается не по VIN, а по
+ * тому, что стоит на машине, — веб и бот обязаны показать, чем исполнения
+ * различаются, и сказать мастеру, с чем сверять.
+ *
+ * Позиция — это узел + номер выноски; номер выноски без узла ничего не значит.
+ * Если схемы нет, исполнения узнаются по одинаковому названию.
+ */
+export function partsWithVariants(
+  parts: Pick<Part, 'oemNumber' | 'name' | 'schemeId' | 'position'>[],
+): Set<string> {
+  const bySlot = new Map<string, Set<string>>()
+  for (const part of parts) {
+    const slot =
+      part.schemeId && part.position
+        ? `scheme:${part.schemeId}#${part.position.trim()}`
+        : `name:${part.name.trim().toLowerCase()}`
+    const oems = bySlot.get(slot) ?? new Set<string>()
+    oems.add(part.oemNumber)
+    bySlot.set(slot, oems)
+  }
+  const out = new Set<string>()
+  for (const oems of bySlot.values()) {
+    if (oems.size > 1) for (const oem of oems) out.add(oem)
+  }
+  return out
+}
 export type Offer = z.infer<typeof offerSchema>
 export type TierPick = z.infer<typeof tierPickSchema>
 export type DecodeVinRequest = z.infer<typeof decodeVinRequestSchema>

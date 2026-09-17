@@ -28,6 +28,8 @@ import 'dotenv/config'
 
 import { writeFileSync } from 'node:fs'
 
+import { partsWithVariants } from '@web-app-demo/contracts'
+
 import { createCatalogProviders } from '../src/catalog/factory'
 import { CatalogService } from '../src/catalog/service'
 import { loadEnv } from '../src/env'
@@ -45,6 +47,11 @@ type Expectation = {
   position?: boolean
   /** Год машины известен и не раньше указанного (ловит чужую модификацию). */
   yearFrom?: number
+  /**
+   * У каждого исполнения одной позиции (см. `partsWithVariants`) примечание
+   * отвечает шаблону: исполнения в выдаче есть, и видно, чем они различаются.
+   */
+  variantNotes?: RegExp
 }
 
 type Case = {
@@ -175,6 +182,31 @@ const CASES: Case[] = [
       'адаптер отбрасывал illustration_img_address и callout из ответа поиска',
     expect: { minParts: 1, scheme: true, position: true },
   },
+  {
+    vin: 'Z6FDXXEECDFD88329',
+    car: 'Ford Mondeo (РФ-сборка, 2015)',
+    query: 'аккумулятор',
+    origin:
+      '17.09.2026: пять АКБ под позицией 10655 одним названием «Батарея аккумуляторная» — ' +
+      'ёмкость и ток каталог отдавал в description, адаптер их выбрасывал; мастер выбирал ' +
+      'по шильдику старого АКБ в чужом каталоге (нужен 1917577, 75AH 700A)',
+    expect: {
+      minParts: 5,
+      firstMatches: /батаре|аккумул|battery/i,
+      scheme: true,
+      position: true,
+      variantNotes: /\d\s*A\s*H|\d\s*Ач/i,
+    },
+  },
+  {
+    vin: 'XW8LD6NS2LH410128',
+    car: 'Skoda Kodiaq (РФ-сборка)',
+    query: 'фара',
+    origin:
+      '17.09.2026: найдено разбором АКБ Ford — четыре «Фара головного света» подряд, ' +
+      'левая или правая, видно только в описании каталога',
+    expect: { minParts: 2, variantNotes: /слева|справа|лев|прав/i },
+  },
 ]
 
 type Result = {
@@ -288,6 +320,16 @@ async function check(service: CatalogService, item: Case): Promise<Result> {
       }
       if (expect.position && !first.position) {
         problems.push('у детали нет выноски на схеме — выбор цифрой не сработает')
+      }
+    }
+    if (expect.variantNotes) {
+      const variants = partsWithVariants(response.parts)
+      const blind = response.parts.filter(
+        (part) => variants.has(part.oemNumber) && !expect.variantNotes!.test(part.note ?? ''),
+      )
+      if (variants.size === 0) problems.push('исполнений одной позиции в выдаче нет')
+      else if (blind.length > 0) {
+        problems.push(`исполнения без различия в примечании: ${blind.map((part) => part.oemNumber).join(', ')}`)
       }
     }
 
