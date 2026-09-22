@@ -63,6 +63,18 @@ const MAX_PART_NAMES = 5
  */
 const MAX_GROUPS_PER_NAME = 3
 
+/**
+ * Запасной путь через дерево узлов машины (см. `searchByTree`): сколько узлов
+ * дерева раскрываем и сколько держим дерево машины в памяти. Дерево — один
+ * вызов на машину (живьём 0.2 с и ~50 КБ у Skoda Kodiaq), и за час оно не
+ * меняется.
+ */
+const MAX_TREE_LEAVES = 3
+const TREE_TTL_MS = 60 * 60 * 1000
+
+/** Лист дерева узлов машины: по нему открываются схемы (`schemas?branchId=`). */
+type TreeLeaf = { id: string; name: string; path: string }
+
 /** Сколько раз повторяем поиск укороченным запросом, если деталей не нашлось. */
 const MAX_SEARCH_PASSES = 2
 
@@ -109,6 +121,8 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
   private readonly apiKey: string
   private readonly baseUrl: string
   private readonly fetchImpl: typeof fetch
+  /** Листья дерева узлов по машине — для запасного пути, см. `searchByTree`. */
+  private readonly trees = new Map<string, { at: number; leaves: TreeLeaf[] }>()
 
   constructor(config: PartsCatalogsConfig) {
     this.apiKey = config.apiKey
@@ -156,7 +170,9 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
       if (parts.length > 0) return parts
       if (++passes >= MAX_SEARCH_PASSES) break
     }
-    return []
+    return this.searchByTree({
+      ref, brand: vehicle.make, query: q, sidSet: new Set(), englishTerms, names, seen: new Set(),
+    })
   }
 
   /**
@@ -262,25 +278,72 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
       `/catalogs/${encodeURIComponent(ref.catalogId)}/schemas?${params}`,
     )
 
-    // Узлы, отвечающие позиции из запроса, — вперёд, и только потом лимит;
-    // узлы ПРОТИВОПОЛОЖНОЙ стороны отбрасываются совсем.
-    //
-    // Иначе поиск залипает на негодном названии: живьём у Subaru передние
-    // колодки лежат под «Колодки тормозные (ремкомплект)», а первым подсказка
-    // отдаёт «Колодки тормозные дисковые», у которых узел только задний.
-    // Перебор названий останавливался на нём, фильтр позиции в сервисе вырезал
-    // всю выдачу, и мастер видел «не найдено» при живых колодках. Отбросив
-    // заведомо чужой узел, перебор доходит до нужного названия.
-    const groups = new Map<string, { category: string; imageUrl: string | null }>()
-    for (const schema of rankByPosition(firstArray(data, ['list']) ?? [], query)) {
-      const groupId = str(schema, ['groupId', 'id'])
-      const category = str(schema, ['name']) ?? ''
-      if (!groupId || groups.has(groupId)) continue
-      if (positionRank(category, query) < 0) continue // узел другой стороны
-      groups.set(groupId, { category, imageUrl: normalizeImageUrl(str(schema, ['img'])) })
-      if (groups.size >= MAX_GROUPS_PER_NAME) break
+    return this.collectFromGroups(ctx, schemaGroups(data, query))
+  }
+
+  /**
+   * Запасной путь: узлы, похожие на запрос, по ДЕРЕВУ узлов машины.
+   *
+   * Основной путь спрашивает схемы по названию детали (`schemas?partNameIds=`),
+   * а у части машин каталог на этот вызов отдаёт одну и ту же схему на любую
+   * деталь: живьём 22.09.2026 Skoda Kodiaq на термостат, стартер, генератор и
+   * сцепление отвечала «Насосом системы охлаждения», Ford на сцепление —
+   * охлаждением. Детали чужого узла отсекались отбором, и восемь ходовых
+   * запросов (термостат, генератор, стартер, сцепление, глушитель, дворники,
+   * турбина, бензонасос) не находились ни на одной из 13 машин пилота. Дерево
+   * машины (`groups-tree`) и схемы по узлу (`schemas?branchId=`) этим не
+   * страдают: там у Kodiaq честные «Стартер» и «Генератор».
+   *
+   * Путь запасной, а не основной: на основном держатся выверенные случаи
+   * корзины (точные sid, позиция, английские названия). Узел дерева берётся,
+   * только если его название само близко к запросу (NAME_MATCH, а не
+   * NODE_MATCH) — якоря sid здесь нет, и узел должен быть той деталью, а не
+   * её окрестностью. Детали узла проходят тот же отбор, что и в основном пути.
+   *
+   * Сбой дерева «не найдено» в отказ не превращает: основной путь уже честно
+   * ответил пусто, запасной только добирает.
+   */
+  private async searchByTree(ctx: SearchCtx): Promise<Part[]> {
+    let leaves: TreeLeaf[]
+    try {
+      leaves = await this.treeLeaves(ctx.ref)
+    } catch (error) {
+      console.warn('[parts-catalogs] дерево узлов не получено, запасной путь пропущен', error)
+      return []
     }
 
+    for (const leaf of pickLeaves(leaves, ctx.query)) {
+      const params = new URLSearchParams({ carId: ctx.ref.carId, branchId: leaf.id })
+      if (ctx.ref.criteria) params.set('criteria', ctx.ref.criteria)
+      const data = await this.request(
+        `/catalogs/${encodeURIComponent(ctx.ref.catalogId)}/schemas?${params}`,
+      )
+      const parts = await this.collectFromGroups(ctx, schemaGroups(data, ctx.query))
+      if (parts.length > 0) return parts
+    }
+    return []
+  }
+
+  /** Листья дерева узлов машины, из кэша на TREE_TTL_MS. */
+  private async treeLeaves(ref: CarRef): Promise<TreeLeaf[]> {
+    const key = `${ref.catalogId}|${ref.carId}|${ref.criteria ?? ''}`
+    const cached = this.trees.get(key)
+    if (cached && Date.now() - cached.at < TREE_TTL_MS) return cached.leaves
+
+    const params = new URLSearchParams({ carId: ref.carId })
+    if (ref.criteria) params.set('criteria', ref.criteria)
+    const data = await this.request(`/catalogs/${encodeURIComponent(ref.catalogId)}/groups-tree?${params}`)
+    const leaves = treeLeavesOf(asArray(data) ?? [], [])
+    this.trees.set(key, { at: Date.now(), leaves })
+    return leaves
+  }
+
+  /** Схемы узлов → детали, прореженные до того, что спрашивали (`collectParts`). */
+  private async collectFromGroups(
+    ctx: SearchCtx,
+    groups: Map<string, { category: string; imageUrl: string | null }>,
+  ): Promise<Part[]> {
+    const { ref } = ctx
     const parts: Part[] = []
     for (const [groupId, group] of groups) {
       if (parts.length >= PARTSCATALOGS_MAX_PARTS) break
@@ -321,6 +384,64 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
     }
     return data
   }
+}
+
+/**
+ * Схемы узлов из ответа `schemas` → узлы для parts2.
+ *
+ * Узлы, отвечающие позиции из запроса, — вперёд, и только потом лимит; узлы
+ * ПРОТИВОПОЛОЖНОЙ стороны отбрасываются совсем. Иначе поиск залипает на
+ * негодном названии: живьём у Subaru передние колодки лежат под «Колодки
+ * тормозные (ремкомплект)», а первым подсказка отдаёт «Колодки тормозные
+ * дисковые», у которых узел только задний. Перебор названий останавливался на
+ * нём, фильтр позиции в сервисе вырезал всю выдачу, и мастер видел «не
+ * найдено» при живых колодках. Отбросив заведомо чужой узел, перебор доходит
+ * до нужного названия.
+ */
+function schemaGroups(
+  data: unknown,
+  query: string,
+): Map<string, { category: string; imageUrl: string | null }> {
+  const groups = new Map<string, { category: string; imageUrl: string | null }>()
+  for (const schema of rankByPosition(firstArray(data, ['list']) ?? [], query)) {
+    const groupId = str(schema, ['groupId', 'id'])
+    const category = str(schema, ['name']) ?? ''
+    if (!groupId || groups.has(groupId)) continue
+    if (positionRank(category, query) < 0) continue // узел другой стороны
+    groups.set(groupId, { category, imageUrl: normalizeImageUrl(str(schema, ['img'])) })
+    if (groups.size >= MAX_GROUPS_PER_NAME) break
+  }
+  return groups
+}
+
+/** Дерево `groups-tree` ({id, name, subGroups}) → листья с путём от корня. */
+function treeLeavesOf(nodes: Record<string, unknown>[], path: string[]): TreeLeaf[] {
+  const out: TreeLeaf[] = []
+  for (const node of nodes) {
+    const id = str(node, ['id'])
+    const name = str(node, ['name'])
+    if (!id || !name) continue
+    const children = asArray(node['subGroups']) ?? []
+    const here = [...path, name]
+    if (children.length === 0) out.push({ id, name, path: here.join(' > ') })
+    else out.push(...treeLeavesOf(children, here))
+  }
+  return out
+}
+
+/**
+ * Листья, которые сами называют запрошенную деталь: «Стартер» на «стартер»,
+ * «Термостат системы охлаждения ДВС» на «термостат». Узел противоположной
+ * стороны отбрасывается, как и в основном пути.
+ */
+function pickLeaves(leaves: TreeLeaf[], query: string): TreeLeaf[] {
+  const names = queryNames(query)
+  return leaves
+    .map((leaf, order) => ({ leaf, order, score: closeness(leaf.name, names) }))
+    .filter((item) => item.score >= NAME_MATCH && positionRank(item.leaf.path, query) >= 0)
+    .sort((a, b) => b.score - a.score || a.order - b.order)
+    .slice(0, MAX_TREE_LEAVES)
+    .map((item) => item.leaf)
 }
 
 /**

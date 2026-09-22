@@ -291,7 +291,10 @@ describe('PartsCatalogsCatalogProvider.searchParts', () => {
     }, calls)
 
     expect(await provider.searchParts(vehicle, 'фильтр')).toEqual([])
-    expect(calls.every((c) => c.url.includes('/groups-suggest'))).toBe(true)
+    // Схем и деталей по названию не просим; одно обращение за деревом машины —
+    // запасной путь (см. «запасной путь через дерево узлов»), и оно кэшируется.
+    expect(calls.every((c) => c.url.includes('/groups-suggest') || c.url.includes('/groups-tree'))).toBe(true)
+    expect(calls.filter((c) => c.url.includes('/groups-tree'))).toHaveLength(1)
   })
 
   test('уточнённая фраза не найдена → названия добираются укороченным запросом', async () => {
@@ -1099,5 +1102,95 @@ describe('partDetails', () => {
     )
     expect(out[0]?.note).toBe('АккумулЯтор; 75AH; 700A')
     expect(out[0]?.appliesPeriod).toBe('29.09.2014 — 05.10.2018')
+  })
+})
+
+// Живой случай 22.09.2026: у части машин `schemas?partNameIds=` отдаёт ОДНУ и
+// ту же схему на любую деталь (Skoda Kodiaq — «Насос системы охлаждения» на
+// термостат, стартер, генератор и сцепление), и восемь ходовых запросов не
+// находились ни на одной из 13 машин. Дерево узлов машины (`groups-tree`) и
+// схемы по узлу (`schemas?branchId=`) этим не страдают — на них запасной путь.
+describe('PartsCatalogsCatalogProvider.searchParts: запасной путь через дерево узлов', () => {
+  const car: Vehicle = {
+    vin: 'XW8LD6NS2LH410128',
+    make: 'Skoda',
+    model: 'Kodiaq',
+    year: 2020,
+    engine: null,
+    bodyType: null,
+    raw: { catalogId: 'skoda', carId: 'car-1', criteria: 'crit', [CATALOG_SOURCE_KEY]: 'partscatalogs' },
+  }
+
+  const TREE = [
+    {
+      id: '1',
+      name: 'Электрооборудование',
+      parentId: null,
+      subGroups: [
+        { id: '827', name: 'Стартер', parentId: '1', subGroups: [] },
+        { id: '797', name: 'Генератор', parentId: '1', subGroups: [] },
+      ],
+    },
+    { id: '2', name: 'Охлаждение ДВС', parentId: null, subGroups: [{ id: '10', name: 'Насос системы охлаждения', parentId: '2', subGroups: [] }] },
+  ]
+
+  /** Каталог со сломанным `partNameIds`: на любую деталь — схема помпы. */
+  function brokenCatalog(url: string): Response {
+    const u = new URL(url)
+    if (u.pathname.endsWith('/groups-suggest')) return json([{ sid: '900', name: 'Стартер' }])
+    if (u.pathname.endsWith('/groups-tree')) return json(TREE)
+    if (u.pathname.endsWith('/schemas')) {
+      const branch = u.searchParams.get('branchId')
+      if (branch === '827') return json({ group: null, list: [{ groupId: 'g-starter', name: 'Стартер и детали не в сборе', img: '' }] })
+      return json({ group: null, list: [{ groupId: 'g-pump', name: 'Насос системы охлаждения', img: '' }] })
+    }
+    if (u.pathname.endsWith('/parts2')) {
+      if (u.searchParams.get('groupId') === 'g-starter') {
+        return json({ partGroups: [{ name: '', parts: [
+          { number: '02E911022H', name: 'Стартер', positionNumber: '1' },
+          { number: 'N10721501', name: 'Винт с 6-гр. головкой', positionNumber: '2' },
+        ] }] })
+      }
+      return json({ partGroups: [{ name: '', parts: [{ number: '06L121111L', name: 'Насос - помпа системы охлаждения ДВС', nameId: '1234' }] }] })
+    }
+    return new Response('', { status: 404 })
+  }
+
+  test('основной путь отдал чужой узел → деталь находится по дереву', async () => {
+    const parts = await providerWith(brokenCatalog).searchParts(car, 'стартер')
+    expect(parts.map((part) => part.oemNumber)).toEqual(['02E911022H'])
+    expect(parts[0]!.schemeId).toBe('g-starter')
+  })
+
+  test('дерево машины запрашивается один раз на машину, а не на каждый поиск', async () => {
+    const calls: { url: string; headers: Record<string, string> }[] = []
+    const provider = providerWith(brokenCatalog, calls)
+    await provider.searchParts(car, 'стартер')
+    await provider.searchParts(car, 'генератор')
+    expect(calls.filter((call) => call.url.includes('/groups-tree'))).toHaveLength(1)
+  })
+
+  test('похожего узла в дереве нет → честное «не найдено», схем по узлам не просим', async () => {
+    const calls: { url: string; headers: Record<string, string> }[] = []
+    const parts = await providerWith(brokenCatalog, calls).searchParts(car, 'глушитель')
+    expect(parts).toEqual([])
+    expect(calls.some((call) => call.url.includes('branchId='))).toBe(false)
+  })
+
+  test('основной путь нашёл деталь → дерево не запрашивается', async () => {
+    const calls: { url: string; headers: Record<string, string> }[] = []
+    const healthy = (url: string): Response => {
+      const u = new URL(url)
+      if (u.pathname.endsWith('/schemas') && !u.searchParams.get('branchId')) {
+        return json({ group: null, list: [{ groupId: 'g-starter', name: 'Стартер', img: '' }] })
+      }
+      if (u.pathname.endsWith('/parts2')) {
+        return json({ partGroups: [{ name: '', parts: [{ number: '02E911022H', name: 'Стартер', nameId: '900' }] }] })
+      }
+      return brokenCatalog(url)
+    }
+    const parts = await providerWith(healthy, calls).searchParts(car, 'стартер')
+    expect(parts).toHaveLength(1)
+    expect(calls.some((call) => call.url.includes('/groups-tree'))).toBe(false)
   })
 })

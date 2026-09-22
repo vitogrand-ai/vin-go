@@ -271,6 +271,25 @@ const CASES: Case[] = [
     query: 'бампер',
     origin: '22.09.2026, прогон всех машин корзины: «ничего не найдено», у VW Jetta и Skoda тот же запрос работает',
     expect: { minParts: 1, firstMatches: /бампер/i },
+  },  {
+    vin: 'XW8LD6NS2LH410128',
+    car: 'Skoda Kodiaq (РФ-сборка)',
+    query: 'генератор',
+    origin:
+      '22.09.2026, замер 13 машин × 35 запросов: генератор, стартер, термостат и ещё пять ходовых ' +
+      'деталей не находились НИ НА ОДНОЙ машине. Каталог на schemas?partNameIds отдавал одну схему на ' +
+      'любую деталь; найдено через дерево узлов машины (groups-tree → schemas?branchId)',
+    expect: { minParts: 1, firstMatches: /^генератор/i, scheme: true },
+  },
+  {
+    vin: 'Z6FDXXEECDFD88329',
+    car: 'Ford Mondeo (РФ-сборка, 2015)',
+    query: 'сцепление',
+    origin:
+      '22.09.2026, замер 13 машин × 35 запросов: генератор, стартер, термостат и ещё пять ходовых ' +
+      'деталей не находились НИ НА ОДНОЙ машине. Каталог на schemas?partNameIds отдавал одну схему на ' +
+      'любую деталь; найдено через дерево узлов машины (groups-tree → schemas?branchId)',
+    expect: { minParts: 1, firstMatches: /сцеплен/i, scheme: true },
   },
 ]
 
