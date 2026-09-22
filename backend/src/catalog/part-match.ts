@@ -66,7 +66,7 @@ function toKeySets(names: string[]): Set<string>[] {
 export function closeness(name: string, names: Set<string>[]): number {
   const words = wordList(name)
   const keys = new Set(words)
-  const head = headWord(words)
+  const head = catalogHeadWord(name) ?? headWord(words)
   let best = 0
   for (const candidate of names) {
     best = Math.max(best, similarity(head, keys, candidate))
@@ -79,7 +79,37 @@ export function closeness(name: string, names: Set<string>[]): number {
  * «1 set of brake pads for disk brake» (VW/Audi), «KIT, DISC BRAKE» (Toyota),
  * «Комплект тормозных колодок». Деталь здесь — не «1» и не «комплект».
  */
-const HEAD_SKIP = new Set(['set', 'of', 'for', 'and', 'the', 'with', 'kit', 'компл', 'набор', 'пара'])
+const HEAD_SKIP = new Set([
+  'set', 'of', 'for', 'and', 'the', 'with', 'kit', 'sub', 'assy', 'assem', 'компл', 'набор', 'пара',
+])
+
+/**
+ * Главное слово английского названия в формате каталога «ИМЯ УТОЧНЕНИЕ,
+ * ПОДРОБНОСТИ» — «PAD KIT-FRONT DISK BRAKE» (Subaru), «PAD KIT, DISC BRAKE,
+ * FRONT» (Toyota), «COVER SUB-ASSY, CYLINDER HEAD» (Lexus). Название детали
+ * стоит до первого разделителя, и в нём, по английской грамматике, главное
+ * слово ПОСЛЕДНЕЕ: «PAD CLIP» — клипса колодки, а не колодка.
+ *
+ * Живьём 22.09.2026 на Subaru первой строкой по «колодки передние» шла «PAD
+ * CLIP-FRONT BRAKE»: главным словом бралось первое, «pad», и короткая клипса
+ * обгоняла сам комплект по доле общих слов.
+ *
+ * Русские названия и названия без разделителя («1 set of brake pads for disk
+ * brake») сюда не идут — у них главным остаётся первое значащее слово.
+ * undefined — правило к названию неприменимо.
+ */
+function catalogHeadWord(name: string): string | undefined {
+  if (/[а-яё]/i.test(name)) return undefined
+  const cut = name.search(/[,(]|(?<=[a-z0-9])-(?=[a-z0-9])/i)
+  if (cut <= 0) return undefined
+  const words = wordList(name.slice(0, cut))
+  for (let i = words.length - 1; i >= 0; i -= 1) {
+    const word = words[i]!
+    if (/^[0-9]+$/.test(word) || HEAD_SKIP.has(word)) continue
+    return word
+  }
+  return undefined
+}
 
 /**
  * Главное слово названия — первое значащее. Живьём на переднем тормозе Audi

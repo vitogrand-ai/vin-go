@@ -91,6 +91,20 @@ describe('порядок выдачи', () => {
     ).toBeGreaterThanOrEqual(NODE_MATCH)
   })
 
+  it('комплект колодок идёт вперёд их клипсы (Subaru, «ИМЯ УТОЧНЕНИЕ-ПОДРОБНОСТИ»)', () => {
+    // Живьём 22.09.2026: на «колодки передние» первой строкой шла «PAD
+    // CLIP-FRONT BRAKE». Главным словом бралось первое — «pad», и короткая
+    // клипса обгоняла комплект по доле общих слов. В английском главное слово
+    // последнее: «PAD CLIP» — клипса, «PAD KIT» — колодки (kit — служебное).
+    expect(
+      first('колодки передние', ['PAD CLIP-FRONT BRAKE', 'PAD KIT-FRONT DISK BRAKE']),
+    ).toBe('PAD KIT-FRONT DISK BRAKE')
+    // Тот же формат у Toyota — через запятую.
+    expect(
+      first('колодки передние', ['CLIP, PAD SUPPORT PLATE', 'PAD KIT, DISC BRAKE, FRONT']),
+    ).toBe('PAD KIT, DISC BRAKE, FRONT')
+  })
+
   it('уточнение в названии не отдаёт первое место короткому чужому соседу', () => {
     const order = queryNamesForOrder('генератор')
     expect(closeness('Генератор', order)).toBeGreaterThan(closeness('Подшипник генератора', order))
