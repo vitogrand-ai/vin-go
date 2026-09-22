@@ -1279,7 +1279,8 @@ describe('PartsCatalogsCatalogProvider.searchParts: чужой узел от к�
       }
       return staleCatalog(url)
     }
-    const parts = await providerWith(subaru).searchParts({ ...car, make: 'Subaru' }, 'колодки передние')
+    // Запрос ровно тот, что уходит в каталог после словаря: «колодки тормозные передние».
+    const parts = await providerWith(subaru).searchParts({ ...car, make: 'Subaru' }, 'колодки тормозные передние')
     expect(parts.map((part) => part.oemNumber)).toContain('26296SJ020')
   })
 

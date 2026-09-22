@@ -4,7 +4,7 @@ import { AppError } from '../http/errors'
 import { CATALOG_SOURCE_KEY } from './fallback-catalog'
 import { asArray, firstArray, int, isRecord, str } from './parse-utils'
 import { isPositionWord, positionRank } from './position-filter'
-import { NAME_MATCH, NODE_MATCH, closeness, queryNames, queryNamesForOrder, wordKeys } from './part-match'
+import { NAME_MATCH, NODE_MATCH, closeness, nodeCloseness, queryNames, queryNamesForOrder, wordKeys } from './part-match'
 import { englishPartTerms } from './part-terms'
 import { requestProviderJson } from './provider-http'
 import type { CatalogProvider } from './providers'
@@ -440,7 +440,7 @@ function schemaGroups(
  */
 function foreignNode(data: unknown, sidSet: Set<string>, category: string, query: string): boolean {
   if (sidSet.size === 0 || !isRecord(data)) return false
-  if (closeness(category, queryNamesForOrder(query)) >= NODE_MATCH) return false
+  if (nodeCloseness(category, queryNamesForOrder(query)) >= NODE_MATCH) return false
   let labelled = false
   for (const group of asArray(data['partGroups']) ?? []) {
     for (const part of asArray(group['parts']) ?? []) {
@@ -476,7 +476,7 @@ function treeLeavesOf(nodes: Record<string, unknown>[], path: string[]): TreeLea
 function pickLeaves(leaves: TreeLeaf[], query: string): TreeLeaf[] {
   const names = queryNames(query)
   return leaves
-    .map((leaf, order) => ({ leaf, order, score: closeness(leaf.name, names) }))
+    .map((leaf, order) => ({ leaf, order, score: nodeCloseness(leaf.name, names) }))
     .filter((item) => item.score >= NAME_MATCH && positionRank(item.leaf.path, query) >= 0)
     .sort((a, b) => b.score - a.score || a.order - b.order)
     .slice(0, MAX_TREE_LEAVES)

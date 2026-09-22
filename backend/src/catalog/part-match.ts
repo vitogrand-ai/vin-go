@@ -63,14 +63,28 @@ function toKeySets(names: string[]): Set<string>[] {
   return names.map(wordKeys).filter((keys) => keys.size > 0)
 }
 
-/** Насколько название подошло к ближайшему имени детали. */
+/** Насколько название ДЕТАЛИ подошло к ближайшему имени детали. */
 export function closeness(name: string, names: Set<string>[]): number {
+  return bestSimilarity(name, names, true)
+}
+
+/**
+ * То же для названия УЗЛА. Узел называет место, а не деталь: «Передний
+ * тормоз» на «колодки тормозные передние» совпадает одним словом, и правило
+ * уточнения (см. `similarity`) выбросило бы его как чужой — живьём 22.09.2026
+ * так пропали передние колодки Subaru.
+ */
+export function nodeCloseness(name: string, names: Set<string>[]): number {
+  return bestSimilarity(name, names, false)
+}
+
+function bestSimilarity(name: string, names: Set<string>[], partName: boolean): number {
   const words = wordList(name)
   const keys = new Set(words)
   const head = catalogHeadWord(name) ?? headWord(words)
   let best = 0
   for (const candidate of names) {
-    best = Math.max(best, similarity(head, keys, candidate))
+    best = Math.max(best, similarity(head, keys, candidate, partName))
   }
   return best
 }
@@ -145,7 +159,12 @@ function headWord(words: string[]): string | undefined {
  * Главное слово выбирает headWord: служебное начало («1 set of…», «KIT,…»)
  * деталь не называет.
  */
-function similarity(head: string | undefined, keys: Set<string>, candidate: Set<string>): number {
+function similarity(
+  head: string | undefined,
+  keys: Set<string>,
+  candidate: Set<string>,
+  partName: boolean,
+): number {
   let common = 0
   let content = 0
   let commonContent = 0
@@ -165,7 +184,7 @@ function similarity(head: string | undefined, keys: Set<string>, candidate: Set<
   // стабилизатора»), а раньше приходили «Стойка кузова» и «Ремень
   // безопасности». Слово позиции уточнением не считается — ею занят фильтр
   // позиции.
-  if (content >= 2 && commonContent < 2) return 0
+  if (partName && content >= 2 && commonContent < 2) return 0
   const jaccard = common / (keys.size + candidate.size - common)
   return head !== undefined && candidate.has(head) ? (1 + jaccard) / 2 : jaccard / 2
 }
