@@ -527,6 +527,21 @@ describe('mapVehicle', () => {
     expect(vehicle!.year).toBe(2018)
   })
 
+  test('объём двигателя в описании за год не принимается', () => {
+    // Живьём 22.09.2026: Subaru Forester 2021 года карточка показывала «Год:
+    // 2000» — из описания «Двигатель: 2000CC DOHC NA». Неверный год хуже
+    // пустого: по нему мастер сверяет машину.
+    const vehicle = mapVehicle('JF1SK7LL5MG129305', [
+      {
+        ...CAR_INFO[0],
+        parameters: [],
+        criteria: '4f*JF1SK7LL5MG129305{"ftr1":"W"}4^M4Y<J20>20210209?C',
+        description: 'Трансмиссия: CONTINUOUS VARIABLE GEAR; Двигатель: 2000CC DOHC NA',
+      },
+    ])
+    expect(vehicle!.year).not.toBe(2000)
+  })
+
   test('нет ни марки, ни модели → null', () => {
     expect(mapVehicle(VIN, [{ carId: 'x', catalogId: 'y' }])).toBeNull()
   })

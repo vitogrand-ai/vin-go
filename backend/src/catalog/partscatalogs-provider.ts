@@ -418,11 +418,15 @@ function paramValue(car: Record<string, unknown>, keys: string[], names: string[
  * Запасной разбор года, когда параметра year нет: год зашит в `criteria`
  * («b4*XW8AN…(2018!aebbed60») и в `description` («2018-2021. Название…»).
  * В criteria год всегда открывается скобкой — так не спутаем с цифрами VIN.
+ *
+ * В description год — только отдельным словом: там же лежат характеристики
+ * мотора, и «Двигатель: 2000CC DOHC NA» у Subaru Forester 2021 года давал в
+ * карточке «Год: 2000» (живьём 22.09.2026). Неверный год хуже пустого.
  */
 function parseYear(car: Record<string, unknown>): number | null {
   const fromCriteria = (str(car, ['criteria']) ?? '').match(/\(((?:19|20)\d{2})/)
   if (fromCriteria) return Number.parseInt(fromCriteria[1]!, 10)
-  const fromDescription = (str(car, ['description']) ?? '').match(/(?:19|20)\d{2}/)
+  const fromDescription = (str(car, ['description']) ?? '').match(/(?<![\p{L}\p{N}])(?:19|20)\d{2}(?![\p{L}\p{N}])/u)
   return fromDescription ? Number.parseInt(fromDescription[0], 10) : null
 }
 
