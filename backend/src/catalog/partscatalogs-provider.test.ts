@@ -1004,7 +1004,8 @@ describe('rankSuggestions', () => {
   })
 
   test('длинная выдача режется до пяти УЖЕ после сортировки', () => {
-    const many = Array.from({ length: 8 }, (_, index) => ({ sid: String(index), name: 'Крышка чужая' }))
+    // Соседи похожи на запрос, но слабее самой детали: прокладка крышки ГБЦ.
+    const many = Array.from({ length: 8 }, (_, index) => ({ sid: String(index), name: 'Прокладка крышки ГБЦ' }))
     const ranked = rankSuggestions([...many, { sid: 'target', name: 'Крышка ГБЦ' }], 'Крышка ГБЦ')
     expect(ranked).toHaveLength(5)
     expect(ranked[0]).toBe('target')

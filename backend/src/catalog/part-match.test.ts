@@ -118,6 +118,27 @@ describe('порядок выдачи', () => {
   })
 })
 
+describe('уточнение составного имени различает детали', () => {
+  it('«тяга рулевая» — не «тяга стабилизатора», «стойка кузова» — не «стойка стабилизатора»', () => {
+    // Живьём 22.09.2026, Subaru: на «стойку стабилизатора» первой строкой шла
+    // «Тяга рулевая» — совпадало главное слово с синонимом «тяга
+    // стабилизатора», и одного общего слова из двух хватало для 0.67.
+    const names = queryNames('стойка стабилизатора')
+    expect(closeness('Тяга рулевая', names)).toBeLessThan(NAME_MATCH)
+    expect(closeness('Стойка кузова', names)).toBeLessThan(NAME_MATCH)
+    expect(closeness('Стойка стабилизатора', names)).toBeGreaterThanOrEqual(NAME_MATCH)
+    expect(closeness('Тяга стабилизатора передняя', names)).toBeGreaterThanOrEqual(NAME_MATCH)
+  })
+
+  it('однословное имя детали правило не трогает', () => {
+    expect(closeness('Стартер в сборе', queryNames('стартер'))).toBeGreaterThanOrEqual(NAME_MATCH)
+  })
+
+  it('слово позиции уточнением не считается', () => {
+    expect(closeness('Колодки тормозные дисковые', queryNames('колодки передние'))).toBeGreaterThanOrEqual(NAME_MATCH)
+  })
+})
+
 describe('отбор детали в узле', () => {
   it('сама деталь проходит порог, сосед по узлу — нет', () => {
     const names = queryNames('клапанная крышка')

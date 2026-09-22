@@ -1,5 +1,6 @@
 import { partSynonyms } from './part-jargon'
 import { englishPartTerms } from './part-terms'
+import { isPositionWord } from './position-filter'
 
 /**
  * Насколько название детали отвечает запросу мастера — одна мера на весь
@@ -146,10 +147,25 @@ function headWord(words: string[]): string | undefined {
  */
 function similarity(head: string | undefined, keys: Set<string>, candidate: Set<string>): number {
   let common = 0
+  let content = 0
+  let commonContent = 0
   for (const key of candidate) {
-    if (keys.has(key)) common += 1
+    const positional = isPositionWord(key)
+    if (!positional) content += 1
+    if (keys.has(key)) {
+      common += 1
+      if (!positional) commonContent += 1
+    }
   }
   if (common === 0) return 0
+  // Уточнение составного имени РАЗЛИЧАЕТ детали: тяга рулевая и тяга
+  // стабилизатора, ремень ГРМ и ремень безопасности — разные детали. Одного
+  // общего главного слова тут мало: живьём 22.09.2026 Subaru на «стойку
+  // стабилизатора» получала «Тягу рулевую» (0.67 против синонима «тяга
+  // стабилизатора»), а раньше приходили «Стойка кузова» и «Ремень
+  // безопасности». Слово позиции уточнением не считается — ею занят фильтр
+  // позиции.
+  if (content >= 2 && commonContent < 2) return 0
   const jaccard = common / (keys.size + candidate.size - common)
   return head !== undefined && candidate.has(head) ? (1 + jaccard) / 2 : jaccard / 2
 }
