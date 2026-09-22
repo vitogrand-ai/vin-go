@@ -101,9 +101,25 @@ describe('jargonReplacements', () => {
     const canonicals = found.map((item) => item.canonical)
     expect(new Set(canonicals).size).toBe(canonicals.length)
   })
+  // Живой случай 22.09.2026: «масло» сидит внутри «маслоотделителя», и поиск
+  // подстрокой опознавал деталь как моторное масло — мастер получал масло
+  // (Golf IV, Skoda Kodiaq) вместо маслоотделителя.
+  test('жаргонизм внутри составного слова — не он', () => {
+    expect(jargonReplacements('маслоотделитель').map((item) => item.canonical)).not.toContain('Моторное масло')
+    expect(jargonReplacements('сайлентблоки').map((item) => item.jargon)).not.toContain('блок')
+  })
+
+  test('падежное окончание жаргонизм не прячет: «генератора» — это генератор', () => {
+    expect(jargonReplacements('генератора').map((item) => item.jargon)).toContain('генератор')
+  })
 })
 
 describe('partSynonyms', () => {
+  test('маслоотделитель не уводит поиск в масляный ряд', () => {
+    const variants = expandPartQuery('маслоотделитель').map((v) => v.toLowerCase())
+    expect(variants.some((v) => /^масло\s|моторное масло/.test(v))).toBe(false)
+  })
+
   test('одна деталь — один ряд, как её ни назови', () => {
     const canonical = partSynonyms('клапанная крышка')
     expect(canonical).toContain('крышка гбц')

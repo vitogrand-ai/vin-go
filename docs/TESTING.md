@@ -60,6 +60,8 @@ bun run --cwd backend catalog:cases            # basket of real pilot complaints
 bun run --cwd backend catalog:cases -- --only Subaru
 bun run --cwd backend catalog:names -- <VIN>   # which part a query actually returns, read by eye
 bun run --cwd backend catalog:coverage -- <VIN>
+bun run --cwd backend catalog:terms            # dictionary coverage per catalog, exits non-zero when a catalog is uncovered
+bun run --cwd backend catalog:terms -- --only масл
 ```
 
 `catalog:cases` carries an expectation per case (first row, scheme, callout number, model year),
@@ -68,9 +70,24 @@ search change, and add a case whenever a complaint is fixed. It needs live catal
 parts-catalogs key is bound to the VPS IP, so a full green run only happens on the server.
 Repeat VINs at 17vin are free for three months, so re-running the basket costs nothing.
 
+`catalog:terms` measures the other half: not «does this complaint work» but «does the dictionary
+cover this catalog at all». It runs every `part-terms` entry against reference cars of both 17vin
+language families (Chinese base and English base) and fails when more than a third of the entries
+return nothing on a car — that is a foreign base language, not rare parts. Run it after adding or
+changing a term, and never accept a term proven on one car only: `机油滤清器` was verified on a
+Toyota and returned zero on every imported brand, which is how Jaguar search stayed silent for
+weeks (see `docs/CATALOG_ADAPTERS.md`). It only needs the 17vin credentials, so it runs locally.
+
 Every `*.test.ts` under `backend/src` must be listed in `test:unit` or in
 `scripts/test-integration.mjs`; `src/test-registry.test.ts` fails otherwise, because a test that
 no runner executes is not coverage.
+
+Checking production by hand: never put Cyrillic in a `curl` body from Git Bash on Windows. It
+re-encodes the text and the server receives `??????? ????????`, answers «nothing found», and the
+hunt starts for a bug that is not there (this cost an hour on 22.09.2026 — the give-away was
+`[catalog:miss] … запрос: «??????? ????????»` in `journalctl -u vingo-api`, with Latin words in
+the same line intact). Send the request from a script file with explicit UTF-8 instead, or escape
+the query as \uXXXX in the JSON body.
 
 Local reality on the current workstation: Docker does not run (no virtualization), so integration
 tests use the native PostgreSQL 18 instance, and Playwright only works through Node plus a Chrome

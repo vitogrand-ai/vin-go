@@ -68,7 +68,7 @@ describe('FallbackCatalogProvider.decodeVin', () => {
     expect(await fb.decodeVin('VIN1')).toBeNull()
   })
 
-  test('никто не нашёл, но был сбой → пробрасываем ошибку (не маскируем под 404)', async () => {
+  test('не ответил НИКТО → пробрасываем ошибку (не маскируем под 404)', async () => {
     const boom = new Error('acat down')
     const fb = new FallbackCatalogProvider([
       {
@@ -79,9 +79,34 @@ describe('FallbackCatalogProvider.decodeVin', () => {
           },
         }),
       },
-      { name: 'partsindex', provider: fakeProvider({ decode: async () => null }) },
+      {
+        name: 'partsindex',
+        provider: fakeProvider({
+          decode: async () => {
+            throw new Error('partsindex down')
+          },
+        }),
+      },
     ])
     expect(fb.decodeVin('VIN1')).rejects.toBe(boom)
+  })
+
+  // Живой случай 22.09.2026: истёк тестовый аккаунт 17vin, и он отвечал отказом
+  // на каждый запрос. Пока это считалось сбоем всей расшифровки, мастер получал
+  // 502 там, где живой каталог честно сказал «такой машины у меня нет».
+  test('один источник отказал, другой ответил «нет такой машины» → 404, а не 502', async () => {
+    const fb = new FallbackCatalogProvider([
+      { name: 'partscatalogs', provider: fakeProvider({ decode: async () => null }) },
+      {
+        name: 'vin17',
+        provider: fakeProvider({
+          decode: async () => {
+            throw new Error('аккаунт просрочен')
+          },
+        }),
+      },
+    ])
+    expect(await fb.decodeVin('SAJAA04M6FPU46282')).toBeNull()
   })
 })
 
@@ -213,25 +238,44 @@ describe('FallbackCatalogProvider.searchParts', () => {
     expect(parts).toEqual([acatPart])
   })
 
-  test('никто не нашёл, но был сбой → пробрасываем ошибку (не маскируем под пусто)', async () => {
+  test('не ответил НИКТО → пробрасываем ошибку (не маскируем под пусто)', async () => {
     const boom = new Error('vin17 down')
+    const down = (message: string): CatalogProvider => ({
+      async decodeVin() {
+        return null
+      },
+      async searchParts(): Promise<Part[]> {
+        throw message === 'vin17 down' ? boom : new Error(message)
+      },
+    })
     const fb = new FallbackCatalogProvider([
+      { name: 'vin17', provider: down('vin17 down') },
+      { name: 'acat', provider: down('acat down') },
+    ])
+
+    const vehicle: Vehicle = { ...baseVehicle, raw: { [CATALOG_SOURCE_KEY]: 'vin17' } }
+    expect(fb.searchParts(vehicle, 'колодки')).rejects.toBe(boom)
+  })
+
+  // Истёкший ключ одного каталога не должен выносить поиск по всем машинам:
+  // мастеру нужна кнопка «Спросить эксперта», а не 502 (живой случай 22.09.2026).
+  test('один источник отказал, другой ответил пусто → пусто, а не 502', async () => {
+    const fb = new FallbackCatalogProvider([
+      { name: 'partscatalogs', provider: fakeProvider({ parts: [] }) },
       {
         name: 'vin17',
         provider: {
           async decodeVin() {
             return null
           },
-          async searchParts() {
-            throw boom
+          async searchParts(): Promise<Part[]> {
+            throw new Error('аккаунт просрочен')
           },
         },
       },
-      { name: 'acat', provider: fakeProvider({ parts: [] }) },
     ])
 
-    const vehicle: Vehicle = { ...baseVehicle, raw: { [CATALOG_SOURCE_KEY]: 'vin17' } }
-    expect(fb.searchParts(vehicle, 'колодки')).rejects.toBe(boom)
+    expect(await fb.searchParts(baseVehicle, 'колодки')).toEqual([])
   })
 })
 

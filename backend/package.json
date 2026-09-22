@@ -20,6 +20,7 @@
     "catalog:coverage": "bun scripts/catalog-coverage.ts",
     "catalog:names": "bun scripts/catalog-names.ts",
     "catalog:cases": "bun scripts/catalog-cases.ts",
+    "catalog:terms": "bun scripts/catalog-terms.ts",
     "smoke:live": "bun scripts/smoke-live.ts",
     "prisma": "prisma",
     "prisma:generate": "bun scripts/prisma-generate.mjs",

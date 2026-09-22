@@ -1317,6 +1317,32 @@ export function partSynonyms(text: string): string[] {
   return found ? (FORMS_BY_CANONICAL.get(found.canonical.toLowerCase()) ?? []) : []
 }
 
+/**
+ * Упоминает ли запрос жаргонизм как СЛОВО, а не как кусок другого слова.
+ *
+ * Прежде хватало подстроки, и «масло» находилось внутри «маслоотделителя», а
+ * «блок» — внутри «сайлентблоков»: мастер спрашивал маслоотделитель и получал
+ * моторное масло (живьём 22.09.2026, Golf IV и Skoda Kodiaq). Составных слов в
+ * автомобильном языке много — «стеклоподъёмник», «маслосъёмные», — поэтому
+ * правило общее, а не исключение для одного слова.
+ *
+ * Жаргонизм должен начинать слово, а после него допускается короткий хвост:
+ * падежное окончание («генератор» → «генератора», «шрус» → «шруса»), но не
+ * вторая половина составного слова.
+ */
+const MAX_ENDING = 3
+
+function mentions(text: string, key: string): boolean {
+  for (let at = text.indexOf(key); at !== -1; at = text.indexOf(key, at + 1)) {
+    const startsWord = at === 0 || !WORD_CHAR.test(text[at - 1]!)
+    const tail = /^[\p{L}\p{N}]*/u.exec(text.slice(at + key.length))![0]
+    if (startsWord && tail.length <= MAX_ENDING) return true
+  }
+  return false
+}
+
+const WORD_CHAR = /[\p{L}\p{N}]/u
+
 /** Где жаргонизм начинается в запросе; не нашёлся — в самый конец очереди. */
 function position(text: string, jargon: string): number {
   const at = text.indexOf(jargon)
@@ -1377,7 +1403,7 @@ export function jargonReplacements(text: string): Array<{ jargon: string; canoni
   const seen = new Set<string>()
   for (const key of JARGON_KEYS_BY_LENGTH) {
     const canonical = JARGON_WITH_YO_VARIANTS[key]!
-    if (lowered.includes(key) && !seen.has(canonical)) {
+    if (mentions(lowered, key) && !seen.has(canonical)) {
       out.push({ jargon: key, canonical })
       seen.add(canonical)
     }

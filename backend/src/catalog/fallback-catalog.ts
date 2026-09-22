@@ -13,9 +13,19 @@ import type { CatalogProvider } from './providers'
  * применимость), а при пустом ответе добирает по остальным источникам —
  * адаптеры сами переопределяют чужое авто по VIN перед поиском.
  *
- * Семантика ошибок сохраняется: «не найдено» у одного источника → пробуем
- * следующий; если ни один не нашёл, но были сбои (AppError) — пробрасываем сбой,
- * чтобы отказ upstream не замаскировался под «VIN не найден».
+ * Семантика ошибок: «не найдено» у одного источника → пробуем следующий. Сбой
+ * источника пробрасывается, только если НИ ОДИН источник так и не ответил —
+ * тогда «не найдено» было бы выдумкой. Если же хоть один каталог живым вызовом
+ * честно сказал «нет такой детали», это и есть ответ, а отказ соседа остаётся в
+ * журнале.
+ *
+ * Различение появилось 22.09.2026, когда истёк тестовый аккаунт 17vin: он
+ * отвечал «аккаунт просрочен» на каждый запрос, и любой промах parts-catalogs —
+ * по любой машине, не только по той, что знает 17vin, — превращался у мастера в
+ * ошибку 502 вместо «ничего не найдено» с кнопкой «Спросить эксперта». Один
+ * просроченный ключ выносил поиск целиком. Прежнее правило («был сбой — значит
+ * сбой») остаётся в силе там, где оно и писалось: когда источник один или упали
+ * все, конец предоплаты под «ничего не найдено» по-прежнему не маскируется.
  */
 
 /** Ключ в vehicle.raw с именем источника, определившего авто. */
@@ -61,9 +71,11 @@ export class FallbackCatalogProvider implements CatalogProvider {
       ? [...this.providers].sort((a, b) => Number(b.framePriority ?? false) - Number(a.framePriority ?? false))
       : this.providers
 
+    let answered = false
     for (const [index, { name, provider }] of ordered.entries()) {
       try {
         const vehicle = await provider.decodeVin(vin)
+        answered = true
         // Источники до этого честно ответили «не найдено» — добираем у тех,
         // кого ещё не спрашивали.
         if (vehicle) return this.fillMissingFacts(tagSource(vehicle, name), vin, ordered.slice(index + 1))
@@ -74,9 +86,9 @@ export class FallbackCatalogProvider implements CatalogProvider {
       }
     }
 
-    // Все источники честно ответили «не найдено» → это чистый 404.
-    if (firstError === null) return null
-    // Никто не нашёл, но были отказы — не выдаём сбой upstream за «не найдено».
+    // Хоть один каталог живым вызовом сказал «такой машины нет» → это 404.
+    if (answered || firstError === null) return null
+    // Не ответил никто — не выдаём сбой upstream за «не найдено».
     throw firstError
   }
 
@@ -139,11 +151,13 @@ export class FallbackCatalogProvider implements CatalogProvider {
       : this.providers
 
     let firstError: unknown = null
+    let answered = false
     const asked = new Set<NamedCatalogProvider>()
     for (const source of ordered) {
       asked.add(source)
       try {
         const parts = await source.provider.searchParts(vehicle, query)
+        answered = true
         if (parts.length > 0) return this.attachImages(vehicle, query, parts, asked)
       } catch (error) {
         console.error(`[catalog:${source.name}] searchParts упал, пробуем следующий источник`, error)
@@ -151,8 +165,8 @@ export class FallbackCatalogProvider implements CatalogProvider {
       }
     }
 
-    // Никто не нашёл, но были отказы — не выдаём сбой upstream за «не найдено».
-    if (firstError !== null) throw firstError
+    // Не ответил никто — не выдаём сбой upstream за «не найдено».
+    if (!answered && firstError !== null) throw firstError
     return []
   }
 

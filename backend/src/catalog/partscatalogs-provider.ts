@@ -69,6 +69,15 @@ const MAX_SEARCH_PASSES = 2
 /** Имя источника в fallback-цепочке (см. createCatalogProviders). */
 const SOURCE_NAME = 'partscatalogs'
 
+/**
+ * Таймаут одного вызова. Общих пяти секунд с боевого сервера не хватает: живьём
+ * 22.09.2026 шаг `schemas` с VPS обрывался по таймауту, а тот же запрос с
+ * ноутбука отвечал — поиск падал на одной машине и проходил на соседней. Поиск
+ * идёт цепочкой вызовов (подсказка → схемы → узел), поэтому потолок — на вызов,
+ * а бот всё это время показывает «печатает…».
+ */
+const PARTSCATALOGS_TIMEOUT_MS = 15_000
+
 export type PartsCatalogsConfig = {
   apiKey: string
   baseUrl?: string
@@ -301,6 +310,7 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
       url: `${this.baseUrl}${path}`,
       fetchImpl: this.fetchImpl,
       headers: { Authorization: this.apiKey, 'Accept-Language': 'ru' },
+      timeoutMs: PARTSCATALOGS_TIMEOUT_MS,
     })
     if (isRecord(data)) {
       const code = int(data, ['errorCode', 'code'])

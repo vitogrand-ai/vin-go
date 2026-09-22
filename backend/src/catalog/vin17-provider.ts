@@ -4,7 +4,7 @@ import type { DealerPrice, Part, Vehicle } from '@web-app-demo/contracts'
 
 import { AppError } from '../http/errors'
 import { asArray, int, isRecord, str } from './parse-utils'
-import { translatePartQuery } from './part-terms'
+import { englishPartTerms, translatePartQuery } from './part-terms'
 import { requestProviderJson } from './provider-http'
 import type { CatalogProvider, DealerPriceProvider } from './providers'
 
@@ -87,48 +87,95 @@ export class Vin17CatalogProvider implements CatalogProvider, DealerPriceProvide
   }
 
   /**
-   * Поиск по названию детали (оп. 5107, нечёткое совпадение). Названия в базе
-   * 17vin — формальный китайский EPC-язык и частично английский, поэтому язык
-   * запроса решает всё (проверено живьём):
-   *   • русский → переводится словарём part-terms в EPC-термин; без перевода
-   *     запрос НЕ отправляется — сырой русский возвращает весь каталог (4470
-   *     записей шума), честное «пусто» лучше;
-   *   • китайский → как есть (точная выдача);
-   *   • латиница → как есть, но с дофильтрацией по названию: нечёткий поиск
-   *     17vin на английском тоже разливается в шум.
+   * Поиск по названию детали (оп. 5107, нечёткое совпадение). Языком базы
+   * каталог 17vin однороден не весь: китайские марки описаны китайским
+   * EPC-языком, а импортные (jaguar, audi_vw и прочие) — английским, с
+   * машинным китайским переводом рядом. Отсюда два прохода на русский запрос
+   * (оба проверены живьём, 18.09.2026, Jaguar XF SAJAA04M6FPU46282):
+   *   • китайский термин словаря — точное попадание там, где база китайская;
+   *   • английский термин словаря — там, где база английская: `机油滤清器`
+   *     на Jaguar даёт ноль (в каталоге деталь зовётся `Oil filter` с машинным
+   *     `机油过滤器`), и так промахивались 36 терминов словаря из 68.
+   *
+   * Латинский запрос каталог не фильтрует вовсе: на любое слово он отдаёт весь
+   * подходящий VIN список целиком (2272 записи на том же Jaguar — одинаково на
+   * «oil filter» и на «zzzzqqq»). Поэтому английский проход — это выгрузка со
+   * СВОИМ отбором по названию (`filterByTerms`), а потолок VIN17_MAX_PARTS
+   * накладывается ПОСЛЕ отбора: до него нужная деталь стояла 2012-й и в сотню
+   * не попадала.
+   *
+   * Китайский запрос уходит как есть (точная выдача). Русский без словаря не
+   * отправляется вовсе — сырой русский возвращает весь каталог шумом.
    */
   async searchParts(vehicle: Vehicle, query: string): Promise<Part[]> {
     const q = query.trim()
     if (!q) return []
 
-    let effectiveQuery = q
-    let latinPostFilter = false
-    if (/[а-яё]/i.test(q)) {
-      const zh = translatePartQuery(q)
-      if (!zh) {
-        // Лог — сырьё для пополнения словаря по реальным запросам пилота.
-        console.warn(`[17vin] нет перевода RU→ZH, поиск пропущен: «${q}»`)
-        return []
-      }
-      effectiveQuery = zh
-    } else if (!/[一-鿿]/.test(q)) {
-      latinPostFilter = true
+    if (/[а-яё]/i.test(q)) return this.searchRussian(vehicle, q)
+    // Китайский — как есть; латиница — выгрузка всего каталога со своим отбором.
+    const terms = /[一-鿿]/.test(q) ? null : [q]
+    const epc = await this.resolveEpc(vehicle)
+    if (!epc) return []
+    return this.searchTerm(vehicle, epc, q, terms)
+  }
+
+  /**
+   * Русский запрос: словарь `part-terms` → китайский термин, затем английские.
+   * Порядок не случаен: китайский проход точен и дёшев по объёму ответа, а
+   * английский тянет весь каталог машины. Оба прохода бесплатны (5107 баланс
+   * не трогает), поэтому промах первого ничего не стоит, кроме времени.
+   */
+  private async searchRussian(vehicle: Vehicle, q: string): Promise<Part[]> {
+    const zh = translatePartQuery(q)
+    const english = englishPartTerms(q)
+    if (!zh && english.length === 0) {
+      // Лог — сырьё для пополнения словаря по реальным запросам пилота.
+      console.warn(`[17vin] нет перевода запроса, поиск пропущен: «${q}»`)
+      return []
     }
 
     const epc = await this.resolveEpc(vehicle)
     if (!epc) return []
 
+    if (zh) {
+      const parts = await this.searchTerm(vehicle, epc, zh, null)
+      if (parts.length > 0) return parts
+    }
+
+    // Термины перебираются по одному: на каталоге с английской базой первый же
+    // вернёт всё (отбор идёт локально по ВСЕМ терминам), а если каталог всё же
+    // фильтрует по слову — у каждого синонима свой шанс.
+    for (const term of english) {
+      const parts = await this.searchTerm(vehicle, epc, term, english)
+      if (parts.length > 0) return parts
+    }
+    return []
+  }
+
+  /**
+   * Один вызов 5107 с готовым термином. `terms` — английские подстроки для
+   * локального отбора (null — каталог отфильтровал сам, отбор не нужен).
+   */
+  private async searchTerm(
+    vehicle: Vehicle,
+    epc: string,
+    term: string,
+    terms: string[] | null,
+  ): Promise<Part[]> {
     const params = new URLSearchParams({
       action: 'search_epc_part_name',
       vin: vehicle.vin.trim().toUpperCase(),
       query_match_type: 'inexact',
-      query_part_name: safeBase64(effectiveQuery),
+      query_part_name: safeBase64(term),
       query_part_name_is_safebase64: '1',
     })
     const payload = await this.call(`/${encodeURIComponent(epc)}?${params.toString()}`)
     if (payload === null) return []
-    const found = mapParts(payload, { brand: vehicle.make, epc })
-    const parts = latinPostFilter ? filterByQueryTokens(found, q) : found
+
+    // Потолок снимается только там, где дальше идёт отбор: иначе выгрузка всего
+    // каталога обрезалась бы до первой сотни, в которой нужной детали нет.
+    const found = mapParts(payload, { brand: vehicle.make, epc, limit: terms ? Infinity : undefined })
+    const parts = terms ? filterByTerms(found, terms).slice(0, VIN17_MAX_PARTS) : found
     return this.withHotspots(vehicle, epc, parts)
   }
 
@@ -272,17 +319,57 @@ export class Vin17CatalogProvider implements CatalogProvider, DealerPriceProvide
 }
 
 /**
- * Дофильтрация латинской выдачи: нечёткий поиск 17vin по английскому термину
- * разливается на весь каталог, поэтому оставляем только детали, в названии или
- * категории которых встречается каждое слово запроса.
+ * Отбор выгрузки каталога по английским терминам запроса: на латиницу 17vin
+ * отдаёт весь список деталей машины, отбор — наша работа.
+ *
+ * Термин ищется ЦЕЛОЙ ФРАЗОЙ и термины перебираются в порядке словаря — от
+ * самого узкого к родовому, — а выдачу даёт ПЕРВЫЙ, который вообще попал.
+ * Обе тонкости проверены живьём (18.09.2026) и обе нужны: по отдельным словам
+ * «pad kit» ловил `PAD-BRAKE PEDAL`, а родовое «pad» на Jaguar приносило 38
+ * накладок бампера и подушек сидений вместо колодок. С порядком и фразой
+ * каждая из трёх машин отвечает своей записью: Subaru — `PAD KIT-FRONT DISK
+ * BRAKE`, Toyota — `PAD KIT, DISC BRAKE, FRONT`, Jaguar — `Brake pad tool`
+ * (машинный перевод названия узла у этого каталога такой).
+ *
+ * Название детали важнее узла: оно и отвечает на «что это за деталь». Но если
+ * по названию не попал ни один термин, пробуем узел — у части каталогов деталь
+ * названа родовым словом, а уточнение стоит в узле (у Jaguar фильтр воздуха
+ * назван просто `Filter` в узле «Air Filter — 2.0 Liter Gasoline»).
  */
-export function filterByQueryTokens(parts: Part[], query: string): Part[] {
-  const tokens = query.toLowerCase().split(/\s+/).filter((t) => t.length >= 2)
-  if (tokens.length === 0) return parts
-  return parts.filter((part) => {
-    const haystack = `${part.name} ${part.category}`.toLowerCase()
-    return tokens.every((token) => haystack.includes(token))
-  })
+export function filterByTerms(parts: Part[], terms: string[]): Part[] {
+  const needles = terms.map((term) => term.toLowerCase().trim()).filter(Boolean)
+
+  for (const field of [namePartOf, nameAndNodeOf]) {
+    for (const needle of needles) {
+      const hit = parts.filter((part) => field(part).includes(needle))
+      if (hit.length > 0) return hoistExactNames(hit, needle)
+    }
+  }
+  return []
+}
+
+const namePartOf = (part: Part): string => part.name.toLowerCase()
+const nameAndNodeOf = (part: Part): string => `${part.name} ${part.category}`.toLowerCase()
+
+/**
+ * Сама деталь — первой строкой, её окружение — ниже: мастер жмёт первую кнопку.
+ *
+ * Порядок: название равно термину; название им ЗАКАНЧИВАЕТСЯ; всё остальное.
+ * Второе правило — про английскую грамматику: главное слово стоит в конце, и
+ * «Lead-acid battery» — это аккумулятор, а «Ion battery charger» — зарядное
+ * устройство (живьём на Jaguar XF оно и стояло первым). Внутри группы порядок
+ * каталога сохраняется — он осмысленный, позиции узла идут подряд.
+ */
+function hoistExactNames(parts: Part[], needle: string): Part[] {
+  const rank = (name: string): number => {
+    const lowered = name.toLowerCase().trim()
+    if (lowered === needle) return 0
+    return lowered.endsWith(needle) ? 1 : 2
+  }
+  return parts
+    .map((part, order) => ({ part, order, rank: rank(part.name) }))
+    .sort((a, b) => a.rank - b.rank || a.order - b.order)
+    .map((ranked) => ranked.part)
 }
 
 /** Путь запроса декодирования — единый для decodeVin и восстановления epc. */
@@ -518,13 +605,19 @@ export type Vin17PartsContext = {
   epc: string | null
   /** Узел, который запрашивали (оп. 5105): в его ответе `cata_code` нет. */
   schemeId?: string
+  /**
+   * Потолок деталей; по умолчанию VIN17_MAX_PARTS. Снимается там, где выдача
+   * дальше отбирается локально (см. `searchTerm`): обрезать выгрузку всего
+   * каталога ДО отбора значит потерять искомую деталь.
+   */
+  limit?: number
 }
 
 /**
  * Payload поиска 5107 (или списка 5105) → детали контракта. Детали, явно
  * помеченные неприменимыми к этому VIN, записи без номера/названия и дубли
  * (номер+название: одна деталь приходит несколькими строками применимости)
- * отбрасываются; выдача ограничена VIN17_MAX_PARTS.
+ * отбрасываются; выдача ограничена `ctx.limit` (по умолчанию VIN17_MAX_PARTS).
  *
  * Схема узла приходит в том же ответе, отдельного запроса не требует:
  * `illustration_img_address` — файл картинки, `callout` — номер выноски на ней,
@@ -534,10 +627,11 @@ export function mapParts(payload: Record<string, unknown>, ctx: Vin17PartsContex
   const list = asArray(payload['searchlist']) ?? asArray(payload['partlist'])
   if (!list) return []
 
+  const limit = ctx.limit ?? VIN17_MAX_PARTS
   const parts: Part[] = []
   const seen = new Set<string>()
   for (const item of list) {
-    if (parts.length >= VIN17_MAX_PARTS) break
+    if (parts.length >= limit) break
     if (int(item, ['is_fit_for_this_vin']) === 0) continue // явно не подходит к VIN
 
     const oemNumber = str(item, ['partnumber_original', 'partnumber'])

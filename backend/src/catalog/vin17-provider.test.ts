@@ -316,6 +316,94 @@ describe('Vin17CatalogProvider.searchParts', () => {
     expect(parts[0]!.oemNumber).toBe('1565038020')
   })
 
+  // Живой случай 18.09.2026: Jaguar XF SAJAA04M6FPU46282, «фильтр масляный».
+  // База каталога jaguar — английская, китайский термин словаря (机油滤清器) даёт
+  // ноль, а на латиницу 17vin отдаёт ВЕСЬ подходящий VIN список (2272 записи).
+  describe('каталог с английской базой (Jaguar)', () => {
+    /** Выгрузка каталога: нужная деталь стоит за потолком VIN17_MAX_PARTS. */
+    const DUMP = {
+      searchlist: [
+        ...Array.from({ length: VIN17_MAX_PARTS + 20 }, (_, i) => ({
+          partnumber: `NOISE${i}`,
+          name_en: 'Bolt',
+          cata_name_en: '2824>6739>Valve cap',
+        })),
+        {
+          partnumber: 'C2D28418',
+          name_en: 'Oil sediment filter',
+          cata_name_en: '2679>7544>Oil Pan and Oil Gauge',
+        },
+        {
+          partnumber: 'C2Z21964',
+          name_en: 'Oil filter',
+          cata_name_en: '2679>7545>Oil Filter - 2.0 Liter Gasoline GTDI',
+        },
+      ],
+    }
+
+    const jaguar: Vehicle = { ...vehicle, make: 'Jaguar', model: 'XF', raw: { epc: 'jaguar' } }
+
+    function dumpProvider(terms: string[]): Vin17CatalogProvider {
+      return providerWith((url) => {
+        const sent = new URL(url).searchParams.get('query_part_name')
+        // Китайский термин на этом каталоге не находит ничего.
+        if (sent === safeBase64('机油滤清器')) return envelope(0, { searchlist: [] }, 'query no result')
+        return terms.some((term) => sent === safeBase64(term)) ? envelope(1, DUMP) : envelope(0, null)
+      })
+    }
+
+    test('китайский термин пуст → ищем английским и отбираем по названию', async () => {
+      const parts = await dumpProvider(['oil filter']).searchParts(jaguar, 'фильтр масляный')
+      // Термин ищется целой фразой, поэтому «Oil sediment filter» — не масляный
+      // фильтр, а поддон — в выдачу не попадает.
+      expect(parts.map((part) => part.oemNumber)).toEqual(['C2Z21964'])
+    })
+
+    test('потолок накладывается ПОСЛЕ отбора, иначе деталь теряется в выгрузке', async () => {
+      const parts = await dumpProvider(['oil filter']).searchParts(jaguar, 'фильтр масляный')
+      // Без этого шум (Bolt) выбрал бы всю сотню, и фильтра в выдаче не было бы.
+      expect(parts.some((part) => part.name === 'Bolt')).toBe(false)
+      expect(parts.length).toBeLessThanOrEqual(VIN17_MAX_PARTS)
+    })
+
+    test('китайский проход нашёл — английский не запрашивается', async () => {
+      const sent: string[] = []
+      const provider = providerWith((url) => {
+        sent.push(String(new URL(url).searchParams.get('query_part_name')))
+        return envelope(1, SEARCH_PAYLOAD)
+      })
+      await provider.searchParts(jaguar, 'масляный фильтр')
+      expect(sent[0]).toBe(safeBase64('机油滤清器'))
+      expect(sent).not.toContain(safeBase64('oil filter'))
+    })
+
+    test('первой строкой — сама деталь, а не прибор с тем же словом', async () => {
+      const provider = providerWith((url) => {
+        const sent = new URL(url).searchParams.get('query_part_name')
+        if (sent === safeBase64('蓄电池')) return envelope(0, { searchlist: [] }, 'query no result')
+        return envelope(1, {
+          searchlist: [
+            // Каталог отдаёт зарядное устройство раньше самого аккумулятора.
+            { partnumber: 'C2P24104', name_en: 'Ion battery charger', cata_name_en: '1>Vehicle Maintenance' },
+            { partnumber: 'C2C34669', name_en: 'Lead-acid battery', cata_name_en: '1>Battery and installation kit' },
+          ],
+        })
+      })
+      const parts = await provider.searchParts(jaguar, 'аккумулятор')
+      expect(parts[0]!.name).toBe('Lead-acid battery')
+    })
+
+    test('нет ни китайского, ни английского термина → API не дёргаем', async () => {
+      const calls: string[] = []
+      const provider = providerWith((url) => {
+        calls.push(url)
+        return envelope(1, DUMP)
+      })
+      expect(await provider.searchParts(jaguar, 'загадочная деталь')).toEqual([])
+      expect(calls).toHaveLength(0)
+    })
+  })
+
   test('code 1003 (бренд не поддержан) → пустой список, а не ошибка', async () => {
     const provider = providerWith(() => envelope(1003, '', '不支持的品牌接口'))
     expect(await provider.searchParts(vehicle, 'фильтр')).toEqual([])
