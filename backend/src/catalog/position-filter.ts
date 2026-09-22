@@ -40,6 +40,12 @@ const AXES: Axis[] = [
 
 const TOKEN_RE = /[\p{L}\p{N}_-]+/gu
 
+/** Слово запроса — уточнение позиции («передние», «левый», «rear»), а не деталь. */
+export function isPositionWord(word: string): boolean {
+  const lowered = word.toLowerCase()
+  return AXES.some((axis) => axis.sides.some((side) => side.token.test(lowered)))
+}
+
 function mentions(text: string, side: SideMatcher): boolean {
   const lowered = text.toLowerCase()
   if (side.zh && side.zh.test(lowered)) return true

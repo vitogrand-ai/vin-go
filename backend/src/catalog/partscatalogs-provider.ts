@@ -3,7 +3,7 @@ import type { Part, Vehicle } from '@web-app-demo/contracts'
 import { AppError } from '../http/errors'
 import { CATALOG_SOURCE_KEY } from './fallback-catalog'
 import { asArray, firstArray, int, isRecord, str } from './parse-utils'
-import { positionRank } from './position-filter'
+import { isPositionWord, positionRank } from './position-filter'
 import { NAME_MATCH, NODE_MATCH, closeness, queryNames, queryNamesForOrder, wordKeys } from './part-match'
 import { englishPartTerms } from './part-terms'
 import { requestProviderJson } from './provider-http'
@@ -353,6 +353,10 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
         `/catalogs/${encodeURIComponent(ref.catalogId)}/parts2?${params}`,
       )
       if (data === null) continue
+      if (foreignNode(data, ctx.sidSet, group.category, ctx.query)) {
+        console.warn(`[parts-catalogs] узел «${group.category}» не о том, что спрашивали: каталог отдал чужую схему`)
+        continue
+      }
       // У parts2 своя копия картинки схемы — берём её, если в списке схем пусто.
       const imageUrl = group.imageUrl ?? (isRecord(data) ? normalizeImageUrl(str(data, ['img'])) : null)
       collectParts(data, { ...ctx, category: group.category, imageUrl, schemeId: groupId, out: parts })
@@ -412,6 +416,41 @@ function schemaGroups(
     if (groups.size >= MAX_GROUPS_PER_NAME) break
   }
   return groups
+}
+
+/**
+ * Узел из ответа parts2 — чужой: у его деталей есть идентификаторы названий
+ * (`nameId`), но ни одного из тех, что спрашивали.
+ *
+ * Каталог отдаёт узлы на запрос ПО НАЗВАНИЮ детали (`schemas?partNameIds=`), и
+ * в честном ответе хоть одна деталь узла этим названием и помечена. У части
+ * машин вызов отдаёт одну схему на любую деталь (см. `searchByTree`), и отбор
+ * по похожему слову пропускал из чужого узла: живьём 22.09.2026 Toyota Prado
+ * на «тормозные диски» получала «Ротор - якорь генератора», на «ступичный
+ * подшипник» — «Подшипник генератора».
+ *
+ * Одного nameId мало: у subaru дерево локализовано частично, и в своём узле
+ * «Передний тормоз» nameId есть у скобы суппорта, а у самих колодок — нет.
+ * Поэтому узел чужой, только если против него ОБА признака: искомого nameId
+ * нет, и название узла на запрос не похоже (NODE_MATCH). «Передний тормоз» на
+ * «колодки передние» похож — свой; «Генератор» на «тормозные диски» — нет.
+ *
+ * Правило молчит, когда судить не по чему: у деталей нет nameId вовсе, а в
+ * запасном пути по дереву искомых sid нет — там узел выбран по своему названию.
+ */
+function foreignNode(data: unknown, sidSet: Set<string>, category: string, query: string): boolean {
+  if (sidSet.size === 0 || !isRecord(data)) return false
+  if (closeness(category, queryNamesForOrder(query)) >= NODE_MATCH) return false
+  let labelled = false
+  for (const group of asArray(data['partGroups']) ?? []) {
+    for (const part of asArray(group['parts']) ?? []) {
+      const nameId = str(part, ['nameId'])
+      if (nameId === null) continue
+      if (sidSet.has(nameId)) return false
+      labelled = true
+    }
+  }
+  return labelled
 }
 
 /** Дерево `groups-tree` ({id, name, subGroups}) → листья с путём от корня. */
@@ -864,15 +903,21 @@ export function rankSuggestions(suggestions: Suggestion[], query: string): strin
 }
 
 /**
- * Варианты запроса для groups-suggest: исходный, затем без последних слов
- * («колодки тормозные передние» → «колодки тормозные» → «колодки»). Подсказка
- * ищет по названиям деталей, где уточнений позиции обычно нет.
+ * Варианты запроса для groups-suggest: исходный, затем без уточнений позиции
+ * в конце («колодки тормозные передние» → «колодки тормозные»). Подсказка ищет
+ * по названиям деталей, где позиции обычно нет.
+ *
+ * Отрезаются ТОЛЬКО слова позиции. Прежде отрезалось любое последнее слово, и
+ * вместе с позицией уходила суть запроса: «ремень грм» становился «ремнём», и
+ * мастер получал ремень безопасности (Mercedes) или приводной (Citroen, Skoda,
+ * Ford, Chery) — живьём 22.09.2026; «стойка стабилизатора» — любой «стойкой».
  */
 export function shortenQuery(query: string): string[] {
   const words = query.split(/\s+/).filter(Boolean)
-  const out: string[] = []
-  for (let count = words.length; count >= 1; count--) {
-    out.push(words.slice(0, count).join(' '))
+  const out = [words.join(' ')]
+  while (words.length > 1 && isPositionWord(words[words.length - 1]!)) {
+    words.pop()
+    out.push(words.join(' '))
   }
   return out
 }

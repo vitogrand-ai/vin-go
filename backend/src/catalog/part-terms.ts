@@ -49,7 +49,11 @@ const DICT: DictEntry[] = [
   { stems: ['воздушн', 'фильтр'], zh: '空气滤清器', en: ['air filter', 'air cleaner'] }, // 8
   { stems: ['топливн', 'фильтр'], zh: '燃油滤清器', en: ['fuel filter'] }, // 1
   { stems: ['привод', 'ремен'], zh: '皮带', en: ['belt'] }, // приводной ремень ≠ полуось
-  { stems: ['ремен', 'грм'], zh: '正时', en: ['timing'] }, // узел ГРМ: у части моторов цепь, не ремень
+  // Ремень и цепь ГРМ — только фразой, прямой и перевёрнутой (так пишет Toyota:
+  // «BELT, TIMING»). Голое «timing» пропускало из узла всё со словом TIMING:
+  // живьём 22.09.2026 Toyota Prado (1GR, у него цепь) получала шпонку шестерни
+  // и кольцо клапана фаз первой строкой.
+  { stems: ['ремен', 'грм'], zh: '正时', en: ['timing belt', 'belt, timing', 'timing chain', 'chain, timing'] }, // узел ГРМ: у части моторов цепь, не ремень
   { stems: ['цеп', 'грм'], zh: '正时链', en: ['timing chain'] }, // 3
   { stems: ['ремен', 'безопасн'], zh: '安全带', en: ['seat belt', 'seatbelt'] }, // 33
   { stems: ['подушк', 'безопасн'], zh: '气囊', en: ['air bag', 'airbag'] }, // 19
@@ -65,7 +69,9 @@ const DICT: DictEntry[] = [
   { stems: ['шаров', 'опор'], zh: '球节', en: ['ball joint'] }, // 10
   { stems: ['стекл', 'лобов'], zh: '挡风玻璃', en: ['windshield', 'windscreen'] }, // 50
   { stems: ['стекл', 'ветров'], zh: '挡风玻璃', en: ['windshield', 'windscreen'] },
-  { stems: ['рулев', 'рейк'], zh: '转向', en: ['steering gear', 'steering rack'] }, // 31 — узлы рулевого управления
+  // «steering gear box» — сама рейка у Subaru; без него пыльник «BOOT-STEERING
+  // GEAR BOX» обгонял рейку по доле общих слов (живьём 22.09.2026).
+  { stems: ['рулев', 'рейк'], zh: '转向', en: ['steering gear box', 'steering gear', 'steering rack'] }, // 31 — узлы рулевого управления
   { stems: ['рулев', 'тяг'], zh: '转向', en: ['tie rod'] },
   { stems: ['наконечник'], zh: '转向', en: ['tie rod end'] }, // наконечник рулевой тяги
 
@@ -101,7 +107,7 @@ const DICT: DictEntry[] = [
 
   // — Двигатель и системы —
   { stems: ['свеч'], zh: '火花塞', en: ['spark plug'] }, // 3
-  { stems: ['грм'], zh: '正时', en: ['timing'] }, // 14
+  { stems: ['грм'], zh: '正时', en: ['timing belt', 'belt, timing', 'timing chain', 'chain, timing'] }, // 14
   { stems: ['помп'], zh: '水泵', en: ['water pump'] },
   { stems: ['бензонасос'], zh: '燃油泵', en: ['fuel pump'] },
   { stems: ['гур'], zh: '动力转向', en: ['power steering'] }, // 3

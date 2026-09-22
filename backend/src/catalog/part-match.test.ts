@@ -105,6 +105,13 @@ describe('порядок выдачи', () => {
     ).toBe('PAD KIT, DISC BRAKE, FRONT')
   })
 
+  it('рулевая рейка идёт вперёд своего пыльника (Subaru)', () => {
+    // Живьём 22.09.2026: первой строкой шёл «BOOT-STEERING GEAR BOX».
+    expect(
+      first('рулевая рейка', ['BOOT-STEERING GEAR BOX', 'STEERING GEAR BOX ASSEMBLY, EPS']),
+    ).toBe('STEERING GEAR BOX ASSEMBLY, EPS')
+  })
+
   it('уточнение в названии не отдаёт первое место короткому чужому соседу', () => {
     const order = queryNamesForOrder('генератор')
     expect(closeness('Генератор', order)).toBeGreaterThan(closeness('Подшипник генератора', order))

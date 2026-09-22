@@ -4,6 +4,7 @@ import type { Part, Vehicle } from '@web-app-demo/contracts'
 
 import { AppError } from '../http/errors'
 import { queryNames } from './part-match'
+import { englishPartTerms } from './part-terms'
 import { CATALOG_SOURCE_KEY } from './fallback-catalog'
 import {
   PARTSCATALOGS_MAX_PARTS,
@@ -354,8 +355,9 @@ describe('PartsCatalogsCatalogProvider.searchParts', () => {
       return new Response('', { status: 404 })
     })
 
-    expect(await provider.searchParts(vehicle, 'фильтр масляный двигателя')).toEqual([])
-    expect(suggestQueries).toEqual(['фильтр масляный двигателя', 'фильтр масляный'])
+    // Три варианта («… передний левый» → «… передний» → «амортизатор»), проходов два.
+    expect(await provider.searchParts(vehicle, 'амортизатор передний левый')).toEqual([])
+    expect(suggestQueries).toEqual(['амортизатор передний левый', 'амортизатор передний'])
   })
 
   test('нелокализованный узел: колодки находятся по английскому названию', async () => {
@@ -609,6 +611,28 @@ describe('collectParts', () => {
     out: [] as Part[],
   })
 
+  test('«ремень ГРМ» не пропускает всё подряд со словом TIMING', () => {
+    // Живьём 22.09.2026, Toyota Prado (мотор 1GR, у него цепь): по голому
+    // «timing» из узла прошли шпонка шестерни и уплотнительное кольцо клапана
+    // фаз — мастер получал их первой строкой. Ремень и цепь — только фразой.
+    const c = ctx(englishPartTerms('ремень грм'), 'ремень грм')
+    collectParts(
+      {
+        partGroups: [
+          {
+            parts: [
+              { number: '95161-30516', name: 'KEY(FOR CRANKSHAFT TIMING GEAR)' },
+              { number: '90099-14137', name: 'RING, O(FOR CAM TIMING OIL CONTROL VALVE)' },
+              { number: '13568-09130', name: 'BELT, TIMING' },
+            ],
+          },
+        ],
+      },
+      c,
+    )
+    expect(c.out.map((part) => part.oemNumber)).toEqual(['13568-09130'])
+  })
+
   test('деталь без nameId находится по русскому названию из словаря', () => {
     // Живой Citroen: сама клапанная крышка лежит без nameId и с оригинальным
     // РУССКИМ названием, а nameId есть у её прокладки. Раньше проходила только
@@ -766,13 +790,23 @@ describe('collectParts', () => {
 })
 
 describe('shortenQuery / normalizeImageUrl', () => {
-  test('варианты запроса: исходный, затем без последних слов', () => {
+  test('варианты запроса: исходный, затем без уточнений позиции в конце', () => {
     expect(shortenQuery('колодки тормозные передние')).toEqual([
       'колодки тормозные передние',
       'колодки тормозные',
-      'колодки',
+    ])
+    expect(shortenQuery('амортизатор передний левый')).toEqual([
+      'амортизатор передний левый',
+      'амортизатор передний',
+      'амортизатор',
     ])
     expect(shortenQuery('фильтр')).toEqual(['фильтр'])
+  })
+
+  test('суть запроса не отрезается: «ремень грм» не становится любым ремнём', () => {
+    // Живьём 22.09.2026: Mercedes на «ремень грм» получал ремень безопасности.
+    expect(shortenQuery('ремень грм')).toEqual(['ремень грм'])
+    expect(shortenQuery('стойка стабилизатора')).toEqual(['стойка стабилизатора'])
   })
 
   test('протокол-относительный URL картинки получает https, мусор отбрасывается', () => {
@@ -1192,5 +1226,70 @@ describe('PartsCatalogsCatalogProvider.searchParts: запасной путь ч
     const parts = await providerWith(healthy, calls).searchParts(car, 'стартер')
     expect(parts).toHaveLength(1)
     expect(calls.some((call) => call.url.includes('/groups-tree'))).toBe(false)
+  })
+})
+
+// Живой случай 22.09.2026, Toyota Prado: на «тормозные диски» каталог по
+// schemas?partNameIds отдал узел «Генератор», и мастер получил «Ротор - якорь
+// генератора» (ротор — синоним тормозного диска), на «ступичный подшипник» —
+// «Подшипник генератора». У деталей узла есть nameId, но ни одного из
+// искомых: значит, узел чужой, и похожее слово в названии ничего не доказывает.
+describe('PartsCatalogsCatalogProvider.searchParts: чужой узел от каталога', () => {
+  const car: Vehicle = {
+    vin: 'LFMGJE720DS070251',
+    make: 'Toyota',
+    model: 'Land Cruiser',
+    year: 2013,
+    engine: null,
+    bodyType: null,
+    raw: { catalogId: 'toyota', carId: 'car-t', criteria: 'crit', [CATALOG_SOURCE_KEY]: 'partscatalogs' },
+  }
+
+  function staleCatalog(url: string): Response {
+    const u = new URL(url)
+    if (u.pathname.endsWith('/groups-suggest')) return json([{ sid: '400', name: 'Диск тормозной' }])
+    if (u.pathname.endsWith('/groups-tree')) return json([])
+    if (u.pathname.endsWith('/schemas')) return json({ group: null, list: [{ groupId: 'g-alt', name: 'Генератор', img: '' }] })
+    if (u.pathname.endsWith('/parts2')) {
+      return json({ partGroups: [{ name: '', parts: [
+        { number: '27330-0P070', name: 'Ротор - якорь генератора', nameId: '5612' },
+        { number: '27415-0W130', name: 'Шкив генератора', nameId: '843' },
+      ] }] })
+    }
+    return new Response('', { status: 404 })
+  }
+
+  test('ни одного искомого nameId в узле → узел чужой, похожие по слову детали не берём', async () => {
+    expect(await providerWith(staleCatalog).searchParts(car, 'тормозные диски')).toEqual([])
+  })
+
+  test('дерево локализовано частично: чужой nameId у соседа не выбрасывает свой узел (Subaru)', async () => {
+    // Живьём 22.09.2026: в узле «Передний тормоз» nameId есть у скобы суппорта
+    // (296), а у самих колодок нет. Узел похож на запрос — он свой.
+    const subaru = (url: string): Response => {
+      const u = new URL(url)
+      if (u.pathname.endsWith('/groups-suggest')) return json([{ sid: '1109', name: 'Колодки тормозные (ремкомплект)' }])
+      if (u.pathname.endsWith('/schemas')) return json({ group: null, list: [{ groupId: 'g-front', name: 'Передний тормоз', img: '' }] })
+      if (u.pathname.endsWith('/parts2')) {
+        return json({ partGroups: [{ name: '', parts: [
+          { number: '26225FL000', name: 'Скоба тормозного суппорта', nameId: '296' },
+          { number: '26296SJ020', name: 'PAD KIT-FRONT DISK BRAKE' },
+        ] }] })
+      }
+      return staleCatalog(url)
+    }
+    const parts = await providerWith(subaru).searchParts({ ...car, make: 'Subaru' }, 'колодки передние')
+    expect(parts.map((part) => part.oemNumber)).toContain('26296SJ020')
+  })
+
+  test('у деталей узла нет nameId вовсе (каталог без универсального дерева) → отбор по названию как раньше', async () => {
+    const noIds = (url: string): Response => {
+      if (new URL(url).pathname.endsWith('/parts2')) {
+        return json({ partGroups: [{ name: '', parts: [{ number: '26300SJ000', name: 'Диск тормозной' }] }] })
+      }
+      return staleCatalog(url)
+    }
+    const parts = await providerWith(noIds).searchParts(car, 'тормозные диски')
+    expect(parts.map((part) => part.oemNumber)).toEqual(['26300SJ000'])
   })
 })
