@@ -201,6 +201,37 @@ describe('HttpTelegramClient.sendPhoto: картинка уходит файло
     expect(calls).toHaveLength(1)
   })
 
+  test('картинку с типом octet-stream узнаёт по байтам и шлёт', async () => {
+    // Живьём 18.09.2026: CDN 17vin отдаёт схемы Jaguar как application/octet-stream,
+    // бот отказывался от картинки и мастер получал выдачу без схемы.
+    const { impl, calls } = catalogAndTelegram(
+      () => new Response(PNG, { status: 200, headers: { 'content-type': 'application/octet-stream' } }),
+    )
+    const client = new HttpTelegramClient(TOKEN, impl)
+
+    await client.sendPhoto(42, PHOTO_URL)
+
+    expect(calls).toHaveLength(2)
+    const sent = (calls[1]!.init?.body as FormData).get('photo') as Blob
+    expect(sent.type).toBe('image/png')
+  })
+
+  test('octet-stream без подписи картинки в Telegram не несёт', async () => {
+    const { impl, calls } = catalogAndTelegram(
+      () =>
+        new Response('not an image', {
+          status: 200,
+          headers: { 'content-type': 'application/octet-stream' },
+        }),
+    )
+    const client = new HttpTelegramClient(TOKEN, impl)
+
+    const error = await caught(client.sendPhoto(42, PHOTO_URL))
+
+    expect(error.message).toContain('octet-stream')
+    expect(calls).toHaveLength(1)
+  })
+
   test('отказ Bot API остаётся читаемым и без токена', async () => {
     const { impl } = recordingFetch((url) =>
       url.startsWith('https://api.telegram.org')

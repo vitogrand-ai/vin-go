@@ -219,8 +219,11 @@ export class HttpTelegramClient implements TelegramClient {
 
     // Ошибку CDN, отданную страницей с кодом 200, ловим до загрузки в Telegram —
     // иначе он ответит невнятным Bad Request.
+    // Безымянный поток (application/octet-stream) судим по байтам: CDN 17vin
+    // так отдаёт настоящие схемы (живьём 18.09.2026, Jaguar), и бот терял схему.
     const type = response.headers.get('content-type')
-    if (type && !type.startsWith('image/')) {
+    const untyped = !type || type.startsWith('application/octet-stream')
+    if (!untyped && !type.startsWith('image/')) {
       throw new Error(`Telegram ${method}: вместо картинки пришёл ${type}`)
     }
 
@@ -229,7 +232,11 @@ export class HttpTelegramClient implements TelegramClient {
     if (blob.size > MAX_PHOTO_BYTES) {
       throw new Error(`Telegram ${method}: картинка ${blob.size} Б больше лимита Bot API`)
     }
-    return blob
+    if (!untyped) return blob
+
+    const sniffed = imageTypeOf(new Uint8Array(await blob.slice(0, 12).arrayBuffer()))
+    if (!sniffed) throw new Error(`Telegram ${method}: вместо картинки пришёл ${type ?? 'файл без типа'}`)
+    return new Blob([blob], { type: sniffed })
   }
 
   async sendChatAction(chatId: number, action: 'typing'): Promise<void> {
@@ -262,6 +269,19 @@ export class HttpTelegramClient implements TelegramClient {
       return null
     }
   }
+}
+
+/** Тип картинки по подписи в первых байтах; null — это не картинка. */
+function imageTypeOf(head: Uint8Array): string | null {
+  const starts = (...bytes: number[]) => bytes.every((byte, i) => head[i] === byte)
+  if (starts(0x89, 0x50, 0x4e, 0x47)) return 'image/png'
+  if (starts(0xff, 0xd8, 0xff)) return 'image/jpeg'
+  if (starts(0x47, 0x49, 0x46, 0x38)) return 'image/gif'
+  // WebP: «RIFF», четыре байта длины, «WEBP».
+  if (starts(0x52, 0x49, 0x46, 0x46) && head[8] === 0x57 && head[9] === 0x45 && head[10] === 0x42 && head[11] === 0x50) {
+    return 'image/webp'
+  }
+  return null
 }
 
 /**
