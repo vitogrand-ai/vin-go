@@ -90,6 +90,11 @@ const DICT: DictEntry[] = [
   // каталоге находятся энергопоглотители бампера (Subaru, живьём 18.09.2026).
   { stems: ['амортизатор'], zh: '减振器', en: ['shock absorber', 'absorber', 'strut', 'damper'] }, // 17 (именно 振 — EPC-написание)
   { stems: ['пружин'], zh: '弹簧', en: ['spring'] }, // 54
+  // Стойка (тяга) — раньше родового «стабилизатора»: по одному «stabilizer»
+  // проходят хомут и сама штанга. Subaru зовёт стойку «LINK ASSEMBLY-FRONT
+  // STABILIZER RIGHT» (живьём 23.09.2026), слова термина ищутся вразбивку.
+  { stems: ['стойк', 'стабилизатор'], zh: '稳定杆连杆', en: ['stabilizer link', 'sway bar link'] },
+  { stems: ['тяг', 'стабилизатор'], zh: '稳定杆连杆', en: ['stabilizer link', 'sway bar link'] },
   { stems: ['стабилизатор'], zh: '稳定杆', en: ['stabilizer', 'sway bar'] }, // 15
   { stems: ['сайлентблок'], zh: '衬套', en: ['bush'] }, // 25
   { stems: ['втулк'], zh: '衬套', en: ['bush', 'sleeve'] },

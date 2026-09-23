@@ -342,6 +342,15 @@ const CASES: Case[] = [
     expect: { minParts: 1, firstMatches: /крышка расширительного/i },
   },
   {
+    vin: 'XW8LD6NS2LH410128',
+    car: 'Skoda Kodiaq',
+    query: 'крышка расширительного бачка',
+    origin:
+      '23.09.2026: пусто — листья «Крышка багажника», «Крышка ГБЦ» (общее слово) вытесняли подсказанный ' +
+      '«Бачок расширительный» из трёх раскрываемых листьев дерева',
+    expect: { minParts: 1, firstMatches: /крышка расширительного/i },
+  },
+  {
     vin: 'LFMGJE720DS070251',
     car: 'Toyota Land Cruiser Prado',
     query: 'шаровая',

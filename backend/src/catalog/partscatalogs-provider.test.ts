@@ -1186,6 +1186,17 @@ describe('PartsCatalogsCatalogProvider.searchParts: запасной путь ч
         { id: '797', name: 'Генератор', parentId: '1', subGroups: [] },
       ],
     },
+    // Приманки: общее слово «крышка» не должно вытеснить узел из подсказки.
+    {
+      id: '6',
+      name: 'Кузов, остекление',
+      parentId: null,
+      subGroups: [
+        { id: '41', name: 'Крышка багажника', parentId: '6', subGroups: [] },
+        { id: '42', name: 'Крышка топливного бака', parentId: '6', subGroups: [] },
+        { id: '43', name: 'Крышка головки блока', parentId: '6', subGroups: [] },
+      ],
+    },
     {
       id: '2',
       name: 'Охлаждение ДВС',
@@ -1200,6 +1211,24 @@ describe('PartsCatalogsCatalogProvider.searchParts: запасной путь ч
       name: 'Трансмиссия, КПП',
       parentId: null,
       subGroups: [{ id: '4', name: 'Привод колеса', parentId: '3', subGroups: [{ id: '31', name: 'Приводной вал', parentId: '4', subGroups: [] }] }],
+    },
+    // Subaru: лист «Колодки тормозные» ведёт только в задний тормоз, передние колодки — в узле диска.
+    {
+      id: '7',
+      name: 'Детали ТО',
+      parentId: null,
+      subGroups: [
+        { id: '51', name: 'Колодки тормозные', parentId: '7', subGroups: [] },
+        { id: '52', name: 'Диск, барабан тормозной', parentId: '7', subGroups: [] },
+      ],
+    },
+    {
+      id: '8',
+      name: 'Подвеска, шасси',
+      parentId: null,
+      subGroups: [{ id: '9', name: 'Стабилизатор, составляющие', parentId: '8', subGroups: [
+        { id: '53', name: 'Сайлентблоки, втулки стабилизатора', parentId: '9', subGroups: [] },
+      ] }],
     },
     // Ловушка: тот же лист «Приводной вал», но в смазках — смазка для ШРУСа, не сам ШРУС.
     { id: '5', name: 'ГСМ, автохимия', parentId: null, subGroups: [{ id: '32', name: 'Приводной вал', parentId: '5', subGroups: [] }] },
@@ -1216,6 +1245,14 @@ describe('PartsCatalogsCatalogProvider.searchParts: запасной путь ч
       if (branch === '30') return json({ group: null, list: [{ groupId: 'g-rad', name: 'Радиатор охлаждающей жидкости', img: '' }] })
       if (branch === '31') return json({ group: null, list: [{ groupId: 'g-shaft', name: 'Приводной вал 1', img: '' }] })
       if (branch === '32') return json({ group: null, list: [{ groupId: 'g-grease', name: 'Смазка', img: '' }] })
+      if (branch === '53') return json({ group: null, list: [{ groupId: 'g-front-susp', name: 'Передняя подвеска', img: '' }] })
+      if (branch === '51') return json({ group: null, list: [{ groupId: 'g-rear-brake', name: 'Задний тормоз', img: '' }] })
+      if (branch === '52') {
+        return json({ group: null, list: [
+          { groupId: 'g-rear-brake', name: 'Задний тормоз', img: '' },
+          { groupId: 'g-front-brake', name: 'Передний тормоз', img: '' },
+        ] })
+      }
       return json({ group: null, list: [{ groupId: 'g-pump', name: 'Насос системы охлаждения', img: '' }] })
     }
     if (u.pathname.endsWith('/parts2')) {
@@ -1236,6 +1273,23 @@ describe('PartsCatalogsCatalogProvider.searchParts: запасной путь ч
         return json({ partGroups: [{ name: '', parts: [
           { number: '8V0498103', name: 'ШРУС', nameId: '565' },
           { number: '8V0498203', name: 'Пыльник ШРУСа', nameId: '566' },
+        ] }] })
+      }
+      if (u.searchParams.get('groupId') === 'g-rear-brake') {
+        return json({ partGroups: [{ name: '', parts: [{ number: '26696AL020', name: 'Колодки тормозные дисковые', nameId: '289' }] }] })
+      }
+      if (u.searchParams.get('groupId') === 'g-front-brake') {
+        return json({ partGroups: [{ name: '', parts: [
+          { number: '26292SJ000', name: 'PAD CLIP-FRONT BRAKE' },
+          { number: '26296SJ020', name: 'PAD KIT-FRONT DISK BRAKE' },
+          { number: '26300SJ000', name: 'Диск тормозной', nameId: '215' },
+        ] }] })
+      }
+      if (u.searchParams.get('groupId') === 'g-front-susp') {
+        return json({ partGroups: [{ name: '', parts: [
+          { number: '20414FJ000', name: 'CLAMP-STABILIZER BUSHING' },
+          { number: '20401SJ010', name: 'STABILIZER-FRONT' },
+          { number: '20420FL000', name: 'LINK ASSEMBLY-FRONT STABILIZER RIGHT' },
         ] }] })
       }
       if (u.searchParams.get('groupId') === 'g-grease') {
@@ -1266,6 +1320,22 @@ describe('PartsCatalogsCatalogProvider.searchParts: запасной путь ч
     const parts = await providerWith(brokenCatalog, calls).searchParts(car, 'шрус')
     expect(parts.map((part) => part.oemNumber)).toEqual(['8V0498103'])
     expect(calls.some((call) => call.url.includes('branchId=32'))).toBe(false)
+  })
+
+  // Живьём 23.09.2026, Subaru JF1SK7LL5MG129305 (машина заказчика): основной путь
+  // отдал давние чужие схемы, а лист «Колодки тормозные» ведёт только в задний тормоз.
+  test('передние колодки — из узла дискового тормоза, а не «не найдено»', async () => {
+    const parts = await providerWith(brokenCatalog).searchParts({ ...car, make: 'Subaru' }, 'колодки тормозные передние')
+    // Порядок строк задаёт сервис (близость к запросу), адаптер отвечает за состав.
+    expect(parts.map((part) => part.oemNumber)).toContain('26296SJ020')
+    expect(parts.map((part) => part.oemNumber)).not.toContain('26696AL020')
+  })
+
+  // Живьём 23.09.2026, Subaru заказчика: стойка стабилизатора зовётся «LINK ASSEMBLY-FRONT
+  // STABILIZER RIGHT» и лежит в листе «Сайлентблоки, втулки стабилизатора».
+  test('стойка стабилизатора — сама стойка, а не хомут или штанга', async () => {
+    const parts = await providerWith(brokenCatalog).searchParts({ ...car, make: 'Subaru' }, 'стойка стабилизатора')
+    expect(parts.map((part) => part.oemNumber)).toEqual(['20420FL000'])
   })
 
   test('дерево машины запрашивается один раз на машину, а не на каждый поиск', async () => {
