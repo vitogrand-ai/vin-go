@@ -428,3 +428,44 @@ describe('FallbackCatalogProvider', () => {
     expect(() => new FallbackCatalogProvider([])).toThrow()
   })
 })
+
+describe('FallbackCatalogProvider: чистый декодер (decodeOnly, vPIC)', () => {
+  test('участвует в расшифровке VIN, когда каталоги машину не знают', async () => {
+    const fb = new FallbackCatalogProvider([
+      { name: 'partscatalogs', provider: fakeProvider({ decode: async () => null }) },
+      { name: 'vpic', provider: fakeProvider({ decode: async () => ({ ...baseVehicle }) }), decodeOnly: true },
+    ])
+
+    const vehicle = await fb.decodeVin('VIN1')
+    expect(vehicle?.raw?.[CATALOG_SOURCE_KEY]).toBe('vpic')
+  })
+
+  test('в поиск деталей не включается — даже когда именно он опознал авто', async () => {
+    let vpicAsked = false
+    const fb = new FallbackCatalogProvider([
+      { name: 'partscatalogs', provider: fakeProvider({ parts: [] }) },
+      { name: 'vpic', provider: fakeProvider({ onSearch: () => (vpicAsked = true) }), decodeOnly: true },
+    ])
+
+    const vehicle: Vehicle = { ...baseVehicle, raw: { [CATALOG_SOURCE_KEY]: 'vpic' } }
+    expect(await fb.searchParts(vehicle, 'колодки')).toEqual([])
+    expect(vpicAsked).toBe(false)
+  })
+
+  test('его вечное «пусто» не маскирует сбой настоящих каталогов', async () => {
+    const boom = new Error('каталог лежит')
+    const fb = new FallbackCatalogProvider([
+      {
+        name: 'partscatalogs',
+        provider: fakeProvider({
+          onSearch: () => {
+            throw boom
+          },
+        }),
+      },
+      { name: 'vpic', provider: fakeProvider({ parts: [] }), decodeOnly: true },
+    ])
+
+    await expect(fb.searchParts({ ...baseVehicle }, 'колодки')).rejects.toBe(boom)
+  })
+})

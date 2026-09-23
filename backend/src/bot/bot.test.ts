@@ -467,3 +467,33 @@ describe('TelegramBot — граница между машинами', () => {
     expect(client.sent[0]?.text).not.toContain('Другая машина')
   })
 })
+
+describe('неопознанный VIN', () => {
+  /** Каталог, который ни одну машину не знает (все источники ответили «нет»). */
+  function emptyCatalog(): CatalogService {
+    return new CatalogService(
+      { decodeVin: async () => null, searchParts: async () => [] },
+      new MockSupplierProvider(),
+      new MockPlateProvider(),
+    )
+  }
+
+  test('обычный VIN → просьба проверить номер', async () => {
+    const client = new FakeTelegramClient()
+    const bot = new TelegramBot(client, emptyCatalog())
+    await bot.handleUpdate(messageUpdate('JHMCM56557C404453'))
+    expect(client.sent[0]?.text).toContain('Проверьте VIN')
+  })
+
+  test('УАЗ (WMI XTT) → честная причина и официальный каталог завода', async () => {
+    const client = new FakeTelegramClient()
+    const bot = new TelegramBot(client, emptyCatalog())
+    await bot.handleUpdate(messageUpdate('XTT316300F1234567'))
+
+    const text = client.sent[0]?.text ?? ''
+    expect(text).toContain('УАЗ')
+    expect(text).toContain('uaz.ru')
+    // Мастера не отправляем перепроверять правильный номер.
+    expect(text).not.toContain('Проверьте VIN')
+  })
+})

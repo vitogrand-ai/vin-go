@@ -122,6 +122,10 @@ const envSchema = z.object({
   VIN17_PASSWORD: optionalStringSchema,
   // Базовый URL API 17vin (по умолчанию VIN17_DEFAULT_BASE_URL — HTTP, порт 8080).
   VIN17_BASE_URL: optionalUrlSchema,
+  // Бесплатный декодер NHTSA vPIC — ключа нет, подключается автоматически при
+  // любом боевом каталоге (только расшифровка VIN рынка США, деталей не даёт).
+  // Переменная переопределяет базовый URL (по умолчанию VPIC_DEFAULT_BASE_URL).
+  VPIC_BASE_URL: optionalUrlSchema,
   // Реестр госномер→VIN (Avtocod). Ключ включает боевой PlateProvider;
   // пусто — мок-реестр (демо-номера).
   AVTOCOD_API_KEY: optionalStringSchema,

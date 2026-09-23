@@ -24,6 +24,7 @@ import type {
 } from './providers'
 import { CachingCatalogProvider } from './vin-cache'
 import { VIN17_DEFAULT_BASE_URL, Vin17CatalogProvider } from './vin17-provider'
+import { VPIC_DEFAULT_BASE_URL, VpicCatalogProvider } from './vpic-provider'
 import type { DataSource } from '@web-app-demo/contracts'
 
 export type CatalogProviders = {
@@ -271,6 +272,20 @@ function createCatalogProvider(env: AppEnv): AssembledSources<CatalogProvider> {
         baseUrl: env.EPCDATA_BASE_URL ?? EPCDATA_DEFAULT_BASE_URL,
       }),
       framePriority: true,
+    })
+  }
+
+  // Бесплатный государственный декодер NHTSA vPIC — последний рубеж, только
+  // расшифровка VIN (`decodeOnly`: деталей у него нет). Реально помогает по
+  // машинам рынка США — прочие VIN адаптер сам отсекает по контрольной цифре,
+  // не делая сетевого вызова. Ключа не требует, поэтому подключается всегда,
+  // когда есть хоть один боевой каталог; в чистом мок-режиме не участвует —
+  // демо-набор не должен наполовину ходить в сеть.
+  if (sources.length > 0) {
+    sources.push({
+      name: 'vpic',
+      provider: new VpicCatalogProvider({ baseUrl: env.VPIC_BASE_URL ?? VPIC_DEFAULT_BASE_URL }),
+      decodeOnly: true,
     })
   }
 

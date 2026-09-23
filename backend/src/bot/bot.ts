@@ -7,6 +7,7 @@ import {
 } from '@web-app-demo/contracts'
 
 import type { Actor } from '../auth/actor'
+import { officialCatalogForVin } from '../catalog/official-catalogs'
 import type { CatalogService } from '../catalog/service'
 import type { ExpertsService } from '../experts/service'
 import type { GarageService } from '../garage/service'
@@ -356,7 +357,7 @@ export class TelegramBot {
       await this.client.sendMessage(
         chatId,
         isNotFound(error)
-          ? 'Автомобиль не найден в подключённых каталогах. Проверьте VIN (17 символов) или номер кузова (например SXA10-0012345) и пришлите снова.'
+          ? notFoundReply(vin)
           : 'Каталог сейчас недоступен. Попробуйте ещё раз через пару минут.',
       )
     }
@@ -830,6 +831,22 @@ function readPartCard(saved: PartCard | string | undefined): PartCard | undefine
 /** Честное «не найдено» от каталога — в отличие от сбоя источника (502 и т.п.). */
 function isNotFound(error: unknown): boolean {
   return error instanceof AppError && error.status === 404
+}
+
+/**
+ * Ответ на неопознанный VIN. Для марок, которых нет ни в одном подключённом
+ * каталоге (УАЗ, LADA, КАМАЗ — узнаются по WMI), причина не в опечатке мастера,
+ * а в покрытии каталогов — говорим это честно и даём официальный каталог завода.
+ */
+function notFoundReply(vin: string): string {
+  const official = officialCatalogForVin(vin)
+  if (official) {
+    return (
+      `Подключённые каталоги не ищут по VIN автомобили ${official.brand} — дело не в номере, ` +
+      `а в покрытии каталогов. Официальный каталог завода: ${official.url} (${official.note}).`
+    )
+  }
+  return 'Автомобиль не найден в подключённых каталогах. Проверьте VIN (17 символов) или номер кузова (например SXA10-0012345) и пришлите снова.'
 }
 
 /** Прислан ли документ, который является изображением (фото «без сжатия»). */

@@ -46,6 +46,13 @@ export type NamedCatalogProvider = {
    * см. `searchParts`.
    */
   providesImages?: boolean
+  /**
+   * Источник только расшифровывает VIN (декодер vPIC), деталей у него не
+   * бывает. В поиск деталей не включается: его вечное «пусто» — не честное
+   * «нет такой детали» и не должно маскировать сбой настоящих каталогов
+   * (см. семантику ошибок выше).
+   */
+  decodeOnly?: boolean
 }
 
 /** Frame-номер кузова (SXA10-0012345) отличается от VIN наличием дефиса. */
@@ -137,9 +144,13 @@ export class FallbackCatalogProvider implements CatalogProvider {
     return vehicle
   }
 
-  async searchParts(vehicle: Vehicle, query: string): Promise<Part[]> {
+  async searchParts(vehicle: Vehicle, query: string, original?: string): Promise<Part[]> {
     const source = readSource(vehicle)
-    const origin = source ? this.providers.find((p) => p.name === source) : undefined
+    // Чистые декодеры деталей не ищут: даже если авто опознал vPIC (source =
+    // 'vpic'), поиск идёт по настоящим каталогам — адаптеры сами
+    // переопределяют чужое авто по VIN.
+    const searchable = this.providers.filter((p) => !p.decodeOnly)
+    const origin = source ? searchable.find((p) => p.name === source) : undefined
 
     // Каталог, определивший авто, спрашивается первым: номера деталей
     // каталог-специфичны, и у «владельца» самая точная применимость. Но если
@@ -147,8 +158,8 @@ export class FallbackCatalogProvider implements CatalogProvider {
     // китайскому словарю не нашёл) — пробуем остальные источники: каждый
     // адаптер сам переопределяет чужое авто по VIN перед поиском.
     const ordered = origin
-      ? [origin, ...this.providers.filter((p) => p !== origin)]
-      : this.providers
+      ? [origin, ...searchable.filter((p) => p !== origin)]
+      : searchable
 
     let firstError: unknown = null
     let answered = false
@@ -156,9 +167,9 @@ export class FallbackCatalogProvider implements CatalogProvider {
     for (const source of ordered) {
       asked.add(source)
       try {
-        const parts = await source.provider.searchParts(vehicle, query)
+        const parts = await source.provider.searchParts(vehicle, query, original)
         answered = true
-        if (parts.length > 0) return this.attachImages(vehicle, query, parts, asked)
+        if (parts.length > 0) return this.attachImages(vehicle, query, parts, asked, original)
       } catch (error) {
         console.error(`[catalog:${source.name}] searchParts упал, пробуем следующий источник`, error)
         firstError ??= error
@@ -207,6 +218,7 @@ export class FallbackCatalogProvider implements CatalogProvider {
     query: string,
     parts: Part[],
     asked: Set<NamedCatalogProvider>,
+    original?: string,
   ): Promise<Part[]> {
     if (parts.some((part) => part.imageUrl)) return parts
 
@@ -215,7 +227,7 @@ export class FallbackCatalogProvider implements CatalogProvider {
       asked.add(source)
       let donors: Part[]
       try {
-        donors = await source.provider.searchParts(vehicle, query)
+        donors = await source.provider.searchParts(vehicle, query, original)
       } catch (error) {
         console.warn(`[catalog:${source.name}] добор схем упал, выдача без картинок`, error)
         continue
