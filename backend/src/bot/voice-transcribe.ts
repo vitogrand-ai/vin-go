@@ -17,6 +17,12 @@ export interface VoiceTranscriber {
    * Не бросает: сбой распознавания не должен ронять обработку сообщения.
    */
   transcribe(audio: Uint8Array): Promise<string | null>
+  /**
+   * Самое длинное голосовое, которое сервис примет, в секундах; нет — без
+   * лимита. Бот проверяет длительность ДО скачивания, чтобы на длинное
+   * голосовое честно попросить записать короче, а не отвечать «не разобрал».
+   */
+  readonly maxSeconds?: number
 }
 
 const WHISPER_URL = 'https://api.openai.com/v1/audio/transcriptions'

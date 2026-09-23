@@ -161,6 +161,15 @@ export class TelegramBot {
       return
     }
 
+    const limit = this.media.voice.maxSeconds
+    if (limit !== undefined && message.voice!.duration > limit) {
+      await this.client.sendMessage(
+        chatId,
+        `Голосовое длиннее, чем я могу разобрать. Запишите короче — до ${limit} секунд — или напишите текстом.`,
+      )
+      return
+    }
+
     const audio = await this.downloadAttachment(message.voice!.file_id, message.voice!.file_size)
     if (!audio) {
       await this.client.sendMessage(chatId, 'Не смог скачать голосовое. Повторите текстом.')

@@ -57,7 +57,10 @@ class FakeVinOcr implements VinOcrProvider {
 }
 
 class FakeVoice implements VoiceTranscriber {
-  constructor(private readonly result: string | null) {}
+  constructor(
+    private readonly result: string | null,
+    readonly maxSeconds?: number,
+  ) {}
   async transcribe(): Promise<string | null> {
     return this.result
   }
@@ -77,13 +80,13 @@ function photoUpdate(): TgUpdate {
   }
 }
 
-function voiceUpdate(): TgUpdate {
+function voiceUpdate(duration = 3): TgUpdate {
   return {
     update_id: 1,
     message: {
       message_id: 1,
       chat: { id: CHAT_ID },
-      voice: { file_id: 'voice-1', duration: 3, file_size: 12_000 },
+      voice: { file_id: 'voice-1', duration, file_size: 12_000 },
     },
   }
 }
@@ -323,6 +326,18 @@ describe('TelegramBot — голосовые', () => {
     await bot.handleUpdate(voiceUpdate())
 
     expect(client.texts()).toContain('Не разобрал голосовое')
+  })
+
+  test('голосовое длиннее лимита распознавания — просьба записать короче, не «не разобрал»', async () => {
+    // SpeechKit принимает до 30 секунд: длинное голосовое не качаем и не шлём.
+    const bot = new TelegramBot(client, createMockCatalogService(), undefined, {
+      voice: new FakeVoice('передние колодки', 30),
+    })
+
+    await bot.handleUpdate(voiceUpdate(45))
+
+    expect(client.texts()).toContain('до 30 секунд')
+    expect(client.downloaded).toHaveLength(0)
   })
 
   test('без настроенной расшифровки бот просит написать текстом', async () => {

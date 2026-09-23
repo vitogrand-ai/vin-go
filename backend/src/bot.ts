@@ -13,6 +13,7 @@ import { PrismaSessionStore } from './bot/session-store'
 import { HttpTelegramClient } from './bot/telegram'
 import { AnthropicVinOcrProvider } from './bot/vin-ocr'
 import { WhisperVoiceTranscriber } from './bot/voice-transcribe'
+import { YandexVinOcrProvider, YandexVoiceTranscriber } from './bot/yandex-media'
 
 export async function main() {
   const env = loadEnv(Bun.env)
@@ -42,18 +43,25 @@ export async function main() {
   const garage = new GarageService(prisma, providers.catalog)
 
   // Распознавание вложений включается ключами; без них бот работает как раньше
-  // и просто просит прислать данные текстом.
+  // и просто просит прислать данные текстом. Яндекс — первым: сервер в России, а
+  // Anthropic и OpenAI российским адресам отвечают 403 (см. bot/yandex-media.ts).
+  const yandex = env.YANDEX_API_KEY ? { apiKey: env.YANDEX_API_KEY, folderId: env.YANDEX_FOLDER_ID } : null
   const media: BotMedia = {
-    vinOcr: env.ANTHROPIC_API_KEY
-      ? new AnthropicVinOcrProvider({ apiKey: env.ANTHROPIC_API_KEY, model: env.VIN_OCR_MODEL })
-      : undefined,
-    voice: env.OPENAI_API_KEY
-      ? new WhisperVoiceTranscriber({ apiKey: env.OPENAI_API_KEY })
-      : undefined,
+    vinOcr: yandex
+      ? new YandexVinOcrProvider(yandex)
+      : env.ANTHROPIC_API_KEY
+        ? new AnthropicVinOcrProvider({ apiKey: env.ANTHROPIC_API_KEY, model: env.VIN_OCR_MODEL })
+        : undefined,
+    voice: yandex
+      ? new YandexVoiceTranscriber(yandex)
+      : env.OPENAI_API_KEY
+        ? new WhisperVoiceTranscriber({ apiKey: env.OPENAI_API_KEY })
+        : undefined,
   }
+  const via = yandex ? 'Яндекс' : null
   console.log(
-    `Фото-VIN: ${media.vinOcr ? 'включено' : 'выключено (нет ANTHROPIC_API_KEY)'}; ` +
-      `голосовые: ${media.voice ? 'включены' : 'выключены (нет OPENAI_API_KEY)'}.`,
+    `Фото-VIN: ${media.vinOcr ? `включено${via ? ` (${via})` : ''}` : 'выключено (нет YANDEX_API_KEY)'}; ` +
+      `голосовые: ${media.voice ? `включены${via ? ` (${via})` : ''}` : 'выключены (нет YANDEX_API_KEY)'}.`,
   )
 
   const client = new HttpTelegramClient(env.TELEGRAM_BOT_TOKEN)

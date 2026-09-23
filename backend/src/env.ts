@@ -156,6 +156,13 @@ const envSchema = z.object({
   // Голосовые в боте: расшифровка через OpenAI Whisper (у Anthropic нет аудио-API).
   // Пусто — бот вежливо просит написать текстом, остальные функции не страдают.
   OPENAI_API_KEY: optionalStringSchema,
+  // Яндекс Облако: фото VIN (Vision OCR) и голосовые (SpeechKit). Главный путь для
+  // сервера в России — Anthropic и OpenAI отвечают российским адресам 403. API-ключ
+  // сервисного аккаунта с ролями ai.vision.user и ai.speechkit-stt.user; при нём
+  // фото и голос берутся Яндексом, даже если заданы ключи Anthropic/OpenAI.
+  YANDEX_API_KEY: optionalStringSchema,
+  // Каталог облака. Для ключа сервисного аккаунта необязателен.
+  YANDEX_FOLDER_ID: optionalStringSchema,
   // Telegram-бот. Пусто — бот не запускается (entrypoint завершится с подсказкой).
   TELEGRAM_BOT_TOKEN: optionalStringSchema,
   // Имя бота (без @) для deep-link привязки t.me/<bot>?start=<code>.
