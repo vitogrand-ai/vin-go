@@ -5,6 +5,7 @@ import { CATALOG_SOURCE_KEY } from './fallback-catalog'
 import { asArray, firstArray, int, isRecord, str } from './parse-utils'
 import { isPositionWord, positionRank } from './position-filter'
 import { NAME_MATCH, NODE_MATCH, closeness, nodeCloseness, queryNames, queryNamesForOrder, wordKeys } from './part-match'
+import { PART_NODES, type PartNode, isNodePart, partNodeFor } from './part-nodes'
 import { englishPartTerms } from './part-terms'
 import { requestProviderJson } from './provider-http'
 import type { CatalogProvider } from './providers'
@@ -72,6 +73,15 @@ const MAX_GROUPS_PER_NAME = 3
 const MAX_TREE_LEAVES = 3
 const TREE_TTL_MS = 60 * 60 * 1000
 
+/**
+ * Поиск по таблице «деталь → узел» (см. `searchByNode`): сколько листьев и
+ * схем в листе раскрываем. Больше, чем в поиске по словам: отбор здесь по коду
+ * детали, лишняя схема ничего чужого не проносит, только стоит вызова.
+ */
+const MAX_NODE_LEAVES = 4
+const MAX_NODE_GROUPS = 5
+const NODE_RESULT_TTL_MS = 60 * 1000
+
 /** Лист дерева узлов машины: по нему открываются схемы (`schemas?branchId=`). */
 type TreeLeaf = { id: string; name: string; path: string }
 
@@ -115,6 +125,8 @@ type SearchCtx = {
   /** Имена детали из словаря, огрублённые до слов (см. `queryNames`). */
   names: Set<string>[]
   seen: Set<string>
+  /** Строка таблицы part-nodes, если запрос в ней есть: тогда деталь отбирается ею. */
+  node?: PartNode | null
 }
 
 export class PartsCatalogsCatalogProvider implements CatalogProvider {
@@ -123,6 +135,8 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
   private readonly fetchImpl: typeof fetch
   /** Листья дерева узлов по машине — для запасного пути, см. `searchByTree`. */
   private readonly trees = new Map<string, { at: number; leaves: TreeLeaf[] }>()
+  /** Ответы таблицы «деталь → узел» на минуту, см. `searchByNodeOnce`. */
+  private readonly nodeResults = new Map<string, { at: number; parts: Part[] }>()
 
   constructor(config: PartsCatalogsConfig) {
     this.apiKey = config.apiKey
@@ -139,12 +153,27 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
     return mapVehicle(normalized, data)
   }
 
-  async searchParts(vehicle: Vehicle, query: string): Promise<Part[]> {
+  async searchParts(vehicle: Vehicle, query: string, original?: string): Promise<Part[]> {
     const q = query.trim()
     if (!q) return []
 
     const ref = await this.resolveRef(vehicle)
     if (!ref) return []
+
+    // Сперва таблица «деталь → узел» (см. part-nodes): деталь берётся по коду
+    // справочника каталога, а не по похожести слов. Пусто по таблице — значит,
+    // узлы не нашлись у этой марки; тогда работает прежний поиск по словам,
+    // но деталь он отбирает той же строкой таблицы.
+    //
+    // Строка — по запросу МАСТЕРА, а не по варианту из словаря жаргона: живьём
+    // 23.09.2026 «датчик положения коленвала» разворачивался в вариант
+    // «коленчатый вал», «лямбда» — в «датчик кислорода», и вариант, которого
+    // нет в таблице, уходил в поиск по словам без ограничений — за соседом.
+    const node = (original ? partNodeFor(original) : null) ?? partNodeFor(q)
+    if (node) {
+      const parts = await this.searchByNodeOnce(ref, vehicle.make, original ?? q, node)
+      if (parts.length > 0) return parts
+    }
 
     // Запрос отрабатывается целиком, а не по одному шагу: подсказка ищет по
     // ВСЕМУ справочнику названий каталога, а не по этой машине, поэтому на
@@ -164,15 +193,91 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
       if (sids.length === 0) continue // подсказка не знает фразы — она ничего не стоила
 
       const parts = await this.collectFromSchemas(
-        { ref, brand: vehicle.make, query: q, sidSet: new Set(sids), englishTerms, names, seen: new Set() },
+        { ref, brand: vehicle.make, query: q, sidSet: new Set(sids), englishTerms, names, seen: new Set(), node },
         sids,
       )
       if (parts.length > 0) return parts
       if (++passes >= MAX_SEARCH_PASSES) break
     }
     return this.searchByTree({
-      ref, brand: vehicle.make, query: q, sidSet: new Set(), englishTerms, names, seen: new Set(),
+      ref, brand: vehicle.make, query: q, sidSet: new Set(), englishTerms, names, seen: new Set(), node,
     })
+  }
+
+  /**
+   * Поиск по строке таблицы: листья дерева машины из `node.leaves` (по порядку,
+   * до первого, давшего детали), затем — если листья пусты — схемы по кодам
+   * справочника (`schemas?partNameIds=`). Отбор деталей — `isNodePart`: по
+   * коду, а у деталей без кода — по запасному шаблону. Чужая схема (каталог на
+   * `partNameIds` у части машин отдаёт одну и ту же) ничего не проносит: в ней
+   * нет деталей с нужным кодом.
+   */
+  /**
+   * `searchByNode` один раз на машину и строку таблицы за минуту: сервис
+   * пробует по очереди варианты одного запроса, и у всех строка таблицы одна —
+   * повторять те же вызовы schemas/parts2 незачем.
+   */
+  private async searchByNodeOnce(ref: CarRef, brand: string | null, query: string, node: PartNode): Promise<Part[]> {
+    const key = `${ref.catalogId}|${ref.carId}|${ref.criteria ?? ''}|${PART_NODES.indexOf(node)}|${query}`
+    const cached = this.nodeResults.get(key)
+    if (cached && Date.now() - cached.at < NODE_RESULT_TTL_MS) return cached.parts
+    const parts = await this.searchByNode(ref, brand, query, node)
+    if (this.nodeResults.size > 500) this.nodeResults.clear()
+    this.nodeResults.set(key, { at: Date.now(), parts })
+    return parts
+  }
+
+  private async searchByNode(ref: CarRef, brand: string | null, query: string, node: PartNode): Promise<Part[]> {
+    const seen = new Set<string>()
+    /** Место кода детали в строке таблицы, см. сортировку в `collect`. */
+    const rank = new Map<Part, number>()
+    const collect = async (data: unknown): Promise<Part[]> => {
+      const parts: Part[] = []
+      for (const [groupId, group] of schemaGroups(data, query, MAX_NODE_GROUPS)) {
+        const params = new URLSearchParams({ carId: ref.carId, groupId })
+        if (ref.criteria) params.set('criteria', ref.criteria)
+        const detail = await this.request(`/catalogs/${encodeURIComponent(ref.catalogId)}/parts2?${params}`)
+        if (detail === null) continue
+        const imageUrl = group.imageUrl ?? (isRecord(detail) ? normalizeImageUrl(str(detail, ['img'])) : null)
+        collectNodeParts(detail, node, { brand, category: group.category, imageUrl, schemeId: groupId, seen, rank, out: parts })
+      }
+      // Деталь другой стороны — не находка: на «бампер задний» лист отдавал
+      // передний, фильтр стороны в сервисе его вырезал, и мастер видел пусто,
+      // хотя задний лежал в следующей схеме.
+      // Коды строки идут от главного к запасному (дисковые колодки — раньше
+      // барабанных): первой в выдаче стоит деталь главного кода.
+      return parts
+        .filter((part) => positionRank(part.name, query) >= 0)
+        .sort((a, b) => (rank.get(a) ?? 0) - (rank.get(b) ?? 0))
+    }
+
+    let leaves: TreeLeaf[] = []
+    try {
+      leaves = await this.treeLeaves(ref)
+    } catch (error) {
+      console.warn('[parts-catalogs] дерево узлов не получено, таблица идёт по кодам', error)
+    }
+    let visited = 0
+    for (const hint of node.leaves) {
+      for (const leaf of leaves) {
+        if (visited >= MAX_NODE_LEAVES) break
+        if (!leaf.path.toLowerCase().replaceAll('ё', 'е').includes(hint)) continue
+        if (positionRank(leaf.path, query) < 0) continue
+        visited += 1
+        const params = new URLSearchParams({ carId: ref.carId, branchId: leaf.id })
+        if (ref.criteria) params.set('criteria', ref.criteria)
+        const parts = await collect(await this.request(`/catalogs/${encodeURIComponent(ref.catalogId)}/schemas?${params}`))
+        if (parts.length > 0) return parts
+      }
+    }
+
+    for (const id of node.ids.slice(0, 2)) {
+      const params = new URLSearchParams({ carId: ref.carId, partNameIds: id })
+      if (ref.criteria) params.set('criteria', ref.criteria)
+      const parts = await collect(await this.request(`/catalogs/${encodeURIComponent(ref.catalogId)}/schemas?${params}`))
+      if (parts.length > 0) return parts
+    }
+    return []
   }
 
   /**
@@ -413,6 +518,7 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
 function schemaGroups(
   data: unknown,
   query: string,
+  limit = MAX_GROUPS_PER_NAME,
 ): Map<string, { category: string; imageUrl: string | null }> {
   const groups = new Map<string, { category: string; imageUrl: string | null }>()
   for (const schema of rankByPosition(firstArray(data, ['list']) ?? [], query)) {
@@ -421,9 +527,57 @@ function schemaGroups(
     if (!groupId || groups.has(groupId)) continue
     if (positionRank(category, query) < 0) continue // узел другой стороны
     groups.set(groupId, { category, imageUrl: normalizeImageUrl(str(schema, ['img'])) })
-    if (groups.size >= MAX_GROUPS_PER_NAME) break
+    if (groups.size >= limit) break
   }
   return groups
+}
+
+/**
+ * Детали узла по строке таблицы (`isNodePart`): по коду справочника, у
+ * деталей без кода — по запасному шаблону. Карточка детали — та же, что у
+ * `collectParts`.
+ */
+function collectNodeParts(
+  data: unknown,
+  node: PartNode,
+  ctx: {
+    brand: string | null
+    category: string
+    imageUrl: string | null
+    schemeId: string
+    seen: Set<string>
+    /** Место кода детали в `node.ids`; у детали без кода — после всех кодов. */
+    rank: Map<Part, number>
+    out: Part[]
+  },
+): void {
+  if (!isRecord(data)) return
+  for (const group of asArray(data['partGroups']) ?? []) {
+    for (const part of asArray(group['parts']) ?? []) {
+      if (ctx.out.length >= PARTSCATALOGS_MAX_PARTS) return
+      const oemNumber = str(part, ['number', 'id'])
+      const name = str(part, ['name', 'notice'])
+      if (!oemNumber || !name) continue
+      const nameId = str(part, ['nameId'])
+      if (!isNodePart(node, { name, nameId })) continue
+
+      const key = `${oemNumber}|${name}`
+      if (ctx.seen.has(key)) continue
+      ctx.seen.add(key)
+      const entry: Part = {
+        oemNumber,
+        name,
+        category: ctx.category,
+        brand: ctx.brand,
+        imageUrl: ctx.imageUrl,
+        position: str(part, ['positionNumber']),
+        schemeId: ctx.schemeId,
+        ...partDetails({ name, notice: str(part, ['notice']), description: str(part, ['description']) }),
+      }
+      ctx.rank.set(entry, nameId === null ? node.ids.length : node.ids.indexOf(nameId))
+      ctx.out.push(entry)
+    }
+  }
 }
 
 /**
@@ -738,6 +892,7 @@ export function collectParts(
     names: Set<string>[]
     seen: Set<string>
     out: Part[]
+    node?: PartNode | null
   },
 ): void {
   if (!isRecord(data)) return
@@ -752,7 +907,19 @@ export function collectParts(
       const nameId = str(part, ['nameId'])
       const exact = nameId !== null && ctx.sidSet.has(nameId)
       const score = closeness(name, ctx.names)
-      if (!exact && score < NAME_MATCH && !matchesTerms(name, ctx.englishTerms)) continue // сосед по узлу
+      if (ctx.node) {
+        // Таблица знает, что это за деталь: другой код — другая деталь, как бы
+        // ни было похоже название. Живьём 23.09.2026 путь по словам отдавал
+        // свечу зажигания на «свечу накала», приводной ремень на «ремень ГРМ»,
+        // стойку стабилизатора на «амортизатор» — честное «не найдено» лучше.
+        // Деталь без кода проходит и по близости названия, как раньше: у
+        // частично локализованных каталогов «Диск тормозной» бывает без кода,
+        // а запасной шаблон таблицы знает его английское имя.
+        const fits = nameId !== null
+          ? isNodePart(ctx.node, { name, nameId })
+          : isNodePart(ctx.node, { name, nameId }) || (score >= NAME_MATCH && !(ctx.node.not?.test(name) ?? false))
+        if (!fits) continue
+      } else if (!exact && score < NAME_MATCH && !matchesTerms(name, ctx.englishTerms)) continue // сосед по узлу
 
       const key = `${oemNumber}|${name}`
       if (ctx.seen.has(key)) continue

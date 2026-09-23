@@ -22,8 +22,8 @@ export class TranslatingCatalogProvider implements CatalogProvider {
     return this.inner.decodeVin(vin)
   }
 
-  async searchParts(vehicle: Vehicle, query: string): Promise<Part[]> {
-    return this.translateParts(await this.inner.searchParts(vehicle, query))
+  async searchParts(vehicle: Vehicle, query: string, original?: string): Promise<Part[]> {
+    return this.translateParts(await this.inner.searchParts(vehicle, query, original))
   }
 
   /** Узел по схеме идёт тем же путём: мастер видит те же русские названия. */

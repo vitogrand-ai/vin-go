@@ -7,8 +7,13 @@ import type { DealerPrice, Offer, Part, Vehicle } from '@web-app-demo/contracts'
 export interface CatalogProvider {
   /** Расшифровывает VIN в карточку автомобиля. Возвращает null, если VIN не найден. */
   decodeVin(vin: string): Promise<Vehicle | null>
-  /** Ищет запчасти для автомобиля по текстовому запросу. */
-  searchParts(vehicle: Vehicle, query: string): Promise<Part[]>
+  /**
+   * Ищет запчасти для автомобиля по текстовому запросу. `original` — запрос
+   * мастера как он есть, когда `query` — его вариант из словаря жаргона
+   * (см. `CatalogService.searchParts`): по нему каталог понимает, КАКУЮ деталь
+   * спрашивали, даже если вариант сформулирован иначе.
+   */
+  searchParts(vehicle: Vehicle, query: string, original?: string): Promise<Part[]>
   /**
    * Все детали узла по его идентификатору (`Part.schemeId`) — без отбора по
    * запросу, с номерами позиций со схемы. Мастер смотрит на картинку и называет

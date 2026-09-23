@@ -226,7 +226,8 @@ describe('PartsCatalogsCatalogProvider.searchParts', () => {
     const calls: { url: string; headers: Record<string, string> }[] = []
     const provider = providerWith(chainHandler, calls)
 
-    const parts = await provider.searchParts(vehicle, 'масляный фильтр')
+    // Запрос вне таблицы «деталь → узел» (part-nodes): здесь проверяется путь по словам.
+    const parts = await provider.searchParts(vehicle, 'oil filter')
 
     // Деталь с nameId 87 (искомый sid) прошла, «Heat exchanger» (1075) — нет.
     // Картинка схемы: в списке схем плейсхолдер «{IMG_URL}» (отбрасывается),
@@ -253,7 +254,7 @@ describe('PartsCatalogsCatalogProvider.searchParts', () => {
     expect(suggest).toBeDefined()
     const suggestUrl = new URL(suggest!.url)
     expect(suggestUrl.pathname).toBe('/v1/catalogs/skoda/groups-suggest')
-    expect(suggestUrl.searchParams.get('q')).toBe('масляный фильтр')
+    expect(suggestUrl.searchParams.get('q')).toBe('oil filter')
 
     const schemas = calls.find((c) => c.url.includes('/schemas'))
     const schemasUrl = new URL(schemas!.url)
@@ -276,7 +277,7 @@ describe('PartsCatalogsCatalogProvider.searchParts', () => {
       raw: { catalogId: 'чужое', carId: 'чужое', [CATALOG_SOURCE_KEY]: 'acat' },
     }
 
-    const parts = await provider.searchParts(foreign, 'масляный фильтр')
+    const parts = await provider.searchParts(foreign, 'oil filter')
 
     expect(calls[0]!.url).toContain('/car/info')
     expect(parts).toHaveLength(1)
@@ -301,21 +302,23 @@ describe('PartsCatalogsCatalogProvider.searchParts', () => {
   test('уточнённая фраза не найдена → названия добираются укороченным запросом', async () => {
     // Живой случай: «Колодки тормозные передние» подсказка не знает — деталь
     // называется «Колодки тормозные»; уточнение позиции отрезается с конца.
+    // Колодки теперь ищет таблица part-nodes, поэтому механику пути по словам
+    // проверяем на детали вне таблицы.
     const suggestQueries: string[] = []
     const provider = providerWith((url) => {
       if (url.includes('/groups-suggest')) {
         const q = new URL(url).searchParams.get('q') ?? ''
         suggestQueries.push(q)
-        return q === 'Колодки тормозные' ? json(SUGGEST) : json([])
+        return q === 'Накладка тормозная' ? json(SUGGEST) : json([])
       }
       if (url.includes('/schemas')) return json(SCHEMAS)
       if (url.includes('/parts2')) return json(PARTS2)
       return new Response('', { status: 404 })
     })
 
-    const parts = await provider.searchParts(vehicle, 'Колодки тормозные передние')
+    const parts = await provider.searchParts(vehicle, 'Накладка тормозная передняя')
 
-    expect(suggestQueries).toEqual(['Колодки тормозные передние', 'Колодки тормозные'])
+    expect(suggestQueries).toEqual(['Накладка тормозная передняя', 'Накладка тормозная'])
     expect(parts).toHaveLength(1)
   })
 
@@ -328,7 +331,7 @@ describe('PartsCatalogsCatalogProvider.searchParts', () => {
       if (url.includes('/groups-suggest')) {
         const q = new URL(url).searchParams.get('q') ?? ''
         suggestQueries.push(q)
-        return json([{ sid: q === 'амортизатор' ? '87' : '7870', name: q }])
+        return json([{ sid: q === 'пневмобаллон' ? '87' : '7870', name: q }])
       }
       if (url.includes('/schemas')) {
         // Схема есть только у названия из второго прохода (sid 87).
@@ -338,9 +341,10 @@ describe('PartsCatalogsCatalogProvider.searchParts', () => {
       return new Response('', { status: 404 })
     })
 
-    const parts = await provider.searchParts(vehicle, 'амортизатор передний')
+    // Амортизатор теперь ищет таблица part-nodes; механику проверяем на детали вне таблицы.
+    const parts = await provider.searchParts(vehicle, 'пневмобаллон передний')
 
-    expect(suggestQueries).toEqual(['амортизатор передний', 'амортизатор'])
+    expect(suggestQueries).toEqual(['пневмобаллон передний', 'пневмобаллон'])
     expect(parts).toHaveLength(1)
   })
 
@@ -1283,8 +1287,9 @@ describe('PartsCatalogsCatalogProvider.searchParts: запасной путь ч
       }
       if (u.searchParams.get('groupId') === 'g-shaft') {
         return json({ partGroups: [{ name: '', parts: [
-          { number: '8V0498103', name: 'ШРУС', nameId: '565' },
-          { number: '8V0498203', name: 'Пыльник ШРУСа', nameId: '566' },
+          // Коды — настоящие коды справочника каталога (999 — ШРУС, 565 — пыльник).
+          { number: '8V0498103', name: 'ШРУС', nameId: '999' },
+          { number: '8V0498203', name: 'Пыльник ШРУСа', nameId: '565' },
         ] }] })
       }
       if (u.searchParams.get('groupId') === 'g-rear-brake') {
@@ -1369,6 +1374,30 @@ describe('PartsCatalogsCatalogProvider.searchParts: запасной путь ч
     expect(parts.every((part) => part.schemeId === 'g-head-lamp')).toBe(true)
   })
 
+  // Живьём 23.09.2026: словарь жаргона разворачивал «датчик положения коленвала»
+  // в вариант «коленчатый вал», и поиск по варианту отдавал сам коленвал.
+  test('вариант из словаря не подменяет деталь: строка таблицы — по запросу мастера', async () => {
+    const crankNode = (url: string): Response => {
+      const u = new URL(url)
+      if (u.pathname.endsWith('/groups-tree')) return json([])
+      if (u.pathname.endsWith('/groups-suggest')) return json([{ sid: '73', name: 'Коленвал' }])
+      if (u.pathname.endsWith('/schemas')) return json({ group: null, list: [{ groupId: 'g-crank', name: 'Коленчатый вал', img: '' }] })
+      if (u.pathname.endsWith('/parts2')) {
+        return json({ partGroups: [{ name: '', parts: [
+          { number: '06H105101', name: 'Коленвал', nameId: '73' },
+          { number: '06H906433', name: 'Датчик положения коленвала', nameId: '1074' },
+        ] }] })
+      }
+      return new Response('', { status: 404 })
+    }
+    const provider = providerWith(crankNode)
+    const byVariant = await provider.searchParts(car, 'коленчатый вал', 'датчик положения коленвала')
+    expect(byVariant.map((part) => part.oemNumber)).toEqual(['06H906433'])
+    // Без исходного запроса вариант — это и есть вопрос: коленвал.
+    const plain = await providerWith(crankNode).searchParts(car, 'коленчатый вал')
+    expect(plain.map((part) => part.oemNumber)).toEqual(['06H105101'])
+  })
+
   test('дерево машины запрашивается один раз на машину, а не на каждый поиск', async () => {
     const calls: { url: string; headers: Record<string, string> }[] = []
     const provider = providerWith(brokenCatalog, calls)
@@ -1384,7 +1413,9 @@ describe('PartsCatalogsCatalogProvider.searchParts: запасной путь ч
     expect(calls.some((call) => call.url.includes('branchId='))).toBe(false)
   })
 
-  test('основной путь нашёл деталь → дерево не запрашивается', async () => {
+  // Стартер есть в таблице part-nodes: дерево теперь спрашивается всегда (один
+  // раз на машину, см. тест ниже), а деталь без своего листа находится по коду.
+  test('листа из таблицы нет → деталь по коду справочника (partNameIds), а не по словам', async () => {
     const calls: { url: string; headers: Record<string, string> }[] = []
     const healthy = (url: string): Response => {
       const u = new URL(url)
@@ -1397,8 +1428,9 @@ describe('PartsCatalogsCatalogProvider.searchParts: запасной путь ч
       return brokenCatalog(url)
     }
     const parts = await providerWith(healthy, calls).searchParts(car, 'стартер')
-    expect(parts).toHaveLength(1)
-    expect(calls.some((call) => call.url.includes('/groups-tree'))).toBe(false)
+    expect(parts.map((part) => part.oemNumber)).toEqual(['02E911022H'])
+    expect(calls.some((call) => call.url.includes('partNameIds=900'))).toBe(true)
+    expect(calls.some((call) => call.url.includes('/groups-suggest'))).toBe(false)
   })
 })
 

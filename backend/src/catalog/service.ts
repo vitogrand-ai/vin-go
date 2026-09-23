@@ -82,7 +82,7 @@ export class CatalogService {
 
     const variants = expandPartQuery(query)
     for (const variant of variants) {
-      const found = await this.catalog.searchParts(vehicle, variant)
+      const found = await this.catalog.searchParts(vehicle, variant, query)
       if (found.length === 0) continue
 
       // Провайдеры отдают одну деталь несколькими строками применимости, а
