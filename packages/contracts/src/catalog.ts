@@ -213,6 +213,18 @@ export const searchPartsResponseSchema = z.object({
   source: dataSourceSchema.optional(),
 })
 
+/**
+ * Узел каталога по его идентификатору (`Part.schemeId`). Мастер смотрит на
+ * схему и выбирает деталь номером с картинки: в боте — цифрой в чате, в вебе —
+ * нажатием на выноску. Ответ — тот же `searchPartsResponseSchema`.
+ */
+export const schemePartsRequestSchema = z.object({
+  vin: vinOrFrameSchema,
+  schemeId: z.string().trim().min(1).max(500),
+  /** Номер выноски; без него отдаётся весь узел. */
+  position: z.string().trim().min(1).max(20).optional(),
+})
+
 export const offersRequestSchema = z.object({
   oemNumber: z.string().trim().min(1).max(60),
   region: z.string().trim().max(40).optional(),
@@ -302,6 +314,7 @@ export type ResolvePlateRequest = z.infer<typeof resolvePlateRequestSchema>
 export type ResolvePlateResponse = z.infer<typeof resolvePlateResponseSchema>
 export type SearchPartsRequest = z.infer<typeof searchPartsRequestSchema>
 export type SearchPartsResponse = z.infer<typeof searchPartsResponseSchema>
+export type SchemePartsRequest = z.infer<typeof schemePartsRequestSchema>
 export type OffersRequest = z.infer<typeof offersRequestSchema>
 export type OffersResponse = z.infer<typeof offersResponseSchema>
 export type DealerPrice = z.infer<typeof dealerPriceSchema>

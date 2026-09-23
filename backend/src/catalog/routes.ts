@@ -7,6 +7,7 @@ import {
   offersResponseSchema,
   resolvePlateRequestSchema,
   resolvePlateResponseSchema,
+  schemePartsRequestSchema,
   searchPartsRequestSchema,
   searchPartsResponseSchema,
 } from '@web-app-demo/contracts'
@@ -68,6 +69,22 @@ const searchPartsRoute = createRoute({
     200: {
       content: { 'application/json': { schema: searchPartsResponseSchema } },
       description: 'Автомобиль и найденные запчасти',
+    },
+    400: { content: errorResponseContent, description: 'Некорректный запрос' },
+    404: { content: errorResponseContent, description: 'Автомобиль не найден' },
+  },
+})
+
+const schemePartsRoute = createRoute({
+  method: 'post',
+  path: '/scheme',
+  request: {
+    body: { content: { 'application/json': { schema: schemePartsRequestSchema } } },
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: searchPartsResponseSchema } },
+      description: 'Детали узла схемы: весь узел либо одна выноска',
     },
     400: { content: errorResponseContent, description: 'Некорректный запрос' },
     404: { content: errorResponseContent, description: 'Автомобиль не найден' },
@@ -148,6 +165,12 @@ export function createCatalogRoutes(options: CatalogRoutesOptions = {}) {
     const service = c.get('catalogService')
     const { vin, query } = c.req.valid('json')
     return c.json(await service.searchParts(vin, query), 200)
+  })
+
+  routes.openapi(schemePartsRoute, async (c) => {
+    const service = c.get('catalogService')
+    const { vin, schemeId, position } = c.req.valid('json')
+    return c.json(await service.schemeParts(vin, schemeId, position), 200)
   })
 
   routes.openapi(offersRoute, async (c) => {

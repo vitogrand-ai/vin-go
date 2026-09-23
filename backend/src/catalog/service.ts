@@ -108,18 +108,18 @@ export class CatalogService {
    * это жгут проводов освещения, названия которого он и не спросил бы. Отбора
    * по запросу здесь нет вовсе — номер уже и есть выбор детали; дубли одной
    * детали по применимости чистятся так же, как в обычной выдаче.
+   *
+   * Без номера отдаётся весь узел: веб рисует по нему выноски, на которые
+   * можно нажать, — выбор той же цифрой, только пальцем, а не в чате.
    */
-  async schemeParts(vin: string, schemeId: string, position: string): Promise<SearchPartsResponse> {
+  async schemeParts(vin: string, schemeId: string, position?: string): Promise<SearchPartsResponse> {
     const { vehicle } = await this.decodeVin(vin)
     if (!this.catalog.schemeParts) return { vehicle, parts: [], source: this.meta.catalog }
 
     const all = await this.catalog.schemeParts(vehicle, schemeId)
-    const wanted = position.trim()
-    return {
-      vehicle,
-      parts: dedupeByOem(all.filter((part) => (part.position ?? '').trim() === wanted)),
-      source: this.meta.catalog,
-    }
+    const wanted = position?.trim()
+    const picked = wanted ? all.filter((part) => (part.position ?? '').trim() === wanted) : all
+    return { vehicle, parts: dedupeByOem(picked), source: this.meta.catalog }
   }
 
   async getOffers(oemNumber: string, region?: string): Promise<OffersResponse> {

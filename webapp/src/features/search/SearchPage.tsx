@@ -400,7 +400,9 @@ function CarSearch({
         <AskExpert vin={vehicle.vin} query={search.variables ?? query} />
       ) : null}
 
-      {selectedPart ? <OffersPanel part={selectedPart} vehicleVin={vehicle.vin} /> : null}
+      {selectedPart ? (
+        <OffersPanel part={selectedPart} vehicleVin={vehicle.vin} onPickPart={setSelectedPart} />
+      ) : null}
     </>
   )
 }
@@ -661,7 +663,16 @@ function PartsList({
   )
 }
 
-function OffersPanel({ part, vehicleVin }: { part: Part; vehicleVin?: string }) {
+function OffersPanel({
+  part,
+  vehicleVin,
+  onPickPart,
+}: {
+  part: Part
+  vehicleVin?: string
+  /** Мастер выбрал на схеме другую деталь того же узла. */
+  onPickPart: (part: Part) => void
+}) {
   const auth = useAuth()
   const addCartItem = useAddCartItem()
   const offersQuery = useQuery({
@@ -725,6 +736,8 @@ function OffersPanel({ part, vehicleVin }: { part: Part; vehicleVin?: string }) 
           partName={part.name}
           position={part.position}
           hotspot={part.schemeHotspot}
+          node={part.schemeId && vehicleVin ? { vin: vehicleVin, schemeId: part.schemeId } : null}
+          onPick={onPickPart}
         />
       ) : null}
 

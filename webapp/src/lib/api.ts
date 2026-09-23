@@ -44,6 +44,7 @@ import {
   removeCartItemRequestSchema,
   removeOrderWorkRequestSchema,
   removeVehicleRequestSchema,
+  schemePartsRequestSchema,
   searchPartsRequestSchema,
   searchPartsResponseSchema,
   setCartVehicleRequestSchema,
@@ -98,6 +99,7 @@ import {
   type ResolvePlateRequest,
   type ResolvePlateResponse,
   type RemoveVehicleRequest,
+  type SchemePartsRequest,
   type SearchPartsRequest,
   type SearchPartsResponse,
   type SetCartVehicleRequest,
@@ -202,6 +204,16 @@ export class ApiClient {
   searchParts(input: SearchPartsRequest): Promise<SearchPartsResponse> {
     const payload = searchPartsRequestSchema.parse(input)
     return this.request('/api/catalog/search', searchPartsResponseSchema, {
+      method: 'POST',
+      body: payload,
+      auth: false,
+    })
+  }
+
+  /** Узел схемы целиком (или одна выноска) — для выбора детали нажатием на схему. */
+  schemeParts(input: SchemePartsRequest): Promise<SearchPartsResponse> {
+    const payload = schemePartsRequestSchema.parse(input)
+    return this.request('/api/catalog/scheme', searchPartsResponseSchema, {
       method: 'POST',
       body: payload,
       auth: false,

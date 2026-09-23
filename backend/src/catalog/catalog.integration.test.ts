@@ -108,6 +108,19 @@ describe('catalog API', () => {
     expect(names).not.toContain('Фильтр масляный')
   })
 
+  test('открывает узел схемы: демо-каталог схем не знает — пусто, но не ошибка', async () => {
+    const res = await post('/api/catalog/scheme', { vin: 'WVWZZZ1JZ3W386752', schemeId: 'G1' })
+    expect(res.status).toBe(200)
+    const data = (await res.json()) as SearchPartsResponse
+    expect(data.vehicle.make).toBe('Volkswagen')
+    expect(data.parts).toEqual([])
+  })
+
+  test('узел без идентификатора — 400', async () => {
+    const res = await post('/api/catalog/scheme', { vin: 'WVWZZZ1JZ3W386752', schemeId: ' ' })
+    expect(res.status).toBe(400)
+  })
+
   test('возвращает предложения с тремя тирами', async () => {
     const res = await post('/api/catalog/offers', { oemNumber: '1J0698151' })
     expect(res.status).toBe(200)

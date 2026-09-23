@@ -5,6 +5,7 @@ import {
   offerTierSchema,
   partsWithVariants,
   plateSchema,
+  schemePartsRequestSchema,
   searchPartsRequestSchema,
   vinOrFrameSchema,
   vinSchema,
@@ -132,5 +133,26 @@ describe('partsWithVariants', () => {
   test('одна позиция из разных узлов — не исполнения: номер выноски свой у каждой схемы', () => {
     const parts = [battery('1935737'), { ...battery('1917577'), schemeId: 'OTHER' }]
     expect(partsWithVariants(parts).size).toBe(0)
+  })
+})
+
+describe('schemePartsRequestSchema', () => {
+  test('без номера выноски — запрос всего узла', () => {
+    const parsed = schemePartsRequestSchema.parse({ vin: 'WVWZZZ1JZ3W386752', schemeId: ' G1 ' })
+    expect(parsed.schemeId).toBe('G1')
+    expect(parsed.position).toBeUndefined()
+  })
+
+  test('номер выноски обрезается по краям', () => {
+    const parsed = schemePartsRequestSchema.parse({
+      vin: 'WVWZZZ1JZ3W386752',
+      schemeId: 'G1',
+      position: ' 9 ',
+    })
+    expect(parsed.position).toBe('9')
+  })
+
+  test('узел без идентификатора не открыть', () => {
+    expect(() => schemePartsRequestSchema.parse({ vin: 'WVWZZZ1JZ3W386752', schemeId: '  ' })).toThrow()
   })
 })

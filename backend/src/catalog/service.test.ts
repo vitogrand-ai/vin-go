@@ -298,6 +298,15 @@ describe('CatalogService.schemeParts', () => {
     expect(found.parts.map((part) => part.oemNumber)).toEqual(['565941813F', '565941813G'])
   })
 
+  test('без номера позиции отдаётся весь узел — по нему веб рисует кликабельные выноски', async () => {
+    const found = await serviceWithNode().schemeParts(VEHICLE.vin, 'G1')
+    expect(found.parts.map((part) => `${part.position}:${part.oemNumber}`)).toEqual([
+      '1:566941015F',
+      '9:565941813F',
+      '9:565941813G',
+    ])
+  })
+
   test('позиции нет на схеме → пустая выдача, а не чужая деталь', async () => {
     const found = await serviceWithNode().schemeParts(VEHICLE.vin, 'G1', '77')
     expect(found.parts).toEqual([])
