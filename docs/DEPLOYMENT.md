@@ -60,6 +60,17 @@ SPACES_DOWNLOAD_URL_TTL_SECONDS=300
 SPACES_PUBLIC_CACHE_CONTROL="public, max-age=31536000, immutable"
 ```
 
+## Telegram Bot
+
+The production bot is **@vingo_parts_bot**. Its `TELEGRAM_BOT_TOKEN` lives only in the backend env on the server; the name is recorded here because nothing else in the repository names the running bot. `@vinok_bot` in [COMPETITORS.md](COMPETITORS.md) is a competitor, not this project.
+
+Profile photo, display name, short description and description are not part of the Bot API - they can only be changed in [@BotFather](https://t.me/BotFather) by an account that owns the bot:
+
+- avatar: `/setuserpic`, then send [brand/assets/telegram-avatar.png](../brand/assets/telegram-avatar.png) as a photo, not as a file;
+- name: `/setname`; the `/start` blurb in a fresh chat: `/setdescription`; the profile line: `/setabouttext`.
+
+`brand/assets/telegram-avatar.png` is rendered from [brand/assets/logo-mark.svg](../brand/assets/logo-mark.svg) at 512x512 with the corner radius dropped, because Telegram crops avatars to a circle.
+
 ## ЮKassa Payments Go-Live
 
 Payments run on a provider-agnostic layer. With no keys the backend uses the mock provider (test payment page at `/pay`). Real money requires ЮKassa keys and the steps below. Do not enable production keys until the checklist passes.
