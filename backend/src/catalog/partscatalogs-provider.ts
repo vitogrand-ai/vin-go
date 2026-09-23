@@ -312,13 +312,21 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
       return []
     }
 
+    // В узле, который назвало уточнение («ближнего света» → фара), деталь
+    // отбирается по запросу без него, см. NODE_QUALIFIERS.
+    const rest = withoutNodeQualifiers(ctx.query)
+    const qualified = qualifierHints(ctx.query)
+    const restCtx = rest ? { ...ctx, names: queryNames(rest) } : ctx
+
     for (const leaf of pickLeaves(leaves, ctx.query)) {
       const params = new URLSearchParams({ carId: ctx.ref.carId, branchId: leaf.id })
       if (ctx.ref.criteria) params.set('criteria', ctx.ref.criteria)
       const data = await this.request(
         `/catalogs/${encodeURIComponent(ctx.ref.catalogId)}/schemas?${params}`,
       )
-      const parts = await this.collectFromGroups(ctx, schemaGroups(data, ctx.query))
+      const path = leaf.path.toLowerCase().replaceAll('ё', 'е')
+      const leafCtx = qualified.some((hint) => path.includes(hint)) ? restCtx : ctx
+      const parts = await this.collectFromGroups(leafCtx, schemaGroups(data, ctx.query))
       if (parts.length > 0) return parts
     }
     return []
@@ -480,6 +488,37 @@ const NODE_HINTS: [RegExp, string[]][] = [
   [/стабилиз/, ['подвеска, шасси > стабилизатор, составляющие']],
 ]
 
+/**
+ * Уточнения запроса, которые называют УЗЕЛ, а не деталь: «лампа ближнего
+ * света» — это лампа из схемы фары. Каталог так и пишет: в узле «Фары» у
+ * Hyundai лампы зовутся просто «Лампа», а в справочнике названий «ближнего
+ * света» нет вовсе. Живьём 23.09.2026 Hyundai Tucson KMHJN81VP8U903944 отвечал
+ * на такой запрос «не найдено», а голая «лампа» вела в лампу багажника.
+ *
+ * Уточнение ведёт в узел, как подсказка из NODE_HINTS, но внутри этого узла
+ * деталь отбирается по запросу БЕЗ уточнения: иначе строгое сходство (см.
+ * `similarity` в part-match) требует, чтобы в названии нашлось и «ближнего»,
+ * и отсекает саму лампу.
+ */
+const NODE_QUALIFIERS: [RegExp, string[]][] = [
+  [/(ближн|дальн)\S*(\s+свет\S*)?/g, ['система наружного освещения автомобиля > фара']],
+]
+
+/** Запрос без уточнений-узлов; null — если уточнений нет или от запроса ничего не осталось. */
+function withoutNodeQualifiers(query: string): string | null {
+  const lowered = query.toLowerCase().replaceAll('ё', 'е')
+  let rest = lowered
+  for (const [qualifier] of NODE_QUALIFIERS) rest = rest.replace(qualifier, ' ')
+  rest = rest.replace(/\s+/g, ' ').trim()
+  return rest && rest !== lowered.trim() ? rest : null
+}
+
+/** Пути узлов, которые называют уточнения запроса. */
+function qualifierHints(query: string): string[] {
+  const lowered = query.toLowerCase().replaceAll('ё', 'е')
+  return NODE_QUALIFIERS.filter(([qualifier]) => new RegExp(qualifier.source).test(lowered)).flatMap(([, paths]) => paths)
+}
+
 /** Дерево `groups-tree` ({id, name, subGroups}) → листья с путём от корня. */
 function treeLeavesOf(nodes: Record<string, unknown>[], path: string[]): TreeLeaf[] {
   const out: TreeLeaf[] = []
@@ -503,7 +542,10 @@ function treeLeavesOf(nodes: Record<string, unknown>[], path: string[]): TreeLea
 function pickLeaves(leaves: TreeLeaf[], query: string): TreeLeaf[] {
   const names = queryNames(query)
   const lowered = query.toLowerCase().replaceAll('ё', 'е')
-  const hints = NODE_HINTS.filter(([part]) => part.test(lowered)).flatMap(([, paths]) => paths)
+  const hints = [
+    ...NODE_HINTS.filter(([part]) => part.test(lowered)).flatMap(([, paths]) => paths),
+    ...qualifierHints(query),
+  ]
   return leaves
     .map((leaf, order) => {
       const path = leaf.path.toLowerCase().replaceAll('ё', 'е')

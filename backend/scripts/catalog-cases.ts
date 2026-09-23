@@ -359,6 +359,15 @@ const CASES: Case[] = [
       'английский термин ловился в скобках с применимостью',
     expect: { firstForbids: /\bnut\b|гайк/i },
   },
+  {
+    vin: 'KMHJN81VP8U903944',
+    car: 'Hyundai Tucson 2008',
+    query: 'лампа ближнего света',
+    origin:
+      '23.09.2026: «не найдено». Справочник знает только «Лампа», в узле «Фары» лампы так и зовутся, ' +
+      'а лист «Лампа» ведёт в лампу багажника',
+    expect: { minParts: 1, firstMatches: /ламп/i, scheme: true },
+  },
 ]
 
 type Result = {

@@ -1230,6 +1230,16 @@ describe('PartsCatalogsCatalogProvider.searchParts: запасной путь ч
         { id: '53', name: 'Сайлентблоки, втулки стабилизатора', parentId: '9', subGroups: [] },
       ] }],
     },
+    // Hyundai: лампа фары лежит в листе «Фара», а лист «Лампа» ведёт в багажник.
+    {
+      id: '10',
+      name: 'Кузов, остекление',
+      parentId: null,
+      subGroups: [{ id: '11', name: 'Система наружного освещения автомобиля', parentId: '10', subGroups: [
+        { id: '832', name: 'Фара', parentId: '11', subGroups: [] },
+        { id: '862', name: 'Лампа', parentId: '11', subGroups: [] },
+      ] }],
+    },
     // Ловушка: тот же лист «Приводной вал», но в смазках — смазка для ШРУСа, не сам ШРУС.
     { id: '5', name: 'ГСМ, автохимия', parentId: null, subGroups: [{ id: '32', name: 'Приводной вал', parentId: '5', subGroups: [] }] },
   ]
@@ -1245,6 +1255,8 @@ describe('PartsCatalogsCatalogProvider.searchParts: запасной путь ч
       if (branch === '30') return json({ group: null, list: [{ groupId: 'g-rad', name: 'Радиатор охлаждающей жидкости', img: '' }] })
       if (branch === '31') return json({ group: null, list: [{ groupId: 'g-shaft', name: 'Приводной вал 1', img: '' }] })
       if (branch === '32') return json({ group: null, list: [{ groupId: 'g-grease', name: 'Смазка', img: '' }] })
+      if (branch === '832') return json({ group: null, list: [{ groupId: 'g-head-lamp', name: 'Фары', img: '' }] })
+      if (branch === '862') return json({ group: null, list: [{ groupId: 'g-trunk', name: 'Багажное отделение', img: '' }] })
       if (branch === '53') return json({ group: null, list: [{ groupId: 'g-front-susp', name: 'Передняя подвеска', img: '' }] })
       if (branch === '51') return json({ group: null, list: [{ groupId: 'g-rear-brake', name: 'Задний тормоз', img: '' }] })
       if (branch === '52') {
@@ -1292,6 +1304,17 @@ describe('PartsCatalogsCatalogProvider.searchParts: запасной путь ч
           { number: '20420FL000', name: 'LINK ASSEMBLY-FRONT STABILIZER RIGHT' },
         ] }] })
       }
+      if (u.searchParams.get('groupId') === 'g-head-lamp') {
+        return json({ partGroups: [{ name: 'HEAD LAMP', parts: [
+          { number: '18647-61566-L', name: 'Лампа', nameId: '1384' },
+          { number: '18643-05009-N', name: 'Лампа', nameId: '1384' },
+          { number: '92101-2E010', name: 'Фара головного света', nameId: '170' },
+          { number: '92161-2E000', name: 'ЧАШКА ЛАМПЫ' },
+        ] }] })
+      }
+      if (u.searchParams.get('groupId') === 'g-trunk') {
+        return json({ partGroups: [{ name: '', parts: [{ number: '18645-05009-N', name: 'Лампа', nameId: '1384' }] }] })
+      }
       if (u.searchParams.get('groupId') === 'g-grease') {
         return json({ partGroups: [{ name: '', parts: [{ number: 'G052186A3', name: 'Смазка ШРУС', nameId: '9001' }] }] })
       }
@@ -1336,6 +1359,14 @@ describe('PartsCatalogsCatalogProvider.searchParts: запасной путь ч
   test('стойка стабилизатора — сама стойка, а не хомут или штанга', async () => {
     const parts = await providerWith(brokenCatalog).searchParts({ ...car, make: 'Subaru' }, 'стойка стабилизатора')
     expect(parts.map((part) => part.oemNumber)).toEqual(['20420FL000'])
+  })
+
+  // Живьём 23.09.2026, Hyundai Tucson KMHJN81VP8U903944: «лампа ближнего света» — «не
+  // найдено». Справочник знает только «Лампа», а в узле фары лампы так и зовутся.
+  test('лампа ближнего света — лампы из схемы фары, а не пусто и не лампа багажника', async () => {
+    const parts = await providerWith(brokenCatalog).searchParts({ ...car, make: 'Hyundai' }, 'лампа ближнего света')
+    expect(parts.map((part) => part.oemNumber)).toEqual(['18647-61566-L', '18643-05009-N'])
+    expect(parts.every((part) => part.schemeId === 'g-head-lamp')).toBe(true)
   })
 
   test('дерево машины запрашивается один раз на машину, а не на каждый поиск', async () => {
