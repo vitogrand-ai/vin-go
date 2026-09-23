@@ -729,6 +729,26 @@ describe('collectParts', () => {
     expect(c.out.map((part) => part.oemNumber)).toEqual(['27301-2B010'])
   })
 
+  test('термин в скобках — применимость, а не сама деталь', () => {
+    // Живьём 23.09.2026, Toyota LC: на «шаровая» первой шла «NUT, CASTLE (FOR FRONT
+    // LOWER BALL JOINT RH)» — гайка ДЛЯ шаровой, а не опора.
+    const c = ctx(['ball joint'])
+    collectParts(
+      {
+        partGroups: [
+          {
+            parts: [
+              { number: '90171-C0005', nameId: null, name: 'NUT, CASTLE (FOR FRONT LOWER BALL JOINT RH)' },
+              { number: '43330-69135', nameId: null, name: 'JOINT ASSY, LOWER BALL, FRONT' },
+            ],
+          },
+        ],
+      },
+      c,
+    )
+    expect(c.out.map((part) => part.oemNumber)).toEqual(['43330-69135'])
+  })
+
   test('частичное слово не считается совпадением', () => {
     // «pad» не должен ловить «PADDING»: иначе в выдачу попадают соседи по узлу.
     const c = ctx(['pad'])
@@ -1166,7 +1186,23 @@ describe('PartsCatalogsCatalogProvider.searchParts: запасной путь ч
         { id: '797', name: 'Генератор', parentId: '1', subGroups: [] },
       ],
     },
-    { id: '2', name: 'Охлаждение ДВС', parentId: null, subGroups: [{ id: '10', name: 'Насос системы охлаждения', parentId: '2', subGroups: [] }] },
+    {
+      id: '2',
+      name: 'Охлаждение ДВС',
+      parentId: null,
+      subGroups: [
+        { id: '10', name: 'Насос системы охлаждения', parentId: '2', subGroups: [] },
+        { id: '30', name: 'Бачок расширительный', parentId: '2', subGroups: [] },
+      ],
+    },
+    {
+      id: '3',
+      name: 'Трансмиссия, КПП',
+      parentId: null,
+      subGroups: [{ id: '4', name: 'Привод колеса', parentId: '3', subGroups: [{ id: '31', name: 'Приводной вал', parentId: '4', subGroups: [] }] }],
+    },
+    // Ловушка: тот же лист «Приводной вал», но в смазках — смазка для ШРУСа, не сам ШРУС.
+    { id: '5', name: 'ГСМ, автохимия', parentId: null, subGroups: [{ id: '32', name: 'Приводной вал', parentId: '5', subGroups: [] }] },
   ]
 
   /** Каталог со сломанным `partNameIds`: на любую деталь — схема помпы. */
@@ -1177,6 +1213,9 @@ describe('PartsCatalogsCatalogProvider.searchParts: запасной путь ч
     if (u.pathname.endsWith('/schemas')) {
       const branch = u.searchParams.get('branchId')
       if (branch === '827') return json({ group: null, list: [{ groupId: 'g-starter', name: 'Стартер и детали не в сборе', img: '' }] })
+      if (branch === '30') return json({ group: null, list: [{ groupId: 'g-rad', name: 'Радиатор охлаждающей жидкости', img: '' }] })
+      if (branch === '31') return json({ group: null, list: [{ groupId: 'g-shaft', name: 'Приводной вал 1', img: '' }] })
+      if (branch === '32') return json({ group: null, list: [{ groupId: 'g-grease', name: 'Смазка', img: '' }] })
       return json({ group: null, list: [{ groupId: 'g-pump', name: 'Насос системы охлаждения', img: '' }] })
     }
     if (u.pathname.endsWith('/parts2')) {
@@ -1185,6 +1224,22 @@ describe('PartsCatalogsCatalogProvider.searchParts: запасной путь ч
           { number: '02E911022H', name: 'Стартер', positionNumber: '1' },
           { number: 'N10721501', name: 'Винт с 6-гр. головкой', positionNumber: '2' },
         ] }] })
+      }
+      if (u.searchParams.get('groupId') === 'g-rad') {
+        return json({ partGroups: [{ name: '', parts: [
+          { number: '5Q0121251GB', name: 'Радиатор охлаждения ДВС', nameId: '1075' },
+          { number: '5Q0121407D', name: 'Бачок расширительный системы охлаждения', nameId: '778' },
+          { number: '5Q0121321', name: 'Крышка расширительного бачка системы охлаждения', nameId: '407' },
+        ] }] })
+      }
+      if (u.searchParams.get('groupId') === 'g-shaft') {
+        return json({ partGroups: [{ name: '', parts: [
+          { number: '8V0498103', name: 'ШРУС', nameId: '565' },
+          { number: '8V0498203', name: 'Пыльник ШРУСа', nameId: '566' },
+        ] }] })
+      }
+      if (u.searchParams.get('groupId') === 'g-grease') {
+        return json({ partGroups: [{ name: '', parts: [{ number: 'G052186A3', name: 'Смазка ШРУС', nameId: '9001' }] }] })
       }
       return json({ partGroups: [{ name: '', parts: [{ number: '06L121111L', name: 'Насос - помпа системы охлаждения ДВС', nameId: '1234' }] }] })
     }
@@ -1195,6 +1250,22 @@ describe('PartsCatalogsCatalogProvider.searchParts: запасной путь ч
     const parts = await providerWith(brokenCatalog).searchParts(car, 'стартер')
     expect(parts.map((part) => part.oemNumber)).toEqual(['02E911022H'])
     expect(parts[0]!.schemeId).toBe('g-starter')
+  })
+
+  // Живьём 23.09.2026: schemas?partNameIds на всё отдавал «Педали тормоза», а в
+  // дереве деталь лежит в узле, названном не ею: крышка бачка — в «Бачке
+  // расширительном», ШРУС — в «Привод колеса > Приводной вал». Дерево у
+  // parts-catalogs общее для марок, поэтому узел ищется по его пути.
+  test('деталь из узла, названного не ею: крышка бачка — в «Бачке расширительном»', async () => {
+    const parts = await providerWith(brokenCatalog).searchParts(car, 'крышка расширительного бачка')
+    expect(parts.map((part) => part.name)).toEqual(['Крышка расширительного бачка системы охлаждения'])
+  })
+
+  test('ШРУС — из привода колеса, а не смазка из ГСМ и не пыльник', async () => {
+    const calls: { url: string; headers: Record<string, string> }[] = []
+    const parts = await providerWith(brokenCatalog, calls).searchParts(car, 'шрус')
+    expect(parts.map((part) => part.oemNumber)).toEqual(['8V0498103'])
+    expect(calls.some((call) => call.url.includes('branchId=32'))).toBe(false)
   })
 
   test('дерево машины запрашивается один раз на машину, а не на каждый поиск', async () => {

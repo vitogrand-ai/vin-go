@@ -317,6 +317,39 @@ const CASES: Case[] = [
       'узел по якорю не отсекается, а «тяга» совпадает с синонимом «тяга стабилизатора»',
     expect: { minParts: 1, firstMatches: /стабилиз|stabil/i, firstForbids: /рулев|steer/i },
   },
+  {
+    vin: 'XW8LD6NS2LH410128',
+    car: 'Skoda Kodiaq',
+    query: 'гранатка',
+    origin:
+      '23.09.2026: schemas?partNameIds на сервере отдавал давние чужие схемы, дерево брало только листья, ' +
+      'названные деталью, — ШРУС в «Привод колеса > Приводной вал» не находился. Ловушка: лист с тем же ' +
+      'именем в «ГСМ» (смазка)',
+    expect: { minParts: 1, firstMatches: /шрус/i, firstForbids: /пыльник|смазк/i },
+  },
+  {
+    vin: 'WVWZZZ1JZ3W386752',
+    car: 'VW Golf IV',
+    query: 'шаровая',
+    origin: '23.09.2026: пусто — шаровая лежит в рычагах подвески, узел своим именем её не называет',
+    expect: { minParts: 1, firstMatches: /шаров/i },
+  },
+  {
+    vin: 'WDD1770871V030773',
+    car: 'Mercedes A200 (Европа)',
+    query: 'крышка расширительного бачка',
+    origin: '23.09.2026: пусто — крышка лежит в узле «Бачок расширительный»',
+    expect: { minParts: 1, firstMatches: /крышка расширительного/i },
+  },
+  {
+    vin: 'LFMGJE720DS070251',
+    car: 'Toyota Land Cruiser Prado',
+    query: 'шаровая',
+    origin:
+      '23.09.2026: первой шла «NUT, CASTLE (FOR FRONT LOWER BALL JOINT RH)» — гайка для шаровой; ' +
+      'английский термин ловился в скобках с применимостью',
+    expect: { firstForbids: /\bnut\b|гайк/i },
+  },
 ]
 
 type Result = {

@@ -453,6 +453,27 @@ function foreignNode(data: unknown, sidSet: Set<string>, category: string, query
   return labelled
 }
 
+/**
+ * Где в дереве узлов лежит деталь, которую узел своим именем не называет.
+ *
+ * Живьём 23.09.2026 основной путь (`schemas?partNameIds=`) на сервере отдавал
+ * на любую деталь одну и ту же давнюю схему, а запасной по дереву брал только
+ * листья, названные самой деталью. Так пустели ходовые запросы почти на всех
+ * машинах пилота: крышка бачка лежит в «Бачке расширительном», ШРУС — в
+ * «Привод колеса», шаровая — в рычагах, ступичный подшипник — в «Кулаке
+ * поворотном, ступице». Дерево у parts-catalogs общее для марок (сверено на
+ * Skoda, Hyundai, Ford, Citroen, Toyota, Mercedes, VW), поэтому подсказка —
+ * кусок ПУТИ узла, а не название листа: листья под ним у марок свои. Детали
+ * узла по подсказке проходят тот же строгий отбор по названию, что и везде.
+ */
+const NODE_HINTS: [RegExp, string[]][] = [
+  [/шрус|гранат/, ['трансмиссия, кпп > привод колеса']],
+  [/шаров/, ['рычаги, тяги подвески', 'кулак поворотный']],
+  [/ступиц|ступичн/, ['кулак поворотный']],
+  [/сцеплен/, ['трансмиссия, кпп > система сцепления']],
+  [/расширительн/, ['охлаждение двс > бачок расширительный']],
+]
+
 /** Дерево `groups-tree` ({id, name, subGroups}) → листья с путём от корня. */
 function treeLeavesOf(nodes: Record<string, unknown>[], path: string[]): TreeLeaf[] {
   const out: TreeLeaf[] = []
@@ -475,8 +496,15 @@ function treeLeavesOf(nodes: Record<string, unknown>[], path: string[]): TreeLea
  */
 function pickLeaves(leaves: TreeLeaf[], query: string): TreeLeaf[] {
   const names = queryNames(query)
+  const lowered = query.toLowerCase().replaceAll('ё', 'е')
+  const hints = NODE_HINTS.filter(([part]) => part.test(lowered)).flatMap(([, paths]) => paths)
   return leaves
-    .map((leaf, order) => ({ leaf, order, score: nodeCloseness(leaf.name, names) }))
+    .map((leaf, order) => {
+      const path = leaf.path.toLowerCase().replaceAll('ё', 'е')
+      // Узел по подсказке идёт следом за узлами, названными самой деталью.
+      const hinted = hints.some((hint) => path.includes(hint)) ? NAME_MATCH : 0
+      return { leaf, order, score: Math.max(nodeCloseness(leaf.name, names), hinted) }
+    })
     .filter((item) => item.score >= NAME_MATCH && positionRank(item.leaf.path, query) >= 0)
     .sort((a, b) => b.score - a.score || a.order - b.order)
     .slice(0, MAX_TREE_LEAVES)
@@ -832,10 +860,14 @@ function positiveInt(value: string): number | null {
  * ASSY-UNIVERSAL» у ШРУСа (живьём, Hyundai). Подстрока «ignition coil» такое
  * название не ловит, хотя это ровно то, что спрашивали. Слова термина должны
  * найтись в названии целиком — «pad» не совпадёт с «padding».
+ *
+ * Скобки в расчёт не идут: там EPC пишет применимость, а не деталь. Живьём
+ * 23.09.2026 Toyota на «шаровая» отдавала первой «NUT, CASTLE (FOR FRONT LOWER
+ * BALL JOINT RH)» — гайку для шаровой.
  */
 function matchesTerms(name: string, terms: string[]): boolean {
   if (terms.length === 0) return false
-  const nameWords = new Set(splitWords(name))
+  const nameWords = new Set(splitWords(name.replace(/\([^)]*\)?/g, ' ')))
   return terms.some((term) => {
     const termWords = splitWords(term)
     return termWords.length > 0 && termWords.every((word) => nameWords.has(word))
