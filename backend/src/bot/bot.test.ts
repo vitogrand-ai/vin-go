@@ -270,6 +270,20 @@ describe('TelegramBot', () => {
       expect(keyboard?.[0]?.[0]?.callback_data).toBe('oem:565941813F')
     })
 
+    test('пятизначный номер позиции (Ford) тоже открывает деталь схемы', async () => {
+      // Живьём 2026-09: у Ford Mondeo АКБ на схеме — позиция 10655, бот искал её как название.
+      const battery: Part = { ...harness, oemNumber: '2014807', name: 'Батарея аккумуляторная', position: '10655' }
+      const numberBot = botWithScheme(async () => [headlight, battery])
+
+      await numberBot.handleUpdate(messageUpdate(DEMO_VIN))
+      await numberBot.handleUpdate(messageUpdate('фара'))
+      await numberBot.handleUpdate(messageUpdate('10655'))
+
+      const last = client.sent.at(-1)
+      expect(last?.text).toContain('Позиция 10655')
+      expect(last?.options?.replyMarkup?.inline_keyboard?.[0]?.[0]?.text).toContain('Батарея')
+    })
+
     test('такой позиции на схеме нет — говорим об этом, а не «ничего не найдено»', async () => {
       const numberBot = botWithScheme(async () => [headlight, harness])
 
