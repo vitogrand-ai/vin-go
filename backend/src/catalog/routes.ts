@@ -1,6 +1,10 @@
 import {
   apiErrorSchema,
+  branchSchemesRequestSchema,
+  branchSchemesResponseSchema,
   catalogStatusResponseSchema,
+  catalogTreeRequestSchema,
+  catalogTreeResponseSchema,
   decodeVinRequestSchema,
   decodeVinResponseSchema,
   offersRequestSchema,
@@ -91,6 +95,38 @@ const schemePartsRoute = createRoute({
   },
 })
 
+const catalogTreeRoute = createRoute({
+  method: 'post',
+  path: '/tree',
+  request: {
+    body: { content: { 'application/json': { schema: catalogTreeRequestSchema } } },
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: catalogTreeResponseSchema } },
+      description: 'Дерево узлов каталога машины (плоский список)',
+    },
+    400: { content: errorResponseContent, description: 'Некорректный запрос' },
+    404: { content: errorResponseContent, description: 'Автомобиль не найден' },
+  },
+})
+
+const branchSchemesRoute = createRoute({
+  method: 'post',
+  path: '/branch-schemes',
+  request: {
+    body: { content: { 'application/json': { schema: branchSchemesRequestSchema } } },
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: branchSchemesResponseSchema } },
+      description: 'Схемы листа дерева узлов',
+    },
+    400: { content: errorResponseContent, description: 'Некорректный запрос' },
+    404: { content: errorResponseContent, description: 'Автомобиль не найден' },
+  },
+})
+
 const offersRoute = createRoute({
   method: 'post',
   path: '/offers',
@@ -171,6 +207,18 @@ export function createCatalogRoutes(options: CatalogRoutesOptions = {}) {
     const service = c.get('catalogService')
     const { vin, schemeId, position } = c.req.valid('json')
     return c.json(await service.schemeParts(vin, schemeId, position), 200)
+  })
+
+  routes.openapi(catalogTreeRoute, async (c) => {
+    const service = c.get('catalogService')
+    const { vin } = c.req.valid('json')
+    return c.json(await service.catalogTree(vin), 200)
+  })
+
+  routes.openapi(branchSchemesRoute, async (c) => {
+    const service = c.get('catalogService')
+    const { vin, branchId } = c.req.valid('json')
+    return c.json(await service.branchSchemes(vin, branchId), 200)
   })
 
   routes.openapi(offersRoute, async (c) => {

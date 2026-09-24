@@ -1,4 +1,4 @@
-import type { DealerPrice, Offer, Part, Vehicle } from '@web-app-demo/contracts'
+import type { CatalogTreeNode, DealerPrice, Offer, Part, SchemeNode, Vehicle } from '@web-app-demo/contracts'
 
 /**
  * Провайдер каталога: расшифровка VIN и поиск каталожных (OEM) номеров.
@@ -21,6 +21,14 @@ export interface CatalogProvider {
    * Метод необязательный: схемы отдаёт не каждый каталог.
    */
   schemeParts?(vehicle: Vehicle, schemeId: string): Promise<Part[]>
+  /**
+   * Дерево узлов каталога этой машины — для поиска детали глазами, когда
+   * поиск по названию её не нашёл. Пусто — дерева у каталога нет.
+   * Необязательный, как и схемы: дерево есть не у каждого каталога.
+   */
+  catalogTree?(vehicle: Vehicle): Promise<CatalogTreeNode[]>
+  /** Схемы листа дерева (`CatalogTreeNode.id`); `schemeId` схемы открывает `schemeParts`. */
+  branchSchemes?(vehicle: Vehicle, branchId: string): Promise<SchemeNode[]>
 }
 
 /**

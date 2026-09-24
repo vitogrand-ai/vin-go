@@ -1,4 +1,4 @@
-import { vehicleSchema, type Part, type Vehicle } from '@web-app-demo/contracts'
+import { vehicleSchema, type CatalogTreeNode, type Part, type SchemeNode, type Vehicle } from '@web-app-demo/contracts'
 
 import type { DbClient } from '../db'
 import type { Prisma } from '../generated/prisma/client'
@@ -42,13 +42,27 @@ export class CachingCatalogProvider implements CatalogProvider {
     return vehicle
   }
 
-  searchParts(vehicle: Vehicle, query: string): Promise<Part[]> {
-    return this.inner.searchParts(vehicle, query)
+  /**
+   * Запрос мастера (`original`) пробрасывается дальше как есть: по нему адаптер
+   * выбирает строку таблицы «деталь → узел». Без него на проде (где кэш включён
+   * всегда) таблица видела только вариант из словаря жаргона — «датчик
+   * положения коленвала» превращался в «коленчатый вал», и приходил сам вал.
+   */
+  searchParts(vehicle: Vehicle, query: string, original?: string): Promise<Part[]> {
+    return this.inner.searchParts(vehicle, query, original)
   }
 
   /** Кэшируется только расшифровка VIN — узел по схеме идёт в каталог как есть. */
   schemeParts(vehicle: Vehicle, schemeId: string): Promise<Part[]> {
     return this.inner.schemeParts?.(vehicle, schemeId) ?? Promise.resolve([])
+  }
+
+  catalogTree(vehicle: Vehicle): Promise<CatalogTreeNode[]> {
+    return this.inner.catalogTree?.(vehicle) ?? Promise.resolve([])
+  }
+
+  branchSchemes(vehicle: Vehicle, branchId: string): Promise<SchemeNode[]> {
+    return this.inner.branchSchemes?.(vehicle, branchId) ?? Promise.resolve([])
   }
 
   private async read(vin: string): Promise<Vehicle | null> {

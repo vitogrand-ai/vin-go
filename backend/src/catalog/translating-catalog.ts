@@ -1,4 +1,4 @@
-import type { Part, Vehicle } from '@web-app-demo/contracts'
+import type { CatalogTreeNode, Part, SchemeNode, Vehicle } from '@web-app-demo/contracts'
 
 import type { CatalogTranslator } from './catalog-translator'
 import type { CatalogProvider } from './providers'
@@ -30,6 +30,18 @@ export class TranslatingCatalogProvider implements CatalogProvider {
   async schemeParts(vehicle: Vehicle, schemeId: string): Promise<Part[]> {
     if (!this.inner.schemeParts) return []
     return this.translateParts(await this.inner.schemeParts(vehicle, schemeId))
+  }
+
+  /**
+   * Дерево и схемы идут как есть: у каталога с деревом (parts-catalogs) оно
+   * уже на русском — переводить нечего, а вызов модели на сотни узлов дорог.
+   */
+  catalogTree(vehicle: Vehicle): Promise<CatalogTreeNode[]> {
+    return this.inner.catalogTree?.(vehicle) ?? Promise.resolve([])
+  }
+
+  branchSchemes(vehicle: Vehicle, branchId: string): Promise<SchemeNode[]> {
+    return this.inner.branchSchemes?.(vehicle, branchId) ?? Promise.resolve([])
   }
 
   private async translateParts(parts: Part[]): Promise<Part[]> {

@@ -361,3 +361,54 @@ function formatKm(km: number): string {
 function truncate(value: string, max: number): string {
   return value.length <= max ? value : `${value.slice(0, max - 1)}…`
 }
+
+/**
+ * Шаг по дереву узлов каталога. Путь показан целиком: после трёх нажатий
+ * мастер должен видеть, где он, — «Двигатель › Привод ремённый навесных агрегатов».
+ */
+export function treeMessage(path: string | null): string {
+  return path
+    ? `📂 <b>${escapeHtml(path)}</b>\nВыберите узел:`
+    : '📂 <b>Узлы каталога</b>\nВыберите, где стоит деталь, — дойдём до схемы, и по ней назовёте номер детали.'
+}
+
+/** Узлы дерева кнопками по одной в строке (длинные названия каталога в две колонки не влезают). */
+export function treeKeyboard(names: string[], canGoUp: boolean): InlineKeyboard {
+  return {
+    inline_keyboard: [
+      ...names.map((name, index) => [{ text: name, callback_data: `tree:${index}` }]),
+      ...(canGoUp ? [[{ text: '⬅️ Назад', callback_data: 'tree:up' }]] : []),
+    ],
+  }
+}
+
+export function branchSchemesMessage(leafName: string): string {
+  return `📂 <b>${escapeHtml(leafName)}</b>\nВыберите схему:`
+}
+
+export function branchSchemesKeyboard(names: string[]): InlineKeyboard {
+  return {
+    inline_keyboard: [
+      ...names.map((name, index) => [{ text: name || `Схема ${index + 1}`, callback_data: `sch:${index}` }]),
+      [{ text: '⬅️ Назад', callback_data: 'tree:here' }],
+    ],
+  }
+}
+
+/** Подпись к схеме из дерева: дальше мастер присылает номер выноски. */
+export function branchSchemeMessage(
+  schemeName: string,
+  hasImage: boolean,
+): { text: string; keyboard: InlineKeyboard } {
+  return {
+    text:
+      `🔧 <b>${escapeHtml(schemeName)}</b>\n` +
+      'Пришлите номер детали с картинки — покажу её каталожный номер и цены.',
+    keyboard: {
+      inline_keyboard: [
+        ...(hasImage ? [[{ text: '🔍 Схема крупнее', callback_data: 'scheme' }]] : []),
+        [{ text: '⬅️ К узлам', callback_data: 'tree:here' }],
+      ],
+    },
+  }
+}

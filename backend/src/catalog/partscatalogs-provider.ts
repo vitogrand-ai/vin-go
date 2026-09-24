@@ -1,4 +1,4 @@
-import type { Part, Vehicle } from '@web-app-demo/contracts'
+import type { CatalogTreeNode, Part, SchemeNode, Vehicle } from '@web-app-demo/contracts'
 
 import { AppError } from '../http/errors'
 import { CATALOG_SOURCE_KEY } from './fallback-catalog'
@@ -82,6 +82,13 @@ const MAX_NODE_LEAVES = 4
 const MAX_NODE_GROUPS = 5
 const NODE_RESULT_TTL_MS = 60 * 1000
 
+/**
+ * Потолок схем в одном листе дерева для мастера. В листе их обычно 1-5; у
+ * крупных («Кузов») бывает десятки — столько не прочесть ни кнопками в боте,
+ * ни плитками в вебе.
+ */
+const MAX_BRANCH_SCHEMES = 30
+
 /** Лист дерева узлов машины: по нему открываются схемы (`schemas?branchId=`). */
 type TreeLeaf = { id: string; name: string; path: string }
 
@@ -134,7 +141,7 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
   private readonly baseUrl: string
   private readonly fetchImpl: typeof fetch
   /** Листья дерева узлов по машине — для запасного пути, см. `searchByTree`. */
-  private readonly trees = new Map<string, { at: number; leaves: TreeLeaf[] }>()
+  private readonly trees = new Map<string, { at: number; leaves: TreeLeaf[]; nodes: CatalogTreeNode[] }>()
   /** Ответы таблицы «деталь → узел» на минуту, см. `searchByNodeOnce`. */
   private readonly nodeResults = new Map<string, { at: number; parts: Part[] }>()
 
@@ -324,6 +331,42 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
   }
 
   /**
+   * Дерево узлов машины для поиска детали глазами. То же дерево, что у
+   * запасного пути поиска, и из того же кэша: мастер, дошедший до дерева после
+   * пустой выдачи, лишнего вызова не стоит.
+   */
+  async catalogTree(vehicle: Vehicle): Promise<CatalogTreeNode[]> {
+    const ref = await this.resolveRef(vehicle)
+    if (!ref) return []
+    return (await this.tree(ref)).nodes
+  }
+
+  /**
+   * Схемы листа дерева — все, без отбора по запросу: запроса здесь нет, узел
+   * выбрал мастер. Каталог изредка кладёт в лист чужую схему (у Hyundai в
+   * «Системе стояночного тормоза» лежит «Коллектор впускной»); мастер видит
+   * её название и картинку и просто её не открывает.
+   */
+  async branchSchemes(vehicle: Vehicle, branchId: string): Promise<SchemeNode[]> {
+    const ref = await this.resolveRef(vehicle)
+    if (!ref) return []
+
+    const params = new URLSearchParams({ carId: ref.carId, branchId })
+    if (ref.criteria) params.set('criteria', ref.criteria)
+    const data = await this.request(`/catalogs/${encodeURIComponent(ref.catalogId)}/schemas?${params}`)
+    const schemes: SchemeNode[] = []
+    const seen = new Set<string>()
+    for (const schema of firstArray(data, ['list']) ?? []) {
+      const schemeId = str(schema, ['groupId', 'id'])
+      if (!schemeId || seen.has(schemeId)) continue
+      seen.add(schemeId)
+      schemes.push({ schemeId, name: str(schema, ['name']) ?? '', imageUrl: normalizeImageUrl(str(schema, ['img'])) })
+      if (schemes.length >= MAX_BRANCH_SCHEMES) break
+    }
+    return schemes
+  }
+
+  /**
    * Координаты машины в каталоге. Кладутся в raw при decodeVin; если авто
    * определял ДРУГОЙ каталог (best-effort ветка FallbackCatalogProvider), raw
    * чужой — его catalogId/carId имели бы чужую семантику, поэтому декодируем
@@ -439,16 +482,22 @@ export class PartsCatalogsCatalogProvider implements CatalogProvider {
 
   /** Листья дерева узлов машины, из кэша на TREE_TTL_MS. */
   private async treeLeaves(ref: CarRef): Promise<TreeLeaf[]> {
+    return (await this.tree(ref)).leaves
+  }
+
+  /** Дерево узлов машины (`groups-tree`) — листья с путями и плоский список узлов. */
+  private async tree(ref: CarRef): Promise<{ leaves: TreeLeaf[]; nodes: CatalogTreeNode[] }> {
     const key = `${ref.catalogId}|${ref.carId}|${ref.criteria ?? ''}`
     const cached = this.trees.get(key)
-    if (cached && Date.now() - cached.at < TREE_TTL_MS) return cached.leaves
+    if (cached && Date.now() - cached.at < TREE_TTL_MS) return cached
 
     const params = new URLSearchParams({ carId: ref.carId })
     if (ref.criteria) params.set('criteria', ref.criteria)
     const data = await this.request(`/catalogs/${encodeURIComponent(ref.catalogId)}/groups-tree?${params}`)
-    const leaves = treeLeavesOf(asArray(data) ?? [], [])
-    this.trees.set(key, { at: Date.now(), leaves })
-    return leaves
+    const roots = asArray(data) ?? []
+    const entry = { at: Date.now(), leaves: treeLeavesOf(roots, []), nodes: treeNodesOf(roots, null) }
+    this.trees.set(key, entry)
+    return entry
   }
 
   /** Схемы узлов → детали, прореженные до того, что спрашивали (`collectParts`). */
@@ -684,6 +733,20 @@ function treeLeavesOf(nodes: Record<string, unknown>[], path: string[]): TreeLea
     const here = [...path, name]
     if (children.length === 0) out.push({ id, name, path: here.join(' > ') })
     else out.push(...treeLeavesOf(children, here))
+  }
+  return out
+}
+
+/** Дерево `groups-tree` → плоский список узлов со ссылкой на родителя (см. контракт). */
+function treeNodesOf(nodes: Record<string, unknown>[], parentId: string | null): CatalogTreeNode[] {
+  const out: CatalogTreeNode[] = []
+  for (const node of nodes) {
+    const id = str(node, ['id'])
+    const name = str(node, ['name'])
+    if (!id || !name) continue
+    const children = asArray(node['subGroups']) ?? []
+    out.push({ id, name, parentId, leaf: children.length === 0 })
+    out.push(...treeNodesOf(children, id))
   }
   return out
 }

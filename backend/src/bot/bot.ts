@@ -1,7 +1,9 @@
 import {
   plateSchema,
   vinOrFrameSchema,
+  type CatalogTreeNode,
   type Part,
+  type SchemeNode,
   type TierPick,
   type Vehicle,
 } from '@web-app-demo/contracts'
@@ -16,6 +18,9 @@ import type { OrdersService } from '../orders/service'
 import type { TelegramLinkService } from '../telegram/service'
 import { computeServiceIntervals } from '../garage/service-intervals'
 import {
+  branchSchemeMessage,
+  branchSchemesKeyboard,
+  branchSchemesMessage,
   cartMessage,
   formatVehicle,
   garageMessage,
@@ -24,6 +29,8 @@ import {
   partsMessage,
   serviceIntervalsMessage,
   tierAddKeyboard,
+  treeKeyboard,
+  treeMessage,
   WELCOME,
 } from './formatters'
 import type { SessionStore } from './session-store'
@@ -70,6 +77,16 @@ export type ChatSession = {
    * которой мастер прочитал на картинке: «9» — жгут проводов освещения.
    */
   schemeId?: string
+  /**
+   * Поиск детали глазами по дереву каталога. Кнопка несёт номер пункта, а не
+   * идентификатор узла: у Telegram в callback_data 64 байта. Здесь — узлы,
+   * показанные кнопками последнего шага, и узел, чьи ветви показаны сейчас
+   * (null — верхний уровень), чтобы работала кнопка «назад».
+   */
+  treeChoices?: string[]
+  treeAt?: string | null
+  /** Схемы листа дерева, показанные кнопками: `sch:<номер>`. */
+  schemeChoices?: { schemeId: string; name: string; imageUrl: string | null }[]
 }
 
 /** Сервисы кабинета — доступны боту, когда аккаунт привязан. */
@@ -404,19 +421,23 @@ export class TelegramBot {
       // Тупик «не найдено» превращаем в заявку живому подборщику: это и есть
       // ответ на неполное покрытие каталогов.
       session.lastQuery = query
+      // Каталог мог назвать деталь иначе — но мастер знает, как она выглядит:
+      // по дереву узлов он найдёт её на схеме сам.
+      const buttons = [
+        ...(this.catalog.supportsTree()
+          ? [[{ text: '📂 Найти на схеме каталога', callback_data: 'tree:top' }]]
+          : []),
+        ...(this.cabinet?.experts ? [[{ text: '🧑‍🔧 Спросить эксперта', callback_data: 'expert:ask' }]] : []),
+      ]
       await this.client.sendMessage(
         chatId,
         'По этому запросу ничего не найдено. Попробуйте другое название запчасти' +
-          (this.cabinet?.experts ? ' — или передайте запрос эксперту.' : '.'),
-        this.cabinet?.experts
-          ? {
-              replyMarkup: {
-                inline_keyboard: [
-                  [{ text: '🧑‍🔧 Спросить эксперта', callback_data: 'expert:ask' }],
-                ],
-              },
-            }
-          : undefined,
+          (this.catalog.supportsTree()
+            ? ' — или найдите деталь на схеме узла.'
+            : this.cabinet?.experts
+              ? ' — или передайте запрос эксперту.'
+              : '.'),
+        buttons.length > 0 ? { replyMarkup: { inline_keyboard: buttons } } : undefined,
       )
       return
     }
@@ -528,6 +549,14 @@ export class TelegramBot {
       await this.sendFullScheme(chatId)
       return
     }
+    if (data.startsWith('tree:')) {
+      await this.browseTree(chatId, data.slice('tree:'.length))
+      return
+    }
+    if (data.startsWith('sch:')) {
+      await this.openBranchScheme(chatId, Number(data.slice('sch:'.length)))
+      return
+    }
     if (data.startsWith('car:')) {
       await this.pickGarageCar(chatId, callback.from.id, data.slice('car:'.length))
       return
@@ -541,6 +570,122 @@ export class TelegramBot {
       const oemNumber = separator === -1 ? undefined : rest.slice(separator + 1)
       await this.addToCart(chatId, callback.from.id, tier, oemNumber)
     }
+  }
+
+  /**
+   * Шаг по дереву узлов каталога: `top` — верхний уровень, `up` — на уровень
+   * выше, `here` — текущий уровень заново, число — пункт из показанных кнопок. Лист дерева открывает список
+   * своих схем (`showBranchSchemes`).
+   *
+   * Дерево — для детали, которую поиск по названию не нашёл: мастер знает, где
+   * она стоит и как выглядит, но не знает, как её называет каталог. Узел
+   * выбирает он сам — автоподбор схем по словам давал мусор (см. сервис).
+   */
+  private async browseTree(chatId: number, step: string): Promise<void> {
+    const session = this.session(chatId)
+    if (!session.vin) {
+      await this.client.sendMessage(chatId, 'Сначала пришлите VIN автомобиля.')
+      return
+    }
+
+    let nodes: CatalogTreeNode[]
+    try {
+      nodes = (await this.withTyping(chatId, () => this.catalog.catalogTree(session.vin!))).nodes
+    } catch (error) {
+      console.error('[bot] дерево узлов не открылось:', error)
+      await this.client.sendMessage(chatId, 'Каталог сейчас недоступен. Попробуйте ещё раз через пару минут.')
+      return
+    }
+    if (nodes.length === 0) {
+      await this.client.sendMessage(
+        chatId,
+        'У каталога этой машины нет дерева узлов. Попробуйте другое название запчасти или спросите эксперта.',
+      )
+      return
+    }
+
+    const byId = new Map(nodes.map((node) => [node.id, node]))
+    let at: string | null = null
+    if (step === 'up') {
+      at = session.treeAt ? (byId.get(session.treeAt)?.parentId ?? null) : null
+    } else if (step === 'here') {
+      // Назад из схем листа: лист открывается, не меняя текущий уровень.
+      at = session.treeAt && byId.has(session.treeAt) ? session.treeAt : null
+    } else if (step !== 'top') {
+      const id = session.treeChoices?.[Number(step)]
+      const picked = id === undefined ? undefined : byId.get(id)
+      // Нет такого пункта (кнопка со старого сообщения) — дерево заново сверху.
+      if (picked?.leaf) {
+        await this.showBranchSchemes(chatId, picked)
+        return
+      }
+      at = picked?.id ?? null
+    }
+
+    const children = nodes.filter((node) => node.parentId === at)
+    session.treeAt = at
+    session.treeChoices = children.map((node) => node.id)
+    await this.client.sendMessage(chatId, treeMessage(at ? treePath(byId, at) : null), {
+      parseMode: 'HTML',
+      replyMarkup: treeKeyboard(children.map((node) => node.name), at !== null),
+    })
+  }
+
+  /** Схемы листа дерева — кнопками; выбранная приходит картинкой (`openBranchScheme`). */
+  private async showBranchSchemes(chatId: number, leaf: CatalogTreeNode): Promise<void> {
+    const session = this.session(chatId)
+    let schemes: SchemeNode[]
+    try {
+      schemes = (await this.withTyping(chatId, () => this.catalog.branchSchemes(session.vin!, leaf.id))).schemes
+    } catch (error) {
+      console.error('[bot] схемы узла не открылись:', error)
+      await this.client.sendMessage(chatId, 'Каталог сейчас недоступен. Попробуйте ещё раз через пару минут.')
+      return
+    }
+    if (schemes.length === 0) {
+      await this.client.sendMessage(chatId, `В узле «${leaf.name}» у этой машины схем нет.`, {
+        replyMarkup: { inline_keyboard: [[{ text: '⬅️ Назад', callback_data: 'tree:here' }]] },
+      })
+      return
+    }
+    session.schemeChoices = schemes
+    // Одна схема — сразу картинка: выбирать не из чего.
+    if (schemes.length === 1) {
+      await this.openBranchScheme(chatId, 0)
+      return
+    }
+    await this.client.sendMessage(chatId, branchSchemesMessage(leaf.name), {
+      parseMode: 'HTML',
+      replyMarkup: branchSchemesKeyboard(schemes.map((scheme) => scheme.name)),
+    })
+  }
+
+  /**
+   * Схема картинкой — дальше мастер присылает номер выноски, и бот отвечает
+   * деталью по тому же узлу (`handleSchemePosition`): номер детали приходит
+   * из каталога, а не из догадки.
+   */
+  private async openBranchScheme(chatId: number, index: number): Promise<void> {
+    const session = this.session(chatId)
+    const scheme = session.schemeChoices?.[index]
+    if (!scheme) {
+      await this.client.sendMessage(chatId, 'Схема не найдена — откройте узел заново.', {
+        replyMarkup: { inline_keyboard: [[{ text: '📂 Узлы каталога', callback_data: 'tree:top' }]] },
+      })
+      return
+    }
+    session.schemeId = scheme.schemeId
+    session.scheme = scheme.imageUrl ?? undefined
+    const { text, keyboard } = branchSchemeMessage(scheme.name, Boolean(scheme.imageUrl))
+    if (scheme.imageUrl) {
+      try {
+        await this.client.sendPhoto(chatId, scheme.imageUrl, { caption: text, parseMode: 'HTML', replyMarkup: keyboard })
+        return
+      } catch (error) {
+        console.warn('[bot] схема узла не отправилась, шлём текстом', error)
+      }
+    }
+    await this.client.sendMessage(chatId, text, { parseMode: 'HTML', replyMarkup: keyboard })
   }
 
   /**
@@ -674,9 +819,18 @@ export class TelegramBot {
       delete session.lastQuery
       delete session.scheme
       delete session.schemeId
+      delete session.treeChoices
+      delete session.treeAt
+      delete session.schemeChoices
     }
+    // Дерево узлов — сразу с карточки машины: мастеру, который знает, где
+    // стоит деталь, но не знает её названия, не нужно сперва упираться в
+    // «ничего не найдено».
     await this.client.sendMessage(chatId, formatVehicle(vehicle, { switched }), {
       parseMode: 'HTML',
+      replyMarkup: this.catalog.supportsTree()
+        ? { inline_keyboard: [[{ text: '📂 Узлы каталога', callback_data: 'tree:top' }]] }
+        : undefined,
     })
   }
 
@@ -826,6 +980,15 @@ function toPartCard(part: Part): PartCard {
 function readPartCard(saved: PartCard | string | undefined): PartCard | undefined {
   if (saved === undefined) return undefined
   return typeof saved === 'string' ? { name: saved } : saved
+}
+
+/** Путь узла от корня: «Двигатель › Привод ремённый навесных агрегатов». */
+function treePath(byId: Map<string, CatalogTreeNode>, id: string): string {
+  const names: string[] = []
+  for (let node = byId.get(id); node; node = node.parentId ? byId.get(node.parentId) : undefined) {
+    names.unshift(node.name)
+  }
+  return names.join(' › ')
 }
 
 /** Честное «не найдено» от каталога — в отличие от сбоя источника (502 и т.п.). */

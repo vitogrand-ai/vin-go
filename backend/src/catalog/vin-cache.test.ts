@@ -143,3 +143,34 @@ describe('CachingCatalogProvider', () => {
     expect(await cache.decodeVin('WVWZZZ1JZ3W386752')).toEqual(VEHICLE)
   })
 })
+
+describe('CachingCatalogProvider: запрос мастера доходит до каталога', () => {
+  // На проде кэш включён всегда: без проброса таблица «деталь → узел» видела
+  // только вариант словаря («коленчатый вал» вместо «датчик положения коленвала»).
+  test('searchParts пробрасывает исходный запрос мастера', async () => {
+    let seen: string | undefined
+    const inner: CatalogProvider = {
+      decodeVin: async () => VEHICLE,
+      searchParts: async (_vehicle, _query, original) => {
+        seen = original
+        return []
+      },
+    }
+    const { db } = fakeDb()
+    await new CachingCatalogProvider(inner, db).searchParts(VEHICLE, 'коленчатый вал', 'датчик положения коленвала')
+    expect(seen).toBe('датчик положения коленвала')
+  })
+
+  test('дерево узлов и схемы листа идут в каталог как есть', async () => {
+    const inner: CatalogProvider = {
+      decodeVin: async () => VEHICLE,
+      searchParts: async () => [],
+      catalogTree: async () => [{ id: '1', name: 'Двигатель', parentId: null, leaf: true }],
+      branchSchemes: async (_vehicle, branchId) => [{ schemeId: `s-${branchId}`, name: 'Схема', imageUrl: null }],
+    }
+    const { db } = fakeDb()
+    const cache = new CachingCatalogProvider(inner, db)
+    expect(await cache.catalogTree(VEHICLE)).toHaveLength(1)
+    expect((await cache.branchSchemes(VEHICLE, '1'))[0]?.schemeId).toBe('s-1')
+  })
+})

@@ -31,6 +31,7 @@ import {
   useCatalogStatus,
   useCreateExpertRequest,
 } from '@/features/cabinet/queries'
+import { CatalogTree } from '@/features/search/CatalogTree'
 import { SchemeViewer } from '@/features/search/SchemeViewer'
 import { ApiRequestError } from '@/lib/api'
 import { describeApiError } from '@/lib/errors'
@@ -294,6 +295,8 @@ function CarSearch({
   const [query, setQuery] = useState('')
   const [selectedPart, setSelectedPart] = useState<Part | null>(null)
   const [formError, setFormError] = useState<FormError | null>(null)
+  // Дерево узлов по кнопке; после пустой выдачи оно раскрывается само.
+  const [treeOpen, setTreeOpen] = useState(false)
   const queryInputRef = useRef<HTMLInputElement>(null)
 
   const search = useMutation({
@@ -362,6 +365,16 @@ function CarSearch({
               Найти
             </Button>
           </form>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-fit"
+            aria-expanded={treeOpen}
+            onClick={() => setTreeOpen((open) => !open)}
+          >
+            {treeOpen ? 'Скрыть узлы каталога' : 'Узлы каталога — найти деталь на схеме'}
+          </Button>
           {carQueries.length > 0 ? (
             <ChipRow label="По этой машине искали:">
               {carQueries.map((value) => (
@@ -393,6 +406,15 @@ function CarSearch({
           demo={search.data.source?.demo ?? false}
           selectedPart={selectedPart}
           onSelect={setSelectedPart}
+        />
+      ) : null}
+
+      {treeOpen || (search.isSuccess && parts.length === 0) ? (
+        <CatalogTree
+          key={vehicle.vin}
+          vin={vehicle.vin}
+          onPick={setSelectedPart}
+          afterEmptySearch={!treeOpen}
         />
       ) : null}
 

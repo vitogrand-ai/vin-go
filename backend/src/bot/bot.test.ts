@@ -497,3 +497,121 @@ describe('неопознанный VIN', () => {
     expect(text).not.toContain('Проверьте VIN')
   })
 })
+
+describe('поиск детали глазами по дереву каталога', () => {
+  const vehicle: Vehicle = { vin: DEMO_VIN, make: 'Skoda', model: 'Kodiaq', year: 2020, engine: null, bodyType: null }
+  const roller: Part = {
+    oemNumber: '04E145299K',
+    name: 'Ролик натяжной',
+    category: 'Привод вспомогательных агрегатов',
+    brand: 'Skoda',
+    position: '7',
+    schemeId: 'g-belt',
+  }
+
+  function treeBot(client: FakeTelegramClient): TelegramBot {
+    const catalog = new CatalogService(
+      {
+        decodeVin: async () => vehicle,
+        searchParts: async () => [],
+        catalogTree: async () => [
+          { id: '1', name: 'Двигатель', parentId: null, leaf: false },
+          { id: '11', name: 'Привод ременный навесных агрегатов ДВС', parentId: '1', leaf: true },
+          { id: '2', name: 'Кузов', parentId: null, leaf: true },
+        ],
+        branchSchemes: async (_vehicle, branchId) =>
+          branchId === '11'
+            ? [
+                { schemeId: 'g-belt', name: 'Привод вспомогательных агрегатов', imageUrl: 'https://img.example.com/belt.png' },
+                { schemeId: 'g-gen', name: 'Кронштейн генератора', imageUrl: null },
+              ]
+            : [],
+        schemeParts: async (_vehicle, schemeId) => (schemeId === 'g-belt' ? [roller] : []),
+      },
+      new MockSupplierProvider(),
+      new MockPlateProvider(),
+    )
+    return new TelegramBot(client, catalog)
+  }
+
+  test('пустая выдача предлагает найти деталь на схеме каталога', async () => {
+    const client = new FakeTelegramClient()
+    const bot = treeBot(client)
+    await bot.handleUpdate(messageUpdate(DEMO_VIN))
+    await bot.handleUpdate(messageUpdate('обводной ролик'))
+
+    const buttons = client.sent.at(-1)?.options?.replyMarkup?.inline_keyboard.flat() ?? []
+    expect(buttons.map((button) => button.callback_data)).toContain('tree:top')
+  })
+
+  test('дерево → лист → схема → номер с картинки → деталь с номером из каталога', async () => {
+    const client = new FakeTelegramClient()
+    const bot = treeBot(client)
+    await bot.handleUpdate(messageUpdate(DEMO_VIN))
+
+    await bot.handleUpdate(callbackUpdate('tree:top'))
+    let keyboard = client.sent.at(-1)?.options?.replyMarkup?.inline_keyboard ?? []
+    expect(keyboard.map((row) => row[0]?.text)).toEqual(['Двигатель', 'Кузов'])
+
+    await bot.handleUpdate(callbackUpdate('tree:0')) // Двигатель
+    expect(client.sent.at(-1)?.text).toContain('Двигатель')
+    keyboard = client.sent.at(-1)?.options?.replyMarkup?.inline_keyboard ?? []
+    expect(keyboard[0]?.[0]?.text).toBe('Привод ременный навесных агрегатов ДВС')
+
+    await bot.handleUpdate(callbackUpdate('tree:0')) // лист → две схемы на выбор
+    keyboard = client.sent.at(-1)?.options?.replyMarkup?.inline_keyboard ?? []
+    expect(keyboard.map((row) => row[0]?.callback_data)).toEqual(['sch:0', 'sch:1', 'tree:here'])
+
+    await bot.handleUpdate(callbackUpdate('sch:0'))
+    expect(client.sentPhotos.at(-1)?.photoUrl).toBe('https://img.example.com/belt.png')
+    expect(client.sentPhotos.at(-1)?.options?.caption).toContain('Пришлите номер детали')
+
+    await bot.handleUpdate(messageUpdate('7'))
+    const answer = client.sent.at(-1)
+    expect(answer?.text).toContain('Позиция 7')
+    const button = answer?.options?.replyMarkup?.inline_keyboard[0]?.[0]
+    expect(button?.text).toContain('Ролик натяжной')
+    expect(button?.callback_data).toBe('oem:04E145299K')
+  })
+
+  test('«назад» из схем листа возвращает к тому же уровню, а не выше', async () => {
+    const client = new FakeTelegramClient()
+    const bot = treeBot(client)
+    await bot.handleUpdate(messageUpdate(DEMO_VIN))
+    await bot.handleUpdate(callbackUpdate('tree:top'))
+    await bot.handleUpdate(callbackUpdate('tree:0'))
+    await bot.handleUpdate(callbackUpdate('tree:0'))
+    await bot.handleUpdate(callbackUpdate('tree:here'))
+
+    const keyboard = client.sent.at(-1)?.options?.replyMarkup?.inline_keyboard ?? []
+    expect(keyboard[0]?.[0]?.text).toBe('Привод ременный навесных агрегатов ДВС')
+  })
+
+  test('карточка машины сразу даёт вход в узлы каталога', async () => {
+    const client = new FakeTelegramClient()
+    await treeBot(client).handleUpdate(messageUpdate(DEMO_VIN))
+    expect(client.sent[0]?.options?.replyMarkup?.inline_keyboard[0]?.[0]?.callback_data).toBe('tree:top')
+  })
+
+  test('лист без схем — честно говорит об этом', async () => {
+    const client = new FakeTelegramClient()
+    const bot = treeBot(client)
+    await bot.handleUpdate(messageUpdate(DEMO_VIN))
+    await bot.handleUpdate(callbackUpdate('tree:top'))
+    await bot.handleUpdate(callbackUpdate('tree:1')) // Кузов — лист без схем
+    expect(client.sent.at(-1)?.text).toContain('схем нет')
+  })
+
+  test('без дерева у каталога кнопки нет', async () => {
+    const client = new FakeTelegramClient()
+    const catalog = new CatalogService(
+      { decodeVin: async () => vehicle, searchParts: async () => [] },
+      new MockSupplierProvider(),
+      new MockPlateProvider(),
+    )
+    const bot = new TelegramBot(client, catalog)
+    await bot.handleUpdate(messageUpdate(DEMO_VIN))
+    await bot.handleUpdate(messageUpdate('обводной ролик'))
+    expect(client.sent.at(-1)?.options?.replyMarkup).toBeUndefined()
+  })
+})

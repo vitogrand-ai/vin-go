@@ -1,5 +1,7 @@
 import type {
+  BranchSchemesResponse,
   CatalogStatusResponse,
+  CatalogTreeResponse,
   DealerPrice,
   DecodeVinResponse,
   OffersResponse,
@@ -117,9 +119,34 @@ export class CatalogService {
     if (!this.catalog.schemeParts) return { vehicle, parts: [], source: this.meta.catalog }
 
     const all = await this.catalog.schemeParts(vehicle, schemeId)
-    const wanted = position?.trim()
-    const picked = wanted ? all.filter((part) => (part.position ?? '').trim() === wanted) : all
+    const wanted = position ? positionKey(position) : ''
+    const picked = wanted ? all.filter((part) => positionKey(part.position ?? '') === wanted) : all
     return { vehicle, parts: dedupeByOem(picked), source: this.meta.catalog }
+  }
+
+  /**
+   * Дерево узлов каталога машины. Нужно там, где поиск по названию не помог:
+   * мастер знает, как деталь выглядит и где стоит, а как её называет каталог —
+   * нет. Замер 24.09.2026: около 20% ходовых запросов честно пусты, и угадать
+   * узел за мастера не выходит — автоподбор схем по словам давал «кольцо в
+   * АКПП» на «поршневые кольца». Поэтому узел выбирает сам мастер.
+   */
+  async catalogTree(vin: string): Promise<CatalogTreeResponse> {
+    const { vehicle } = await this.decodeVin(vin)
+    const nodes = this.catalog.catalogTree ? await this.catalog.catalogTree(vehicle) : []
+    return { vehicle, nodes }
+  }
+
+  /** Умеет ли каталог дерево узлов — от этого зависит кнопка «найти на схеме». */
+  supportsTree(): boolean {
+    return Boolean(this.catalog.catalogTree)
+  }
+
+  /** Схемы листа дерева; деталь на схеме открывает `schemeParts` по `schemeId`. */
+  async branchSchemes(vin: string, branchId: string): Promise<BranchSchemesResponse> {
+    const { vehicle } = await this.decodeVin(vin)
+    const schemes = this.catalog.branchSchemes ? await this.catalog.branchSchemes(vehicle, branchId) : []
+    return { vehicle, schemes }
   }
 
   async getOffers(oemNumber: string, region?: string): Promise<OffersResponse> {
@@ -150,6 +177,18 @@ export class CatalogService {
       return null
     }
   }
+}
+
+/**
+ * Номер выноски для сравнения. Каталоги пишут его по-разному: Citroen —
+ * «01», «05», остальные — «1», «5», а мастер присылает то, что видит на
+ * картинке, и бот нормализует его в «5». Буквально «05» ≠ «5», и мастер
+ * получал «на схеме нет позиции 5» при детали на схеме. Буквенные номера
+ * («15643A») сравниваются без учёта регистра.
+ */
+function positionKey(position: string): string {
+  const value = position.trim().toUpperCase()
+  return /^\d+$/.test(value) ? String(Number.parseInt(value, 10)) : value
 }
 
 /**

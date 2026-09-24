@@ -1,4 +1,4 @@
-import type { Part, Vehicle } from '@web-app-demo/contracts'
+import type { CatalogTreeNode, Part, SchemeNode, Vehicle } from '@web-app-demo/contracts'
 
 import type { CatalogProvider } from './providers'
 
@@ -202,6 +202,27 @@ export class FallbackCatalogProvider implements CatalogProvider {
       }
     }
     return []
+  }
+
+  /**
+   * Дерево узлов машины — у каталога, опознавшего авто, если он дерево умеет,
+   * иначе у первого, кто умеет. Дерево не склеивается из нескольких
+   * источников: идентификаторы узлов каталог-специфичны, и схемы листа
+   * (`branchSchemes`) спрашиваются у того же каталога тем же выбором.
+   */
+  async catalogTree(vehicle: Vehicle): Promise<CatalogTreeNode[]> {
+    const source = this.treeSource(vehicle)
+    return source?.provider.catalogTree ? source.provider.catalogTree(vehicle) : []
+  }
+
+  async branchSchemes(vehicle: Vehicle, branchId: string): Promise<SchemeNode[]> {
+    const source = this.treeSource(vehicle)
+    return source?.provider.branchSchemes ? source.provider.branchSchemes(vehicle, branchId) : []
+  }
+
+  private treeSource(vehicle: Vehicle): NamedCatalogProvider | undefined {
+    const withTree = this.providers.filter((p) => !p.decodeOnly && p.provider.catalogTree)
+    return withTree.find((p) => p.name === readSource(vehicle)) ?? withTree[0]
   }
 
   /**

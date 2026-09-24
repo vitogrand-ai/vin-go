@@ -200,6 +200,53 @@ export const searchPartsRequestSchema = z.object({
   query: z.string().trim().min(1, 'Введите название запчасти').max(120),
 })
 
+/**
+ * Узел дерева каталога машины: «Двигатель», «Тормозная система > Система
+ * стояночного тормоза». Мастер, чью деталь поиск не нашёл, идёт по дереву сам
+ * и открывает схему — узел выбирает он, а не догадка поиска.
+ *
+ * Дерево плоское: у узла ссылка на родителя. Рекурсивную схему генератор
+ * OpenAPI не переваривает, а плоский список собирается в дерево одной строкой.
+ */
+export const catalogTreeNodeSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  /** null — узел верхнего уровня. */
+  parentId: z.string().nullable(),
+  /** Лист: под ним не узлы, а схемы (см. `branchSchemesRequestSchema`). */
+  leaf: z.boolean(),
+})
+
+export const catalogTreeRequestSchema = z.object({
+  vin: vinOrFrameSchema,
+})
+
+export const catalogTreeResponseSchema = z.object({
+  vehicle: vehicleSchema,
+  /** Пусто — у каталога этой машины дерева нет (китайцы, грузовики). */
+  nodes: z.array(catalogTreeNodeSchema),
+})
+
+/** Схема узла каталога: картинка с выносками и её идентификатор. */
+export const schemeNodeSchema = z.object({
+  /** Тот же идентификатор, что `Part.schemeId`: по нему открывается узел целиком. */
+  schemeId: z.string(),
+  /** Название схемы в каталоге («Привод вспомогательных агрегатов»). */
+  name: z.string(),
+  imageUrl: z.string().nullable(),
+})
+
+export const branchSchemesRequestSchema = z.object({
+  vin: vinOrFrameSchema,
+  /** Лист дерева (`catalogTreeNodeSchema.id` с `leaf: true`). */
+  branchId: z.string().trim().min(1).max(500),
+})
+
+export const branchSchemesResponseSchema = z.object({
+  vehicle: vehicleSchema,
+  schemes: z.array(schemeNodeSchema),
+})
+
 export const searchPartsResponseSchema = z.object({
   vehicle: vehicleSchema,
   parts: z.array(partSchema),
@@ -314,6 +361,11 @@ export type ResolvePlateRequest = z.infer<typeof resolvePlateRequestSchema>
 export type ResolvePlateResponse = z.infer<typeof resolvePlateResponseSchema>
 export type SearchPartsRequest = z.infer<typeof searchPartsRequestSchema>
 export type SearchPartsResponse = z.infer<typeof searchPartsResponseSchema>
+export type SchemeNode = z.infer<typeof schemeNodeSchema>
+export type CatalogTreeNode = z.infer<typeof catalogTreeNodeSchema>
+export type CatalogTreeResponse = z.infer<typeof catalogTreeResponseSchema>
+export type BranchSchemesRequest = z.infer<typeof branchSchemesRequestSchema>
+export type BranchSchemesResponse = z.infer<typeof branchSchemesResponseSchema>
 export type SchemePartsRequest = z.infer<typeof schemePartsRequestSchema>
 export type OffersRequest = z.infer<typeof offersRequestSchema>
 export type OffersResponse = z.infer<typeof offersResponseSchema>

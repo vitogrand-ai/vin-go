@@ -1499,3 +1499,64 @@ describe('PartsCatalogsCatalogProvider.searchParts: чужой узел от к�
     expect(parts.map((part) => part.oemNumber)).toEqual(['26300SJ000'])
   })
 })
+
+describe('PartsCatalogsCatalogProvider: дерево узлов для поиска глазами', () => {
+  const car: Vehicle = {
+    vin: 'XW8LD6NS2LH410128',
+    make: 'Skoda',
+    model: 'Kodiaq',
+    year: 2020,
+    engine: null,
+    bodyType: null,
+    raw: { catalogId: 'skoda', carId: 'car-1', criteria: 'crit', [CATALOG_SOURCE_KEY]: 'partscatalogs' },
+  }
+  const TREE = [
+    {
+      id: '1',
+      name: 'Двигатель',
+      subGroups: [{ id: '11', name: 'Привод ременный навесных агрегатов ДВС', subGroups: [] }],
+    },
+    { id: '2', name: 'Кузов', subGroups: [] },
+  ]
+
+  test('дерево — плоским списком со ссылкой на родителя и признаком листа', async () => {
+    const provider = providerWith((url) => (url.includes('/groups-tree') ? json(TREE) : json(null, 404)))
+    expect(await provider.catalogTree(car)).toEqual([
+      { id: '1', name: 'Двигатель', parentId: null, leaf: false },
+      { id: '11', name: 'Привод ременный навесных агрегатов ДВС', parentId: '1', leaf: true },
+      { id: '2', name: 'Кузов', parentId: null, leaf: true },
+    ])
+  })
+
+  test('дерево берётся из того же кэша, что и запасной путь поиска: один вызов на машину', async () => {
+    const calls: { url: string; headers: Record<string, string> }[] = []
+    const provider = providerWith((url) => (url.includes('/groups-tree') ? json(TREE) : json(null, 404)), calls)
+    await provider.catalogTree(car)
+    await provider.catalogTree(car)
+    expect(calls.filter((call) => call.url.includes('/groups-tree'))).toHaveLength(1)
+  })
+
+  test('схемы листа — все, без отбора по запросу, с картинкой в оригинальном размере', async () => {
+    const calls: { url: string; headers: Record<string, string> }[] = []
+    const provider = providerWith((url) => {
+      const u = new URL(url)
+      if (u.pathname.endsWith('/schemas') && u.searchParams.get('branchId') === '11') {
+        return json({
+          list: [
+            { groupId: 'g-belt', name: 'Привод вспомогательных агрегатов', img: '//ru.img.parts-catalogs.com/r/300x430/skoda/belt.png' },
+            { groupId: 'g-belt', name: 'дубль той же схемы', img: '' },
+            { groupId: 'g-gen', name: 'Кронштейн генератора', img: '' },
+          ],
+        })
+      }
+      return json(null, 404)
+    }, calls)
+
+    const schemes = await provider.branchSchemes(car, '11')
+    expect(schemes.map((scheme) => scheme.schemeId)).toEqual(['g-belt', 'g-gen'])
+    expect(schemes[0]).toMatchObject({ name: 'Привод вспомогательных агрегатов' })
+    expect(schemes[0]?.imageUrl).not.toContain('/r/300x430/')
+    expect(schemes[1]?.imageUrl).toBeNull()
+    expect(calls[0]?.url).toContain('criteria=crit')
+  })
+})

@@ -307,6 +307,20 @@ describe('CatalogService.schemeParts', () => {
     ])
   })
 
+  test('номер с ведущим нулём (Citroen: «05») находится по присланному «5»', async () => {
+    const citroen: Part[] = [
+      { oemNumber: '1611860780', name: 'Натяжитель ремня приводного в сборе', category: 'Водяной насос', brand: 'Citroen', imageUrl: null, position: '05', schemeId: 'G2' },
+      { oemNumber: '1611860781', name: 'Шкив помпы системы охлаждения', category: 'Водяной насос', brand: 'Citroen', imageUrl: null, position: '03', schemeId: 'G2' },
+    ]
+    const service = new CatalogService(
+      { decodeVin: async () => VEHICLE, searchParts: async () => [], schemeParts: async () => citroen },
+      new MockSupplierProvider(),
+      new MockPlateProvider(),
+    )
+    const found = await service.schemeParts(VEHICLE.vin, 'G2', '5')
+    expect(found.parts.map((part) => part.oemNumber)).toEqual(['1611860780'])
+  })
+
   test('позиции нет на схеме → пустая выдача, а не чужая деталь', async () => {
     const found = await serviceWithNode().schemeParts(VEHICLE.vin, 'G1', '77')
     expect(found.parts).toEqual([])

@@ -45,6 +45,10 @@ import {
   removeOrderWorkRequestSchema,
   removeVehicleRequestSchema,
   schemePartsRequestSchema,
+  branchSchemesRequestSchema,
+  branchSchemesResponseSchema,
+  catalogTreeRequestSchema,
+  catalogTreeResponseSchema,
   searchPartsRequestSchema,
   searchPartsResponseSchema,
   setCartVehicleRequestSchema,
@@ -100,6 +104,9 @@ import {
   type ResolvePlateResponse,
   type RemoveVehicleRequest,
   type SchemePartsRequest,
+  type BranchSchemesRequest,
+  type BranchSchemesResponse,
+  type CatalogTreeResponse,
   type SearchPartsRequest,
   type SearchPartsResponse,
   type SetCartVehicleRequest,
@@ -214,6 +221,26 @@ export class ApiClient {
   schemeParts(input: SchemePartsRequest): Promise<SearchPartsResponse> {
     const payload = schemePartsRequestSchema.parse(input)
     return this.request('/api/catalog/scheme', searchPartsResponseSchema, {
+      method: 'POST',
+      body: payload,
+      auth: false,
+    })
+  }
+
+  /** Дерево узлов каталога машины — поиск детали глазами, когда по названию не нашлось. */
+  catalogTree(input: { vin: string }): Promise<CatalogTreeResponse> {
+    const payload = catalogTreeRequestSchema.parse(input)
+    return this.request('/api/catalog/tree', catalogTreeResponseSchema, {
+      method: 'POST',
+      body: payload,
+      auth: false,
+    })
+  }
+
+  /** Схемы листа дерева узлов. */
+  branchSchemes(input: BranchSchemesRequest): Promise<BranchSchemesResponse> {
+    const payload = branchSchemesRequestSchema.parse(input)
+    return this.request('/api/catalog/branch-schemes', branchSchemesResponseSchema, {
       method: 'POST',
       body: payload,
       auth: false,

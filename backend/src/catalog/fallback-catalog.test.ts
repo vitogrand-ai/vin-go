@@ -469,3 +469,37 @@ describe('FallbackCatalogProvider: чистый декодер (decodeOnly, vPIC
     await expect(fb.searchParts({ ...baseVehicle }, 'колодки')).rejects.toBe(boom)
   })
 })
+
+describe('FallbackCatalogProvider: дерево узлов', () => {
+  const treeProvider = (id: string): CatalogProvider => ({
+    ...fakeProvider({}),
+    catalogTree: async () => [{ id, name: id, parentId: null, leaf: true }],
+    branchSchemes: async (_vehicle, branchId) => [{ schemeId: `${id}:${branchId}`, name: 'Схема', imageUrl: null }],
+  })
+
+  test('дерево и схемы листа — у каталога, опознавшего авто', async () => {
+    const fb = new FallbackCatalogProvider([
+      { name: 'first', provider: treeProvider('first') },
+      { name: 'owner', provider: treeProvider('owner') },
+    ])
+    const vehicle: Vehicle = { ...baseVehicle, raw: { [CATALOG_SOURCE_KEY]: 'owner' } }
+    expect((await fb.catalogTree(vehicle))[0]?.id).toBe('owner')
+    // Идентификаторы узлов каталог-специфичны: схемы — у того же каталога.
+    expect((await fb.branchSchemes(vehicle, '7'))[0]?.schemeId).toBe('owner:7')
+  })
+
+  test('опознавший каталог дерева не умеет (vPIC) — дерево у первого, кто умеет', async () => {
+    const fb = new FallbackCatalogProvider([
+      { name: 'partscatalogs', provider: treeProvider('partscatalogs') },
+      { name: 'vpic', provider: fakeProvider({}), decodeOnly: true },
+    ])
+    const vehicle: Vehicle = { ...baseVehicle, raw: { [CATALOG_SOURCE_KEY]: 'vpic' } }
+    expect((await fb.catalogTree(vehicle))[0]?.id).toBe('partscatalogs')
+  })
+
+  test('дерева нет ни у кого — пустой список, не ошибка', async () => {
+    const fb = new FallbackCatalogProvider([{ name: 'a', provider: fakeProvider({}) }])
+    expect(await fb.catalogTree({ ...baseVehicle })).toEqual([])
+    expect(await fb.branchSchemes({ ...baseVehicle }, '1')).toEqual([])
+  })
+})
