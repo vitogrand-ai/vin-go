@@ -590,7 +590,8 @@ describe('поиск детали глазами по дереву катало�
   test('карточка машины сразу даёт вход в узлы каталога', async () => {
     const client = new FakeTelegramClient()
     await treeBot(client).handleUpdate(messageUpdate(DEMO_VIN))
-    expect(client.sent[0]?.options?.replyMarkup?.inline_keyboard[0]?.[0]?.callback_data).toBe('tree:top')
+    const buttons = client.sent[0]?.options?.replyMarkup?.inline_keyboard.flat() ?? []
+    expect(buttons.map((button) => button.callback_data)).toContain('tree:top')
   })
 
   test('лист без схем — честно говорит об этом', async () => {
@@ -613,5 +614,62 @@ describe('поиск детали глазами по дереву катало�
     await bot.handleUpdate(messageUpdate(DEMO_VIN))
     await bot.handleUpdate(messageUpdate('обводной ролик'))
     expect(client.sent.at(-1)?.options?.replyMarkup).toBeUndefined()
+  })
+})
+
+describe('детали ТО одной кнопкой', () => {
+  const vehicle: Vehicle = { vin: DEMO_VIN, make: 'Skoda', model: 'Kodiaq', year: 2020, engine: null, bodyType: null }
+  const part = (oemNumber: string, name: string): Part => ({ oemNumber, name, category: 'ТО', brand: 'Skoda' })
+
+  function toBot(client: FakeTelegramClient, searchParts: (query: string) => Promise<Part[]>): TelegramBot {
+    const catalog = new CatalogService(
+      { decodeVin: async () => vehicle, searchParts: async (_vehicle, query) => searchParts(query) },
+      new MockSupplierProvider(),
+      new MockPlateProvider(),
+    )
+    return new TelegramBot(client, catalog)
+  }
+
+  test('карточка машины даёт кнопку «Детали ТО»', async () => {
+    const client = new FakeTelegramClient()
+    await toBot(client, async () => []).handleUpdate(messageUpdate(DEMO_VIN))
+    const buttons = client.sent[0]?.options?.replyMarkup?.inline_keyboard.flat() ?? []
+    expect(buttons.map((button) => button.callback_data)).toContain('to:all')
+  })
+
+  test('сразу статус, затем все пункты: найденные с кнопкой цен, пустые названы честно', async () => {
+    const client = new FakeTelegramClient()
+    const bot = toBot(client, async (query) => {
+      if (query.includes('масл')) return [part('04E115561H', 'Фильтр масляный')]
+      if (query.includes('салон')) return [part('5Q0819653', 'Фильтр салона'), part('5Q0819669', 'Фильтр салона угольный')]
+      if (query.includes('свеч')) throw new Error('каталог лежит')
+      return []
+    })
+    await bot.handleUpdate(messageUpdate(DEMO_VIN))
+    await bot.handleUpdate(callbackUpdate('to:all'))
+
+    expect(client.sent.at(-2)?.text).toContain('Собираю детали ТО')
+    const answer = client.sent.at(-1)
+    expect(answer?.text).toContain('04E115561H')
+    expect(answer?.text).toContain('(+1 исп.)')
+    expect(answer?.text).toContain('Топливный фильтр: в каталоге не найден')
+    expect(answer?.text).toContain('Свечи зажигания: каталог не ответил')
+    const keyboard = answer?.options?.replyMarkup?.inline_keyboard ?? []
+    expect(keyboard[0]?.[0]?.callback_data).toBe('oem:04E115561H')
+    // Салонный — второй найденный: у него «Все варианты», пункт №2 в списке ТО.
+    expect(keyboard[1]?.map((button) => button.callback_data)).toEqual(['oem:5Q0819653', 'to:2'])
+  })
+
+  test('«Все варианты» ищет пункт его названием', async () => {
+    const client = new FakeTelegramClient()
+    const asked: string[] = []
+    const bot = toBot(client, async (query) => {
+      asked.push(query)
+      return [part('5Q0819653', 'Фильтр салона'), part('5Q0819669', 'Фильтр салона угольный')]
+    })
+    await bot.handleUpdate(messageUpdate(DEMO_VIN))
+    await bot.handleUpdate(callbackUpdate('to:2'))
+    expect(asked.every((query) => /салон/.test(query))).toBe(true)
+    expect(client.sent.at(-1)?.text).toContain('Найдено запчастей: 2')
   })
 })

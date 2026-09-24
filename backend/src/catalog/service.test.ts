@@ -378,3 +378,26 @@ describe('CatalogService — дубли применимости', () => {
     })
   })
 })
+
+describe('CatalogService.maintenanceParts', () => {
+  test('все пункты ТО ищутся, сбой одного не роняет остальные', async () => {
+    const service = new CatalogService(
+      {
+        decodeVin: async () => VEHICLE,
+        searchParts: async (_vehicle, query) => {
+          if (query.includes('свеч')) throw new Error('каталог лежит')
+          return query.includes('масл') ? [{ oemNumber: 'OF1', name: 'Фильтр масляный', category: 'ТО', brand: null }] : []
+        },
+      },
+      new MockSupplierProvider(),
+      new MockPlateProvider(),
+    )
+    const { items } = await service.maintenanceParts(VEHICLE.vin)
+    expect(items.map((item) => item.label)).toEqual([
+      'Масляный фильтр', 'Воздушный фильтр', 'Салонный фильтр', 'Топливный фильтр', 'Свечи зажигания',
+    ])
+    expect(items[0]?.parts[0]?.oemNumber).toBe('OF1')
+    expect(items[4]).toMatchObject({ failed: true, parts: [] })
+    expect(items[1]).toMatchObject({ failed: false, parts: [] })
+  })
+})

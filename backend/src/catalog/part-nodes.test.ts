@@ -98,6 +98,15 @@ describe('partNodeFor: формулировки мастера → деталь 
 })
 
 describe('isNodePart: та ли это деталь', () => {
+  test('воздушный фильтр без кода — сам элемент, а не кронштейн или патрубок корпуса', () => {
+    // Живьём 25.09.2026, Subaru Forester: первой строкой «Деталей ТО» шёл BRACKET-AIR CLEANER.
+    const air = partNodeFor('воздушный фильтр')!
+    expect(isNodePart(air, { name: 'ELEMENT-AIR CLEANER', nameId: null })).toBe(true)
+    expect(isNodePart(air, { name: 'BRACKET-AIR CLEANER', nameId: null })).toBe(false)
+    expect(isNodePart(air, { name: 'DUCT-AIR CLEANER', nameId: null })).toBe(false)
+    expect(isNodePart(air, { name: 'CLAMP-AIR CLEANER HOSE', nameId: null })).toBe(false)
+  })
+
   const pump = partNodeFor('помпа')!
 
   test('деталь с кодом — только по коду: чужой код не проходит при любом названии', () => {

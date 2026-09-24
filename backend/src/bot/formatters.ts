@@ -412,3 +412,37 @@ export function branchSchemeMessage(
     },
   }
 }
+
+/** Статус сразу после нажатия «Детали ТО»: поиск пяти пунктов идёт до полуминуты. */
+export const MAINTENANCE_PENDING =
+  '🧰 Собираю детали ТО: масляный, воздушный, салонный, топливный фильтры и свечи — до полуминуты…'
+
+/**
+ * Детали ТО одним сообщением. По каждому пункту — первая деталь выдачи
+ * (кнопка ведёт к ценам) и, если исполнений несколько, кнопка «Все варианты»:
+ * выбор между ними делается по тому, что стоит на машине, а не наугад.
+ * Пустой пункт назван честно — у бензинового мотора топливный фильтр часто
+ * встроен в насос, у дизеля нет свечей зажигания.
+ */
+export function maintenanceMessage(
+  vehicle: Vehicle,
+  items: { label: string; parts: Part[]; failed: boolean }[],
+): { text: string; keyboard: InlineKeyboard } {
+  const lines = [`🧰 <b>Детали ТО</b> — ${escapeHtml(vehicle.make)} ${escapeHtml(vehicle.model)}`, '']
+  const rows: InlineKeyboard['inline_keyboard'] = []
+  items.forEach((item, index) => {
+    const first = item.parts[0]
+    if (!first) {
+      lines.push(`• ${escapeHtml(item.label)}: ${item.failed ? 'каталог не ответил' : 'в каталоге не найден'}`)
+      return
+    }
+    const more = item.parts.length > 1 ? ` (+${item.parts.length - 1} исп.)` : ''
+    lines.push(`• ${escapeHtml(item.label)}: <code>${escapeHtml(first.oemNumber)}</code> ${escapeHtml(first.name)}${more}`)
+    rows.push([
+      { text: `${item.label} · цены`, callback_data: `oem:${first.oemNumber}` },
+      ...(item.parts.length > 1 ? [{ text: 'Все варианты', callback_data: `to:${index}` }] : []),
+    ])
+  })
+  lines.push('', 'Нажмите деталь — покажу цены. Несколько исполнений — сверьте с тем, что стоит на машине.')
+  return { text: lines.join('\n'), keyboard: { inline_keyboard: rows } }
+}

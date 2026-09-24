@@ -9,7 +9,7 @@ import type {
   SearchPartsResponse,
 } from '@web-app-demo/contracts'
 
-import type { Part } from '@web-app-demo/contracts'
+import { MAINTENANCE_ITEMS, type Part, type Vehicle } from '@web-app-demo/contracts'
 
 import { AppError } from '../http/errors'
 import { MOCK_PROVIDERS_META, type CatalogProvidersMeta } from './factory'
@@ -137,6 +137,29 @@ export class CatalogService {
     return { vehicle, nodes }
   }
 
+  /**
+   * Расходники планового ТО одним вызовом (`MAINTENANCE_ITEMS`): каждый пункт —
+   * обычный поиск, поэтому номера и порядок те же, что на ручном запросе.
+   * Пункты ищутся параллельно — вместе это до полуминуты на медленной машине
+   * каталога, по очереди было бы вдвое дольше. Сбой одного пункта не роняет
+   * остальные: мастер получает, что нашлось, и видит, какой пункт не ответил.
+   */
+  async maintenanceParts(vin: string): Promise<{ vehicle: Vehicle; items: MaintenanceItemResult[] }> {
+    const { vehicle } = await this.decodeVin(vin)
+    const items = await Promise.all(
+      MAINTENANCE_ITEMS.map(async (item): Promise<MaintenanceItemResult> => {
+        try {
+          const { parts } = await this.searchParts(vin, item.query)
+          return { label: item.label, query: item.query, parts, failed: false }
+        } catch (error) {
+          console.warn(`[catalog] ТО: «${item.query}» не получен`, error)
+          return { label: item.label, query: item.query, parts: [], failed: true }
+        }
+      }),
+    )
+    return { vehicle, items }
+  }
+
   /** Умеет ли каталог дерево узлов — от этого зависит кнопка «найти на схеме». */
   supportsTree(): boolean {
     return Boolean(this.catalog.catalogTree)
@@ -178,6 +201,9 @@ export class CatalogService {
     }
   }
 }
+
+/** Пункт ТО: что нашлось по нему, либо признак, что каталог не ответил. */
+export type MaintenanceItemResult = { label: string; query: string; parts: Part[]; failed: boolean }
 
 /**
  * Номер выноски для сравнения. Каталоги пишут его по-разному: Citroen —

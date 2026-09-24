@@ -101,7 +101,7 @@ export const PART_NODES: PartNode[] = [
       'детали то > фильтры',
       'двигатель > система смазки двс > насос масляный двс',
     ] },
-  { ask: /возд\S*\s+фильтр|фильтр\S*\s+возд|воздухан/, ids: ['85'], other: /air cleaner|air filter|element.*air/i, not: /housing|case|cover|корпус|крышк/i, leaves: [
+  { ask: /возд\S*\s+фильтр|фильтр\S*\s+возд|воздухан/, ids: ['85'], other: /air cleaner|air filter|element.*air/i, not: /housing|case|cover|bracket|clamp|duct|hose|intake|bolt|корпус|крышк|кронштейн|хомут|патрубок|болт/i, leaves: [
       'воздушная система > патрубок подачи воздуха в двс',
       'воздушная система > фильтр воздушный',
     ] },

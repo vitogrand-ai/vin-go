@@ -393,6 +393,15 @@ const CASES: Case[] = [
     origin: '23.09.2026, замер: первой строкой «Цилиндр тормозной главный» — тормозной вместо сцепления',
     expect: { firstForbids: /тормоз|brake/i },
   },
+  {
+    vin: 'JF1SK7LL5MG129305',
+    car: 'Subaru Forester',
+    query: 'воздушный фильтр',
+    origin:
+      '25.09.2026, кнопка «Детали ТО» в вебе: первой строкой шёл BRACKET-AIR CLEANER — кронштейн корпуса, ' +
+      'а не фильтр: исключения строки таблицы не знали кронштейн, хомут и патрубок',
+    expect: { minParts: 1, firstMatches: /фильтр|element|air cleaner/i, firstForbids: /bracket|кронштейн|clamp|duct|hose/i },
+  },
 ]
 
 type Result = {

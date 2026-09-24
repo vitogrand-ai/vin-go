@@ -32,6 +32,7 @@ import {
   useCreateExpertRequest,
 } from '@/features/cabinet/queries'
 import { CatalogTree } from '@/features/search/CatalogTree'
+import { MaintenancePanel } from '@/features/search/MaintenancePanel'
 import { SchemeViewer } from '@/features/search/SchemeViewer'
 import { ApiRequestError } from '@/lib/api'
 import { describeApiError } from '@/lib/errors'
@@ -297,6 +298,7 @@ function CarSearch({
   const [formError, setFormError] = useState<FormError | null>(null)
   // Дерево узлов по кнопке; после пустой выдачи оно раскрывается само.
   const [treeOpen, setTreeOpen] = useState(false)
+  const [maintenanceOpen, setMaintenanceOpen] = useState(false)
   const queryInputRef = useRef<HTMLInputElement>(null)
 
   const search = useMutation({
@@ -365,16 +367,26 @@ function CarSearch({
               Найти
             </Button>
           </form>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="w-fit"
-            aria-expanded={treeOpen}
-            onClick={() => setTreeOpen((open) => !open)}
-          >
-            {treeOpen ? 'Скрыть узлы каталога' : 'Узлы каталога — найти деталь на схеме'}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              aria-expanded={maintenanceOpen}
+              onClick={() => setMaintenanceOpen((open) => !open)}
+            >
+              {maintenanceOpen ? 'Скрыть детали ТО' : 'Детали ТО'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              aria-expanded={treeOpen}
+              onClick={() => setTreeOpen((open) => !open)}
+            >
+              {treeOpen ? 'Скрыть узлы каталога' : 'Узлы каталога — найти деталь на схеме'}
+            </Button>
+          </div>
           {carQueries.length > 0 ? (
             <ChipRow label="По этой машине искали:">
               {carQueries.map((value) => (
@@ -406,6 +418,15 @@ function CarSearch({
           demo={search.data.source?.demo ?? false}
           selectedPart={selectedPart}
           onSelect={setSelectedPart}
+        />
+      ) : null}
+
+      {maintenanceOpen ? (
+        <MaintenancePanel
+          key={vehicle.vin}
+          vin={vehicle.vin}
+          onPick={setSelectedPart}
+          onShowAll={runQuery}
         />
       ) : null}
 

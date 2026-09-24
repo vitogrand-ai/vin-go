@@ -1,6 +1,7 @@
 import {
   plateSchema,
   vinOrFrameSchema,
+  MAINTENANCE_ITEMS,
   type CatalogTreeNode,
   type Part,
   type SchemeNode,
@@ -22,6 +23,8 @@ import {
   branchSchemesKeyboard,
   branchSchemesMessage,
   cartMessage,
+  MAINTENANCE_PENDING,
+  maintenanceMessage,
   formatVehicle,
   garageMessage,
   offersMessage,
@@ -549,6 +552,16 @@ export class TelegramBot {
       await this.sendFullScheme(chatId)
       return
     }
+    if (data === 'to:all') {
+      await this.handleMaintenance(chatId)
+      return
+    }
+    if (data.startsWith('to:')) {
+      // «Все варианты» пункта ТО — обычный поиск его названием.
+      const item = MAINTENANCE_ITEMS[Number(data.slice('to:'.length))]
+      if (item) await this.handlePartQuery(chatId, item.query)
+      return
+    }
     if (data.startsWith('tree:')) {
       await this.browseTree(chatId, data.slice('tree:'.length))
       return
@@ -570,6 +583,35 @@ export class TelegramBot {
       const oemNumber = separator === -1 ? undefined : rest.slice(separator + 1)
       await this.addToCart(chatId, callback.from.id, tier, oemNumber)
     }
+  }
+
+  /**
+   * Детали ТО одним нажатием: масляный, воздушный, салонный, топливный фильтры
+   * и свечи (`MAINTENANCE_ITEMS`). Поиск пяти пунктов идёт до полуминуты, поэтому
+   * мастер сразу видит, что бот работает, — иначе он жмёт кнопку снова.
+   */
+  private async handleMaintenance(chatId: number): Promise<void> {
+    const session = this.session(chatId)
+    if (!session.vin) {
+      await this.client.sendMessage(chatId, 'Сначала пришлите VIN автомобиля.')
+      return
+    }
+
+    await this.client.sendMessage(chatId, MAINTENANCE_PENDING)
+    let result: Awaited<ReturnType<CatalogService['maintenanceParts']>>
+    try {
+      result = await this.withTyping(chatId, () => this.catalog.maintenanceParts(session.vin!))
+    } catch (error) {
+      console.error('[bot] детали ТО не собрались:', error)
+      await this.client.sendMessage(chatId, 'Каталог сейчас недоступен. Попробуйте ещё раз через пару минут.')
+      return
+    }
+
+    // Карточки показанных деталей — для названия в предложениях по кнопке цены.
+    const shown = result.items.flatMap((item) => item.parts.slice(0, 1))
+    session.parts = Object.fromEntries(shown.map((part) => [part.oemNumber, toPartCard(part)]))
+    const { text, keyboard } = maintenanceMessage(result.vehicle, result.items)
+    await this.client.sendMessage(chatId, text, { parseMode: 'HTML', replyMarkup: keyboard })
   }
 
   /**
@@ -828,9 +870,14 @@ export class TelegramBot {
     // «ничего не найдено».
     await this.client.sendMessage(chatId, formatVehicle(vehicle, { switched }), {
       parseMode: 'HTML',
-      replyMarkup: this.catalog.supportsTree()
-        ? { inline_keyboard: [[{ text: '📂 Узлы каталога', callback_data: 'tree:top' }]] }
-        : undefined,
+      replyMarkup: {
+        inline_keyboard: [
+          [
+            { text: '🧰 Детали ТО', callback_data: 'to:all' },
+            ...(this.catalog.supportsTree() ? [{ text: '📂 Узлы каталога', callback_data: 'tree:top' }] : []),
+          ],
+        ],
+      },
     })
   }
 
